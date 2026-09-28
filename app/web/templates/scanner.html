@@ -1,0 +1,164 @@
+{% extends "base.html" %}
+{% block title %}Gate Scanner | {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Gate Scanner</h1>
+<p class="page-sub">Volunteer view &middot; big buttons, works on a phone &middot; every scan is stamped with time, gate, and volunteer</p>
+
+<div class="card">
+  <div class="grid two">
+    <div>
+      <label for="gate">Gate</label>
+      <select id="gate">
+        {% for g in gates %}<option value="{{ g.id }}">{{ g.label }}</option>{% endfor %}
+      </select>
+    </div>
+    <div>
+      <label for="volunteer">Volunteer name</label>
+      <input type="text" id="volunteer" placeholder="e.g. Ahmed Raza" value="Volunteer">
+    </div>
+  </div>
+  <label>Mode</label>
+  <div class="btn-row" style="margin-top:0">
+    <button class="btn green big" id="m-entry" style="flex:1" onclick="setMode('entry')">ENTRY</button>
+    <button class="btn big" id="m-exit" style="flex:1" onclick="setMode('exit')">EXIT</button>
+  </div>
+
+  <label for="payload" style="margin-top:16px">QR payload (type, paste, or scan)</label>
+  <input type="text" id="payload" placeholder="e.g. LGU1:K9P2M7Q4:a1b2c3d4e5" autocomplete="off">
+  <div class="btn-row">
+    <button class="btn green big" onclick="submitScan()">SCAN</button>
+  </div>
+  <div class="btn-row">
+    <button class="btn ghost" onclick="demoFill()">Demo: fill next student's code</button>
+    <button class="btn ghost" onclick="clearResult()">Clear</button>
+  </div>
+  <p class="page-sub" style="margin-top:10px">Demo note: a real deployment reads the code with the phone
+  camera. This demo accepts typed or pasted payloads, plus the demo-fill helper above.</p>
+</div>
+
+<div class="card">
+  <h2>Offline mode (dead-network plan)</h2>
+  <div class="switch-row">
+    <label class="switch"><input type="checkbox" id="offline" onchange="toggleOffline()"><span class="slider"></span></label>
+    <div><strong>Simulate offline</strong><br>
+    <span class="page-sub">Scans are stored on this phone with their timestamps and synced later.</span></div>
+  </div>
+  <div class="btn-row">
+    <button class="btn" onclick="syncQueue()">Sync now (<span id="qcount">0</span> queued)</button>
+  </div>
+  <div id="queue-list" style="margin-top:10px"></div>
+</div>
+
+<div class="result" id="result">
+  <p class="r-title" id="r-title"></p>
+  <p class="r-name" id="r-name"></p>
+  <p class="r-sub" id="r-sub"></p>
+  <p class="r-meta" id="r-meta"></p>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+let mode = "entry";
+const QKEY = "lgu_scan_queue";
+
+function setMode(m) {
+  mode = m;
+  document.getElementById("m-entry").className = "btn big" + (m === "entry" ? " green" : "");
+  document.getElementById("m-exit").className = "btn big" + (m === "exit" ? " green" : "");
+}
+function getQueue() { try { return JSON.parse(localStorage.getItem(QKEY) || "[]"); } catch (e) { return []; } }
+function setQueue(q) { localStorage.setItem(QKEY, JSON.stringify(q)); renderQueue(); }
+function isOffline() { return document.getElementById("offline").checked; }
+function toggleOffline() { renderQueue(); }
+
+function renderQueue() {
+  const q = getQueue();
+  document.getElementById("qcount").textContent = q.length;
+  document.getElementById("queue-list").innerHTML = q.length
+    ? q.map((it, i) => `<div class="feed-item"><span class="t">${it.scanned_at.slice(11)}</span>` +
+      `<span class="badge queued">QUEUED</span><span>${it.payload}</span>` +
+      `<span style="color:var(--muted)">${it.mode} @ gate ${it.gate_id}</span></div>`).join("")
+    : '<p class="page-sub">Queue is empty.</p>';
+}
+
+function showResult(r, queued) {
+  const el = document.getElementById("result");
+  el.className = "result show " + (queued ? "amber" : r.level);
+  document.getElementById("r-title").textContent = queued ? "QUEUED OFFLINE" : r.title;
+  document.getElementById("r-name").textContent = queued ? "" : (r.name || "");
+  document.getElementById("r-sub").textContent = queued
+    ? "No signal. Scan stored on this phone and will sync later."
+    : (r.sub || r.detail || "");
+  document.getElementById("r-meta").textContent = queued ? "" : ((r.gate || "") + (r.time ? "  |  " + r.time : ""));
+}
+
+function clearResult() {
+  document.getElementById("result").className = "result";
+  document.getElementById("payload").value = "";
+  document.getElementById("payload").focus();
+}
+
+function localStamp() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`;
+}
+
+async function submitScan() {
+  const item = {
+    payload: document.getElementById("payload").value.trim(),
+    gate_id: parseInt(document.getElementById("gate").value),
+    mode: mode,
+    volunteer: document.getElementById("volunteer").value.trim() || "Volunteer",
+    scanned_at: localStamp()
+  };
+  if (!item.payload) { showResult({level: "amber", title: "EMPTY CODE", detail: "Enter or paste a QR payload first."}); return; }
+  if (isOffline()) {
+    const q = getQueue(); q.push(item); setQueue(q);
+    showResult(null, true);
+    document.getElementById("payload").value = "";
+    document.getElementById("payload").focus();
+    return;
+  }
+  const resp = await fetch("{{ url_for('main.api_scan') }}", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify(item)
+  });
+  const r = await resp.json();
+  showResult(r, false);
+  document.getElementById("payload").value = "";
+  document.getElementById("payload").focus();
+}
+
+async function syncQueue() {
+  const q = getQueue();
+  if (!q.length) { showResult({level: "amber", title: "NOTHING TO SYNC", detail: "The offline queue is empty."}); return; }
+  const resp = await fetch("{{ url_for('main.api_sync') }}", {
+    method: "POST", headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({items: q})
+  });
+  const r = await resp.json();
+  const bad = r.results.filter(x => x.result.status !== "ok").length;
+  setQueue([]);
+  showResult({level: bad ? "amber" : "green",
+    title: "SYNC COMPLETE",
+    detail: `${r.synced} queued scan(s) pushed. ${bad} rejected (duplicates are still rejected).`});
+}
+
+async function demoFill() {
+  const resp = await fetch("{{ url_for('main.api_demo_payload') }}");
+  const r = await resp.json();
+  if (r.payload) {
+    document.getElementById("payload").value = r.payload;
+    showResult({level: "green", title: "CODE READY",
+      sub: "Demo helper loaded: " + r.hint + ". Press SCAN to record the entry."});
+  } else {
+    showResult({level: "amber", title: "NO ONE LEFT OUTSIDE", detail: r.hint});
+  }
+}
+
+setMode("entry");
+renderQueue();
+document.getElementById("payload").addEventListener("keydown", e => { if (e.key === "Enter") submitScan(); });
+</script>
+{% endblock %}

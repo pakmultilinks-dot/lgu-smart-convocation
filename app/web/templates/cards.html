@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Student ID Cards | {{ UNIVERSITY }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<main class="wrap">
+  <div class="print-head no-print">
+    <div>
+      <h1 class="page-title">Student ID Card Sheet</h1>
+      <p class="page-sub">{{ cards|length }} cards &middot; each card: name + roll number (readable) + QR (opaque signed ID)</p>
+    </div>
+    <button class="btn green" onclick="window.print()">Print</button>
+  </div>
+  <div class="card-sheet">
+    {% for c in cards %}
+    <div class="idcard">
+      <div class="qr"><img src="{{ c.qr }}" alt="QR code"></div>
+      <div class="who">
+        <span class="band">{{ UNIVERSITY|upper }}</span>
+        <h4>{{ c.name }}</h4>
+        <div class="roll">{{ c.roll_no }}</div>
+        <div class="prog">{{ c.program }}</div>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+</main>
+</body>
+</html>

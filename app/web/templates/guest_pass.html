@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Guest Pass | {{ UNIVERSITY }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<main class="wrap">
+  <div class="no-print" style="text-align:center;margin-bottom:16px">
+    <button class="btn green" onclick="window.print()">Print this pass</button>
+    <a class="btn ghost" href="{{ url_for('main.guests') }}">Back to guests</a>
+  </div>
+  <div class="guest-pass">
+    <div class="band" style="background:var(--green);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;display:inline-block;letter-spacing:.5px">GUEST PASS: SINGLE USE</div>
+    <h2 style="color:var(--navy-dark);margin:10px 0 2px">{{ guest.name }}</h2>
+    <p style="margin:0;color:var(--muted);font-size:14px">Guest of {{ guest.host_roll_no }} &middot; {{ guest.phone }}</p>
+    <p style="margin:12px 0"><img src="{{ qr }}" alt="Guest QR code"></p>
+    <p style="font-size:13px;color:var(--muted);margin:0">Present at any gate. This code works exactly once.<br>Present valid ID with this pass.</p>
+  </div>
+</main>
+</body>
+</html>

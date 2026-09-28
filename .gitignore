@@ -1,0 +1,25 @@
+# Python / Flask
+__pycache__/
+*.pyc
+*.pyo
+lgu.db
+*.db
+instance/
+.venv/
+venv/
+
+# Node / Expo
+node_modules/
+.expo/
+dist/
+web-build/
+*.log
+
+# Secrets
+.env
+*.pem
+*.key
+
+# OS
+.DS_Store
+Thumbs.db

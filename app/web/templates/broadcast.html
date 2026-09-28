@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Broadcast | {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Broadcast</h1>
+<p class="page-sub">Gate changes, timing notices, and emergency announcements, composed once and sent to everyone.</p>
+
+{% if msg %}<div class="notice info">{{ msg }}</div>{% endif %}
+
+<div class="grid two">
+  <div class="card">
+    <h2>Compose message</h2>
+    <form method="post">
+      <label for="audience">Audience</label>
+      <select id="audience" name="audience">
+        <option>All students</option>
+        {% for g in gates %}<option>Students at {{ g.label }}</option>{% endfor %}
+        <option>Volunteers</option>
+      </select>
+      <label for="message">Message</label>
+      <textarea id="message" name="message" required placeholder="e.g. Convocation rehearsal moved to 09:00. Gate 3 is closed, please use Gate 1."></textarea>
+      <label for="sent_by">Sender name</label>
+      <input type="text" id="sent_by" name="sent_by" placeholder="e.g. Registrar Office">
+      <div class="btn-row"><button class="btn green" type="submit">Send broadcast</button></div>
+    </form>
+  </div>
+  <div class="card">
+    <h2>Sent log</h2>
+    {% if log %}
+      {% for b in log %}
+      <div class="feed-item">
+        <span class="t">{{ b.sent_at[11:] }}</span>
+        <span class="g">{{ b.audience }}</span>
+        <span>{{ b.message }} <span style="color:var(--muted)">(by {{ b.sent_by }})</span></span>
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="page-sub">No broadcasts sent yet.</p>
+    {% endif %}
+    <p class="page-sub" style="margin-top:12px">Demo mode: broadcasts are logged here. In production this
+    connects to the university SMS gateway and push service.</p>
+  </div>
+</div>
+{% endblock %}
