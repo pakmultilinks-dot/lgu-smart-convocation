@@ -1,0 +1,47 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="hero">
+  <h2>{{ APP_NAME }}</h2>
+  <p>One scan at the gate, and the whole campus is visible live: headcounts, male and female
+  split, guests, and per-gate flow, on one dashboard for the Vice Chancellor, deans, HODs,
+  and the registrar. Built for convocation and orientation at Lahore Garrison University.</p>
+</div>
+
+<div class="mod-grid">
+  <a class="mod" href="{{ url_for('main.dashboard') }}">
+    <div class="mi">&#128202;</div><h3>Live Dashboard</h3>
+    <p>Students inside now, male/female split, guests, per-gate throughput, sync status.</p>
+  </a>
+  <a class="mod" href="{{ url_for('main.scan_page') }}">
+    <div class="mi">&#128241;</div><h3>Gate Scanner</h3>
+    <p>Volunteer scanning page: entry/exit modes, offline queue, duplicate detection.</p>
+  </a>
+  <a class="mod" href="{{ url_for('main.guests') }}">
+    <div class="mi">&#127915;</div><h3>Guest Management</h3>
+    <p>Register each student's one free guest and issue a single-use QR pass.</p>
+  </a>
+  <a class="mod" href="{{ url_for('main.broadcast') }}">
+    <div class="mi">&#128226;</div><h3>Broadcast</h3>
+    <p>Send timing notices and gate changes to students, campus-wide or per gate.</p>
+  </a>
+  <a class="mod" href="{{ url_for('main.admin') }}">
+    <div class="mi">&#9881;</div><h3>Admin: IDs and Cards</h3>
+    <p>Generate signed QR IDs, print card sheets, download the vendor print file.</p>
+  </a>
+  <a class="mod" href="{{ url_for('main.print_cards') }}">
+    <div class="mi">&#128465;</div><h3>Printable Card Sheet</h3>
+    <p>Name, roll number, and QR on every card, ready for the printing vendor.</p>
+  </a>
+</div>
+
+<div class="card" style="margin-top:18px">
+  <h2>How it works</h2>
+  <p style="margin:0;font-size:14px;color:var(--muted)">
+  1. The system generates a unique signed QR ID for every student. The vendor prints name,
+  roll number, and QR on each card; students collect the right card by reading their name.
+  2. Volunteers scan at the gates; every scan is stamped with time, gate, and volunteer.
+  3. The dashboard counts everything live, including the male/female split, from the
+  exam department roster. 4. Guests get single-use QR passes that cannot be reused.
+  </p>
+</div>
+{% endblock %}
