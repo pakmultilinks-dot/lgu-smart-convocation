@@ -109,20 +109,32 @@ export class ApiError extends Error {
   }
 }
 
+// How long we wait for the backend before giving up. Without this, a phone
+// pointed at an unreachable server would hang on a spinner forever.
+const REQUEST_TIMEOUT_MS = 20000;
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const baseUrl = await getApiBaseUrl();
   const url = `${baseUrl}${path}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
   let response: Response;
   try {
     response = await fetch(url, {
       ...init,
+      signal: controller.signal,
       headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
     });
-  } catch {
+  } catch (e) {
+    const timedOut = e instanceof Error && e.name === "AbortError";
     throw new ApiError(
-      `Could not reach the server at ${baseUrl}. Check the API base URL in Settings.`,
+      timedOut
+        ? `The server at ${baseUrl} took too long to respond. Check the API base URL in Settings.`
+        : `Could not reach the server at ${baseUrl}. Check the API base URL in Settings.`,
       0,
     );
+  } finally {
+    clearTimeout(timer);
   }
   let body: unknown = null;
   try {
@@ -187,17 +199,14 @@ export async function registerGuest(input: {
   phone: string;
   host_roll_no: string;
 }): Promise<GuestRegistration> {
-  const baseUrl = await getApiBaseUrl();
-  const response = await fetch(`${baseUrl}/api/guests`, {
+  const data = await request<GuestRegistration>("/api/guests", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const body = (await response.json()) as GuestRegistration;
-  if (!response.ok || !body.ok) {
-    throw new ApiError(body.error ?? "Guest registration failed.", response.status);
+  if (!data.ok) {
+    throw new ApiError(data.error ?? "Guest registration failed.", 400);
   }
-  return body;
+  return data;
 }
 
 export async function fetchGuestPass(gid: number): Promise<GuestPass> {
@@ -220,17 +229,14 @@ export async function sendBroadcast(input: {
   message: string;
   sent_by: string;
 }): Promise<BroadcastResponse> {
-  const baseUrl = await getApiBaseUrl();
-  const response = await fetch(`${baseUrl}/api/broadcasts`, {
+  const data = await request<BroadcastResponse>("/api/broadcasts", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  const body = (await response.json()) as BroadcastResponse;
-  if (!response.ok || !body.ok) {
-    throw new ApiError(body.error ?? "Broadcast failed.", response.status);
+  if (!data.ok) {
+    throw new ApiError(data.error ?? "Broadcast failed.", 400);
   }
-  return body;
+  return data;
 }
 
 /** Pakistani mobile numbers: 03XXXXXXXXX, with optional leading zero and separators. */
