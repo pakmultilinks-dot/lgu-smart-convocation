@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}{{ APP_NAME }}{% endblock %} | {{ UNIVERSITY }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="topbar-inner">
+    <div class="crest">LGU</div>
+    <div class="brand">
+      <h1>{{ UNIVERSITY }}</h1>
+      <p><strong>{{ APP_NAME }}</strong> &middot; Live campus entry, counted in real time</p>
+    </div>
+  </div>
+</header>
+<nav class="nav no-print">
+  <div class="nav-inner">
+    <a href="{{ url_for('main.index') }}" class="{% if request.path == '/' %}active{% endif %}">Home</a>
+    <a href="{{ url_for('main.dashboard') }}" class="{% if request.path.startswith('/dashboard') %}active{% endif %}">Live Dashboard</a>
+    <a href="{{ url_for('main.scan_page') }}" class="{% if request.path.startswith('/scan') %}active{% endif %}">Gate Scanner</a>
+    <a href="{{ url_for('main.guests') }}" class="{% if request.path.startswith('/guests') %}active{% endif %}">Guests</a>
+    <a href="{{ url_for('main.broadcast') }}" class="{% if request.path.startswith('/broadcast') %}active{% endif %}">Broadcast</a>
+    <a href="{{ url_for('main.admin') }}" class="{% if request.path.startswith('/admin') %}active{% endif %}">Admin</a>
+  </div>
+</nav>
+<main class="wrap">
+  {% block content %}{% endblock %}
+</main>
+<footer class="footer">
+  <div><strong>{{ UNIVERSITY }}</strong> &middot; {{ APP_NAME }}</div>
+  <div class="motto">"{{ MOTTO }}"</div>
+</footer>
+{% block scripts %}{% endblock %}
+</body>
+</html>
