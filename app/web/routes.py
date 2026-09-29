@@ -36,6 +36,12 @@ def api_dashboard():
     return jsonify(models.dashboard())
 
 
+@bp.route("/api/dashboard/summary")
+def api_dashboard_summary():
+    """Lightweight KPI summary: expected roster totals plus live counts."""
+    return jsonify(models.dashboard_summary())
+
+
 # ---------------------------------------------------------------- scanner
 @bp.route("/scan")
 def scan_page():
@@ -127,10 +133,10 @@ def api_sync():
 @bp.route("/api/demo-payload")
 def api_demo_payload():
     """Demo helper: return the payload of a student currently outside."""
-    for st in models.all_students():
-        if st["qr_id"] and not models.student_inside(st["qr_id"]):
-            return jsonify({"payload": ids.make_payload(st["qr_id"]),
-                            "hint": "%s (%s)" % (st["name"], st["roll_no"])})
+    st = models.first_outside_student()
+    if st:
+        return jsonify({"payload": ids.make_payload(st["qr_id"]),
+                        "hint": "%s (%s)" % (st["name"], st["roll_no"])})
     return jsonify({"payload": None, "hint": "Everyone is inside already."})
 
 

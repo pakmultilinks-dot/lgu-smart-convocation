@@ -37,10 +37,15 @@ export interface FeedItem {
 }
 
 export interface DashboardData {
+  expected_total: number;
+  expected_male: number;
+  expected_female: number;
+  expected_guests: number;
   inside_total: number;
   male: number;
   female: number;
   guests_inside: number;
+  arrival_pct: number;
   busiest_gate: string;
   throughput: { gate: Gate; count: number }[];
   sync: { gate: Gate; last: string | null; count: number }[];

@@ -13,23 +13,24 @@ export default function TabLayout() {
   return (
     <Tabs
       screenOptions={{
-        headerStyle: { backgroundColor: colors.navy },
+        headerStyle: { backgroundColor: colors.greenDark },
         headerTintColor: colors.white,
         headerTitleStyle: { fontWeight: "700" },
-        tabBarActiveTintColor: colors.gold,
-        tabBarInactiveTintColor: "rgba(255, 255, 255, 0.55)",
+        tabBarActiveTintColor: colors.white,
+        tabBarInactiveTintColor: "rgba(255, 255, 255, 0.6)",
         tabBarStyle: {
-          backgroundColor: colors.navy,
-          borderTopColor: colors.navyDark,
+          backgroundColor: colors.greenDark,
+          borderTopColor: colors.greenDeep,
           borderTopWidth: 1,
         },
       }}
     >
       <Tabs.Screen
-        name="dashboard"
+        name="home"
         options={{
-          tabBarIcon: tabIcon("stats-chart"),
-          title: "Dashboard",
+          tabBarIcon: tabIcon("home"),
+          title: "Home",
+          headerShown: false,
         }}
       />
       <Tabs.Screen
@@ -37,6 +38,13 @@ export default function TabLayout() {
         options={{
           tabBarIcon: tabIcon("qr-code"),
           title: "Scanner",
+        }}
+      />
+      <Tabs.Screen
+        name="dashboard"
+        options={{
+          tabBarIcon: tabIcon("stats-chart"),
+          title: "Dashboard",
         }}
       />
       <Tabs.Screen

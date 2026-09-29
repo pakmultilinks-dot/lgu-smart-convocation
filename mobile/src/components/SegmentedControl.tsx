@@ -34,8 +34,8 @@ export function SegmentedControl<T extends string>({
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: colors.border,
-    borderRadius: radius.md,
+    backgroundColor: colors.tint,
+    borderRadius: radius.lg,
     flexDirection: "row",
     padding: spacing.xs,
   },
@@ -45,20 +45,20 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
   },
   labelActive: {
-    color: colors.navy,
+    color: colors.white,
   },
   option: {
     alignItems: "center",
-    borderRadius: radius.sm,
+    borderRadius: radius.md,
     flex: 1,
     paddingVertical: spacing.sm,
   },
   optionActive: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.green,
     elevation: 2,
-    shadowColor: "#0B2447",
+    shadowColor: colors.greenDark,
     shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.2,
     shadowRadius: 3,
   },
 });

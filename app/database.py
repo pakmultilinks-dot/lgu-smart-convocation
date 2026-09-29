@@ -48,6 +48,11 @@ CREATE TABLE IF NOT EXISTS broadcasts (
 );
 CREATE INDEX IF NOT EXISTS idx_scans_qr ON scans(qr_id);
 CREATE INDEX IF NOT EXISTS idx_scans_gate ON scans(gate_id);
+CREATE INDEX IF NOT EXISTS idx_scans_time ON scans(scanned_at);
+CREATE INDEX IF NOT EXISTS idx_scans_gate_mode_time ON scans(gate_id, mode, scanned_at);
+CREATE INDEX IF NOT EXISTS idx_scans_person_type ON scans(person_type);
+CREATE INDEX IF NOT EXISTS idx_students_qr ON students(qr_id);
+CREATE INDEX IF NOT EXISTS idx_guests_qr ON guests(qr_id);
 """
 
 GATE_LABELS = [

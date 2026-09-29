@@ -7,6 +7,8 @@ import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Animated,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -29,6 +31,7 @@ import {
 import { PrimaryButton } from "../components/PrimaryButton";
 import { ResultCard } from "../components/ResultCard";
 import { SegmentedControl } from "../components/SegmentedControl";
+import { SectionCard } from "../components/SectionCard";
 import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import {
   enqueueScan,
@@ -54,6 +57,17 @@ function localTimestamp(): string {
   return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
 }
 
+function ViewfinderCorners() {
+  return (
+    <View style={styles.frame} pointerEvents="none">
+      <View style={[styles.corner, styles.cornerTL]} />
+      <View style={[styles.corner, styles.cornerTR]} />
+      <View style={[styles.corner, styles.cornerBL]} />
+      <View style={[styles.corner, styles.cornerBR]} />
+    </View>
+  );
+}
+
 const RESULT_DISMISS_MS = 4000;
 
 export function ScannerScreen() {
@@ -72,6 +86,31 @@ export function ScannerScreen() {
 
   const scanningRef = useRef(false);
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [scanAnim] = useState(() => new Animated.Value(0));
+
+  // Web has no real camera preview in this build: show a clean animated
+  // placeholder instead of the native camera view.
+  useEffect(() => {
+    if (Platform.OS !== "web") {
+      return;
+    }
+    const loop = Animated.loop(
+      Animated.sequence([
+        Animated.timing(scanAnim, {
+          duration: 1800,
+          toValue: 1,
+          useNativeDriver: true,
+        }),
+        Animated.timing(scanAnim, {
+          duration: 1800,
+          toValue: 0,
+          useNativeDriver: true,
+        }),
+      ]),
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [scanAnim]);
 
   const loadGates = useCallback(async () => {
     try {
@@ -282,189 +321,242 @@ export function ScannerScreen() {
 
   return (
     <View style={styles.root}>
-      <View style={styles.controls}>
-        {gatesError ? (
-          <ErrorState message={gatesError} onRetry={() => void loadGates()} />
-        ) : (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.gateRow}
-          >
-            {gates.map((gate) => {
-              const active = gate.id === gateId;
-              return (
-                <Pressable
-                  key={gate.id}
-                  onPress={() => setGateId(gate.id)}
-                  style={[styles.gateChip, active && styles.gateChipActive]}
-                >
-                  <Text
-                    style={[
-                      styles.gateChipText,
-                      active && styles.gateChipTextActive,
+      <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
+        <SectionCard title="Gate Setup" subtitle="Pick your gate before the crowd arrives">
+          {gatesError ? (
+            <ErrorState message={gatesError} onRetry={() => void loadGates()} />
+          ) : (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={styles.gateRow}
+            >
+              {gates.map((gate) => {
+                const active = gate.id === gateId;
+                return (
+                  <Pressable
+                    key={gate.id}
+                    onPress={() => {
+                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      setGateId(gate.id);
+                    }}
+                    style={({ pressed }) => [
+                      styles.gateChip,
+                      active && styles.gateChipActive,
+                      pressed && styles.pressed,
                     ]}
                   >
-                    {gate.label}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </ScrollView>
-        )}
+                    <Text
+                      style={[
+                        styles.gateChipText,
+                        active && styles.gateChipTextActive,
+                      ]}
+                    >
+                      {gate.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+          )}
 
-        <View style={styles.row}>
-          <View style={styles.segmentWrap}>
-            <SegmentedControl<ScanMode>
-              options={[
-                { label: "Entry", value: "entry" },
-                { label: "Exit", value: "exit" },
-              ]}
-              value={mode}
-              onChange={setMode}
+          <View style={styles.row}>
+            <View style={styles.segmentWrap}>
+              <SegmentedControl<ScanMode>
+                options={[
+                  { label: "Entry", value: "entry" },
+                  { label: "Exit", value: "exit" },
+                ]}
+                value={mode}
+                onChange={setMode}
+              />
+            </View>
+            <Pressable
+              onPress={() => setTorch((t) => !t)}
+              style={[styles.iconButton, torch && styles.iconButtonActive]}
+            >
+              <Ionicons
+                name={torch ? "flash" : "flash-outline"}
+                size={22}
+                color={torch ? colors.white : colors.greenDark}
+              />
+            </Pressable>
+          </View>
+
+          <TextInput
+            style={styles.input}
+            placeholder="Volunteer name"
+            placeholderTextColor={colors.muted}
+            value={volunteer}
+            onChangeText={setVolunteer}
+            onEndEditing={(e) => saveVolunteer(e.nativeEvent.text)}
+            autoCapitalize="words"
+            returnKeyType="done"
+          />
+
+          <View style={styles.offlineRow}>
+            <View style={styles.offlineLeft}>
+              <Ionicons name="cloud-offline-outline" size={18} color={colors.muted} />
+              <Text style={styles.offlineLabel}>Offline mode</Text>
+              {queued > 0 && (
+                <View style={styles.queueBadge}>
+                  <Text style={styles.queueBadgeText}>{queued} queued</Text>
+                </View>
+              )}
+            </View>
+            <Switch
+              value={offline}
+              onValueChange={setOffline}
+              trackColor={{ false: colors.border, true: colors.emerald }}
+              thumbColor={offline ? colors.white : colors.white}
             />
           </View>
-          <Pressable
-            onPress={() => setTorch((t) => !t)}
-            style={[styles.iconButton, torch && styles.iconButtonActive]}
-          >
-            <Ionicons
-              name={torch ? "flash" : "flash-outline"}
-              size={22}
-              color={torch ? colors.navyDark : colors.navy}
-            />
-          </Pressable>
-        </View>
 
-        <TextInput
-          style={styles.input}
-          placeholder="Volunteer name"
-          value={volunteer}
-          onChangeText={setVolunteer}
-          onEndEditing={(e) => saveVolunteer(e.nativeEvent.text)}
-          autoCapitalize="words"
-          returnKeyType="done"
-        />
+          {offline && queued > 0 && (
+            <View style={styles.syncWrap}>
+              <PrimaryButton
+                title={syncing ? "Syncing..." : `Sync now (${queued})`}
+                onPress={() => void handleSync()}
+                loading={syncing}
+                variant="accent"
+              />
+            </View>
+          )}
+        </SectionCard>
 
-        <View style={styles.offlineRow}>
-          <View style={styles.offlineLeft}>
-            <Text style={styles.offlineLabel}>Offline mode</Text>
-            {queued > 0 && (
-              <View style={styles.queueBadge}>
-                <Text style={styles.queueBadgeText}>{queued} queued</Text>
+        <View style={styles.cameraCard}>
+          {Platform.OS === "web" ? (
+            <View style={styles.webViewfinder}>
+              <ViewfinderCorners />
+              <Animated.View
+                style={[
+                  styles.webScanLine,
+                  {
+                    transform: [
+                      {
+                        translateY: scanAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [-(FRAME / 2) + 16, FRAME / 2 - 16],
+                        }),
+                      },
+                    ],
+                  },
+                ]}
+              />
+              <View style={styles.cameraHintPill}>
+                <Text style={styles.cameraHint}>
+                  Point the camera at a student QR card
+                </Text>
               </View>
-            )}
-          </View>
-          <Switch
-            value={offline}
-            onValueChange={setOffline}
-            trackColor={{ false: colors.border, true: colors.gold }}
-            thumbColor={offline ? colors.navy : colors.white}
-          />
+            </View>
+          ) : (
+            <View style={styles.cameraWrap}>
+              <CameraView
+                style={styles.camera}
+                facing="back"
+                enableTorch={torch}
+                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+                onBarcodeScanned={handleBarcode}
+              />
+              <ViewfinderCorners />
+              <View style={styles.scanLine} />
+              <View style={styles.cameraHintPill}>
+                <Text style={styles.cameraHint}>
+                  Point the camera at a student QR card
+                </Text>
+              </View>
+            </View>
+          )}
         </View>
 
-        {offline && queued > 0 && (
+        <View style={styles.footer}>
           <PrimaryButton
-            title={syncing ? "Syncing..." : `Sync now (${queued})`}
-            onPress={() => void handleSync()}
-            loading={syncing}
-            variant="gold"
+            title="Demo scan (no camera)"
+            onPress={() => void handleDemoScan()}
+            loading={demoLoading}
+            variant="outline"
           />
-        )}
-      </View>
-
-      <View style={styles.cameraWrap}>
-        <CameraView
-          style={styles.camera}
-          facing="back"
-          enableTorch={torch}
-          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-          onBarcodeScanned={handleBarcode}
-        />
-        <View style={styles.frame} pointerEvents="none">
-          <View style={[styles.corner, styles.cornerTL]} />
-          <View style={[styles.corner, styles.cornerTR]} />
-          <View style={[styles.corner, styles.cornerBL]} />
-          <View style={[styles.corner, styles.cornerBR]} />
         </View>
-        <Text style={styles.cameraHint}>Point the camera at a student QR card</Text>
-      </View>
-
-      <View style={styles.footer}>
-        <PrimaryButton
-          title="Demo scan (no camera)"
-          onPress={() => void handleDemoScan()}
-          loading={demoLoading}
-          variant="outline"
-        />
-      </View>
+        <View style={styles.bottomPad} />
+      </ScrollView>
 
       {result && <ResultCard result={result} onDismiss={dismissResult} />}
     </View>
   );
 }
 
-const CORNER = 36;
-const FRAME = 240;
+const CORNER = 40;
+const FRAME = 250;
 
 const styles = StyleSheet.create({
+  bottomPad: {
+    height: spacing.md,
+  },
   camera: {
     ...StyleSheet.absoluteFill,
   },
+  cameraCard: {
+    borderRadius: radius.lg,
+    elevation: 4,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    overflow: "hidden",
+    shadowColor: colors.greenDark,
+    shadowOffset: { height: 3, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 10,
+  },
   cameraHint: {
-    bottom: spacing.md,
     color: colors.white,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.medium,
-    left: 0,
-    opacity: 0.85,
+  },
+  cameraHintPill: {
+    alignSelf: "center",
+    backgroundColor: "rgba(8, 74, 39, 0.75)",
+    borderRadius: radius.full,
+    bottom: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.xs,
     position: "absolute",
-    right: 0,
-    textAlign: "center",
   },
   cameraWrap: {
-    backgroundColor: colors.navyDark,
-    flex: 1,
-    minHeight: 220,
+    backgroundColor: colors.greenDark,
+    height: 340,
     overflow: "hidden",
     position: "relative",
   },
-  controls: {
-    backgroundColor: colors.white,
-    padding: spacing.md,
-  },
   corner: {
-    borderColor: colors.gold,
+    borderColor: colors.emerald,
     height: CORNER,
     position: "absolute",
     width: CORNER,
   },
   cornerBL: {
-    borderBottomWidth: 5,
-    borderLeftWidth: 5,
+    borderBottomWidth: 4,
+    borderLeftWidth: 4,
     bottom: 0,
     left: 0,
   },
   cornerBR: {
-    borderBottomWidth: 5,
-    borderRightWidth: 5,
+    borderBottomWidth: 4,
+    borderRightWidth: 4,
     bottom: 0,
     right: 0,
   },
   cornerTL: {
-    borderLeftWidth: 5,
-    borderTopWidth: 5,
+    borderLeftWidth: 4,
+    borderTopWidth: 4,
     left: 0,
     top: 0,
   },
   cornerTR: {
-    borderRightWidth: 5,
-    borderTopWidth: 5,
+    borderRightWidth: 4,
+    borderTopWidth: 4,
     right: 0,
     top: 0,
   },
   footer: {
-    backgroundColor: colors.white,
     padding: spacing.md,
   },
   frame: {
@@ -476,7 +568,7 @@ const styles = StyleSheet.create({
     width: FRAME,
   },
   gateChip: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.tint,
     borderColor: colors.border,
     borderRadius: radius.full,
     borderWidth: 1,
@@ -485,8 +577,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   gateChipActive: {
-    backgroundColor: colors.navy,
-    borderColor: colors.navy,
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+    elevation: 2,
+    shadowColor: colors.greenDark,
+    shadowOffset: { height: 1, width: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   gateChipText: {
     color: colors.text,
@@ -501,17 +598,17 @@ const styles = StyleSheet.create({
   },
   iconButton: {
     alignItems: "center",
-    backgroundColor: colors.background,
+    backgroundColor: colors.tint,
     borderColor: colors.border,
-    borderRadius: radius.md,
+    borderRadius: radius.lg,
     borderWidth: 1,
-    height: 48,
+    height: 52,
     justifyContent: "center",
-    width: 48,
+    width: 52,
   },
   iconButtonActive: {
-    backgroundColor: colors.gold,
-    borderColor: colors.gold,
+    backgroundColor: colors.green,
+    borderColor: colors.green,
   },
   input: {
     backgroundColor: colors.inputBg,
@@ -528,34 +625,39 @@ const styles = StyleSheet.create({
     color: colors.text,
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
+    marginLeft: spacing.xs,
   },
   offlineLeft: {
     alignItems: "center",
     flexDirection: "row",
-    gap: spacing.sm,
   },
   offlineRow: {
     alignItems: "center",
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
   },
   permissionButton: {
     padding: spacing.md,
     width: "100%",
   },
   permissionWrap: {
-    backgroundColor: colors.white,
+    backgroundColor: colors.background,
     flex: 1,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.96 }],
   },
   queueBadge: {
     backgroundColor: colors.gold,
     borderRadius: radius.full,
+    marginLeft: spacing.sm,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   queueBadgeText: {
-    color: colors.navyDark,
+    color: colors.greenDark,
     fontSize: fontSize.small,
     fontWeight: fontWeight.bold,
   },
@@ -569,7 +671,40 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
+  scanLine: {
+    alignSelf: "center",
+    backgroundColor: "rgba(22, 163, 74, 0.9)",
+    borderRadius: 2,
+    height: 3,
+    marginTop: -1.5,
+    position: "absolute",
+    top: "50%",
+    width: "86%",
+  },
+  scroll: {
+    flex: 1,
+  },
   segmentWrap: {
     flex: 1,
+  },
+  syncWrap: {
+    marginTop: spacing.sm,
+  },
+  webScanLine: {
+    alignSelf: "center",
+    backgroundColor: colors.emerald,
+    borderRadius: 2,
+    height: 3,
+    position: "absolute",
+    top: "50%",
+    width: "86%",
+  },
+  webViewfinder: {
+    alignItems: "center",
+    backgroundColor: "#22332B",
+    height: 340,
+    justifyContent: "center",
+    overflow: "hidden",
+    position: "relative",
   },
 });

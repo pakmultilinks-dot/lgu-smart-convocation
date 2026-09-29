@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
@@ -24,14 +25,24 @@ import { getVolunteerName } from "../store/settings";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
 const ALL_STUDENTS = "All students";
+const MAX_MESSAGE = 500;
 
 function LogItem({ entry }: { entry: BroadcastEntry }) {
   return (
     <View style={styles.logItem}>
+      <View style={styles.logTop}>
+        <View style={styles.logIcon}>
+          <Ionicons name="megaphone" size={16} color={colors.green} />
+        </View>
+        <View style={styles.logHead}>
+          <Text style={styles.logAudience}>{entry.audience}</Text>
+          <Text style={styles.logMeta}>
+            {entry.sent_by}
+            {entry.sent_at ? ` \u00B7 ${entry.sent_at}` : ""}
+          </Text>
+        </View>
+      </View>
       <Text style={styles.logMessage}>{entry.message}</Text>
-      <Text style={styles.logMeta}>
-        {entry.audience} · {entry.sent_by} · {entry.sent_at}
-      </Text>
     </View>
   );
 }
@@ -79,6 +90,10 @@ export function BroadcastScreen() {
       setFormError("Message text is required.");
       return;
     }
+    if (message.trim().length > MAX_MESSAGE) {
+      setFormError(`Keep the message under ${MAX_MESSAGE} characters.`);
+      return;
+    }
     setSending(true);
     setFormError(null);
     setNote(null);
@@ -102,6 +117,7 @@ export function BroadcastScreen() {
   };
 
   const audiences = [ALL_STUDENTS, ...gates.map((g) => g.label)];
+  const remaining = MAX_MESSAGE - message.length;
 
   return (
     <FlatList
@@ -115,11 +131,12 @@ export function BroadcastScreen() {
             setRefreshing(true);
             void loadLog(false);
           }}
+          colors={[colors.green]}
         />
       }
       ListHeaderComponent={
         <View>
-          <SectionCard title="New Broadcast">
+          <SectionCard title="New Broadcast" subtitle="One message, every gate at once">
             <Text style={styles.label}>Audience</Text>
             <View style={styles.audienceRow}>
               {audiences.map((option) => {
@@ -128,9 +145,10 @@ export function BroadcastScreen() {
                   <Pressable
                     key={option}
                     onPress={() => setAudience(option)}
-                    style={[
+                    style={({ pressed }) => [
                       styles.audienceChip,
                       active && styles.audienceChipActive,
+                      pressed && styles.pressed,
                     ]}
                   >
                     <Text
@@ -146,19 +164,30 @@ export function BroadcastScreen() {
               })}
             </View>
 
-            <Text style={styles.label}>Message</Text>
+            <View style={styles.messageLabelRow}>
+              <Text style={styles.label}>Message</Text>
+              <Text style={[styles.charCount, remaining < 50 && styles.charCountLow]}>
+                {message.length}/{MAX_MESSAGE}
+              </Text>
+            </View>
             <TextInput
               style={[styles.input, styles.messageInput]}
               value={message}
               onChangeText={setMessage}
               placeholder="Type the announcement for the convocation..."
+              placeholderTextColor={colors.muted}
               multiline
               numberOfLines={4}
               textAlignVertical="top"
             />
 
             {formError && <Text style={styles.formError}>{formError}</Text>}
-            {note && <Text style={styles.note}>{note}</Text>}
+            {note && (
+              <View style={styles.noteBox}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.green} />
+                <Text style={styles.note}>{note}</Text>
+              </View>
+            )}
 
             <View style={styles.sendWrap}>
               <PrimaryButton
@@ -192,7 +221,7 @@ export function BroadcastScreen() {
 
 const styles = StyleSheet.create({
   audienceChip: {
-    backgroundColor: colors.background,
+    backgroundColor: colors.tint,
     borderColor: colors.border,
     borderRadius: radius.full,
     borderWidth: 1,
@@ -202,8 +231,13 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   audienceChipActive: {
-    backgroundColor: colors.navy,
-    borderColor: colors.navy,
+    backgroundColor: colors.green,
+    borderColor: colors.green,
+    elevation: 2,
+    shadowColor: colors.greenDark,
+    shadowOffset: { height: 1, width: 0 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
   },
   audienceRow: {
     flexDirection: "row",
@@ -217,6 +251,14 @@ const styles = StyleSheet.create({
   },
   audienceTextActive: {
     color: colors.white,
+  },
+  charCount: {
+    color: colors.muted,
+    fontSize: fontSize.caption,
+  },
+  charCountLow: {
+    color: colors.amber,
+    fontWeight: fontWeight.bold,
   },
   formError: {
     color: colors.red,
@@ -236,7 +278,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   label: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.bold,
     marginTop: spacing.md,
@@ -247,44 +289,82 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xl,
     paddingHorizontal: spacing.md,
   },
+  logAudience: {
+    color: colors.greenDark,
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+  },
+  logHead: {
+    flex: 1,
+    marginLeft: spacing.sm,
+  },
+  logIcon: {
+    alignItems: "center",
+    backgroundColor: colors.tint,
+    borderRadius: radius.full,
+    height: 34,
+    justifyContent: "center",
+    width: 34,
+  },
   logItem: {
     backgroundColor: colors.card,
-    borderRadius: radius.md,
-    elevation: 1,
+    borderRadius: radius.lg,
+    elevation: 2,
     marginBottom: spacing.sm,
     padding: spacing.md,
-    shadowColor: "#0B2447",
+    shadowColor: colors.greenDark,
     shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
   },
   logMessage: {
     color: colors.text,
     fontSize: fontSize.body,
+    lineHeight: 21,
+    marginTop: spacing.sm,
   },
   logMeta: {
     color: colors.muted,
     fontSize: fontSize.caption,
-    marginTop: spacing.xs,
+    marginTop: 1,
   },
   logTitle: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.subheading,
     fontWeight: fontWeight.bold,
     marginBottom: spacing.sm,
     marginTop: spacing.lg,
   },
+  logTop: {
+    alignItems: "center",
+    flexDirection: "row",
+  },
   messageInput: {
     minHeight: 110,
   },
+  messageLabelRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
   note: {
-    backgroundColor: colors.amberSoft,
-    borderRadius: radius.sm,
-    color: colors.amber,
+    color: colors.green,
+    flex: 1,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.semibold,
+    marginLeft: spacing.xs,
+  },
+  noteBox: {
+    alignItems: "center",
+    backgroundColor: colors.emeraldSoft,
+    borderRadius: radius.md,
+    flexDirection: "row",
     marginTop: spacing.sm,
     padding: spacing.sm,
+  },
+  pressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.96 }],
   },
   root: {
     backgroundColor: colors.background,

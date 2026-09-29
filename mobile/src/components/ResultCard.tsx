@@ -1,18 +1,13 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useEffect, useRef } from "react";
-import {
-  Animated,
-  Pressable,
-  StyleSheet,
-  Text,
-} from "react-native";
+import { Animated, Pressable, StyleSheet, Text } from "react-native";
 import type { ScanLevel, ScanResult } from "../api/client";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
-const levelStyle: Record<ScanLevel, { bg: string; border: string; icon: keyof typeof Ionicons.glyphMap }> = {
-  green: { bg: colors.green, border: colors.green, icon: "checkmark-circle" },
-  red: { bg: colors.red, border: colors.red, icon: "close-circle" },
-  amber: { bg: colors.amber, border: colors.amber, icon: "alert-circle" },
+const levelStyle: Record<ScanLevel, { bg: string; icon: keyof typeof Ionicons.glyphMap }> = {
+  green: { bg: colors.green, icon: "checkmark-circle" },
+  red: { bg: colors.red, icon: "close-circle" },
+  amber: { bg: colors.amber, icon: "alert-circle" },
 };
 
 interface Props {
@@ -40,14 +35,14 @@ export function ResultCard({ result, onDismiss }: Props) {
           { backgroundColor: style.bg, opacity, transform: [{ scale }] },
         ]}
       >
-        <Ionicons name={style.icon} size={56} color={colors.white} />
+        <Ionicons name={style.icon} size={64} color={colors.white} />
         <Text style={styles.title}>{result.title}</Text>
         {result.name ? <Text style={styles.name}>{result.name}</Text> : null}
         {result.sub ? <Text style={styles.sub}>{result.sub}</Text> : null}
         {result.detail ? <Text style={styles.detail}>{result.detail}</Text> : null}
         {(result.gate || result.time) && (
           <Text style={styles.meta}>
-            {[result.gate, result.time].filter(Boolean).join("  ·  ")}
+            {[result.gate, result.time].filter(Boolean).join("  \u00B7  ")}
           </Text>
         )}
         <Text style={styles.hint}>Tap to dismiss</Text>

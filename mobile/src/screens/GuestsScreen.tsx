@@ -1,6 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   FlatList,
   Modal,
@@ -22,20 +22,43 @@ import { EmptyState, ErrorState, LoadingState } from "../components/States";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
+const AVATAR_COLORS = [colors.green, colors.emerald, colors.greenDeep, "#4C8056", "#7BA98C"];
+
+function avatarColor(name: string): string {
+  let hash = 0;
+  for (let i = 0; i < name.length; i++) {
+    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
+  }
+  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
+}
+
+function initials(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 1).toUpperCase();
+  }
+  return (parts[0].slice(0, 1) + parts[parts.length - 1].slice(0, 1)).toUpperCase();
+}
+
+type Filter = "all" | "active" | "used";
+
 function GuestRow({ guest }: { guest: Guest }) {
   return (
     <Pressable
-      style={styles.row}
       onPress={() =>
         router.push({ params: { gid: String(guest.id) }, pathname: "/guest-pass" })
       }
+      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
     >
+      <View style={[styles.avatar, { backgroundColor: avatarColor(guest.name) }]}>
+        <Text style={styles.avatarText}>{initials(guest.name)}</Text>
+      </View>
       <View style={styles.rowMain}>
         <Text style={styles.name} numberOfLines={1}>
           {guest.name}
         </Text>
         <Text style={styles.meta} numberOfLines={1}>
-          Host: {guest.host_roll_no} · {guest.phone}
+          Host: {guest.host_roll_no} {"\u00B7"} {guest.phone}
         </Text>
       </View>
       <View
@@ -58,11 +81,20 @@ function GuestRow({ guest }: { guest: Guest }) {
   );
 }
 
+const FILTERS: { label: string; value: Filter }[] = [
+  { label: "All", value: "all" },
+  { label: "Active", value: "active" },
+  { label: "Used", value: "used" },
+];
+
 export function GuestsScreen() {
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [filter, setFilter] = useState<Filter>("all");
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
@@ -90,6 +122,29 @@ export function GuestsScreen() {
       void load(true);
     }, [load]),
   );
+
+  // Search runs against the already-fetched list; the 300 ms debounce
+  // keeps the filter from re-running on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(t);
+  }, [query]);
+
+  const visible = useMemo(() => {
+    const q = debouncedQuery.trim().toLowerCase();
+    return guests.filter((g) => {
+      if (filter === "active" && g.used) return false;
+      if (filter === "used" && !g.used) return false;
+      if (q.length === 0) return true;
+      return (
+        g.name.toLowerCase().includes(q) ||
+        g.host_roll_no.toLowerCase().includes(q) ||
+        g.phone.includes(q)
+      );
+    });
+  }, [guests, debouncedQuery, filter]);
+
+  const activeCount = guests.filter((g) => !g.used).length;
 
   const resetForm = () => {
     setName("");
@@ -145,8 +200,45 @@ export function GuestsScreen() {
 
   return (
     <View style={styles.root}>
+      <View style={styles.searchWrap}>
+        <Ionicons name="search" size={20} color={colors.muted} />
+        <TextInput
+          style={styles.searchInput}
+          value={query}
+          onChangeText={setQuery}
+          placeholder="Search name, roll number, phone"
+          placeholderTextColor={colors.muted}
+          returnKeyType="search"
+        />
+        {query.length > 0 && (
+          <Pressable onPress={() => setQuery("")}>
+            <Ionicons name="close-circle" size={20} color={colors.muted} />
+          </Pressable>
+        )}
+      </View>
+
+      <View style={styles.filterRow}>
+        {FILTERS.map((f) => {
+          const active = filter === f.value;
+          return (
+            <Pressable
+              key={f.value}
+              onPress={() => setFilter(f.value)}
+              style={[styles.filterChip, active && styles.filterChipActive]}
+            >
+              <Text style={[styles.filterText, active && styles.filterTextActive]}>
+                {f.label}
+              </Text>
+            </Pressable>
+          );
+        })}
+        <Text style={styles.countText}>
+          {activeCount} active of {guests.length}
+        </Text>
+      </View>
+
       <FlatList
-        data={guests}
+        data={visible}
         keyExtractor={(g) => String(g.id)}
         renderItem={({ item }) => <GuestRow guest={item} />}
         contentContainerStyle={styles.list}
@@ -157,25 +249,30 @@ export function GuestsScreen() {
               setRefreshing(true);
               void load(false);
             }}
+            colors={[colors.green]}
           />
         }
         ListEmptyComponent={
           <EmptyState
             icon="people-outline"
-            title="No guests yet"
-            message="Register a guest with the button below to issue a single-use entry pass."
+            title={debouncedQuery ? "No matches" : "No guests yet"}
+            message={
+              debouncedQuery
+                ? "Try a different name, roll number, or phone number."
+                : "Register a guest with the button below to issue a single-use entry pass."
+            }
           />
         }
       />
 
       <Pressable
-        style={styles.fab}
+        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
         onPress={() => {
           resetForm();
           setFormOpen(true);
         }}
       >
-        <Ionicons name="add" size={28} color={colors.white} />
+        <Ionicons name="add" size={30} color={colors.white} />
       </Pressable>
 
       <Modal visible={formOpen} animationType="slide" transparent>
@@ -190,6 +287,7 @@ export function GuestsScreen() {
               value={name}
               onChangeText={setName}
               placeholder="Full name"
+              placeholderTextColor={colors.muted}
               autoCapitalize="words"
             />
 
@@ -199,6 +297,7 @@ export function GuestsScreen() {
               value={phone}
               onChangeText={setPhone}
               placeholder="03001234567"
+              placeholderTextColor={colors.muted}
               keyboardType="phone-pad"
             />
 
@@ -208,6 +307,7 @@ export function GuestsScreen() {
               value={hostRoll}
               onChangeText={setHostRoll}
               placeholder="Student roll number of the host"
+              placeholderTextColor={colors.muted}
               autoCapitalize="characters"
             />
 
@@ -235,13 +335,25 @@ export function GuestsScreen() {
 }
 
 const styles = StyleSheet.create({
+  avatar: {
+    alignItems: "center",
+    borderRadius: radius.full,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  avatarText: {
+    color: colors.white,
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.bold,
+  },
   badge: {
     borderRadius: radius.full,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
   },
   badgeActive: {
-    backgroundColor: colors.greenSoft,
+    backgroundColor: colors.emeraldSoft,
   },
   badgeText: {
     fontSize: fontSize.small,
@@ -256,21 +368,54 @@ const styles = StyleSheet.create({
   badgeUsed: {
     backgroundColor: colors.border,
   },
+  countText: {
+    color: colors.muted,
+    fontSize: fontSize.caption,
+    marginLeft: "auto",
+  },
   fab: {
     alignItems: "center",
-    backgroundColor: colors.navy,
+    backgroundColor: colors.green,
     borderRadius: radius.full,
     bottom: spacing.lg,
     elevation: 6,
-    height: 60,
+    height: 62,
     justifyContent: "center",
     position: "absolute",
     right: spacing.lg,
-    shadowColor: "#0B2447",
+    shadowColor: colors.greenDark,
     shadowOffset: { height: 3, width: 0 },
-    shadowOpacity: 0.3,
+    shadowOpacity: 0.35,
     shadowRadius: 8,
-    width: 60,
+    width: 62,
+  },
+  fabPressed: {
+    opacity: 0.85,
+    transform: [{ scale: 0.94 }],
+  },
+  filterChip: {
+    backgroundColor: colors.tint,
+    borderRadius: radius.full,
+    marginRight: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterChipActive: {
+    backgroundColor: colors.green,
+  },
+  filterRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  filterText: {
+    color: colors.muted,
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.semibold,
+  },
+  filterTextActive: {
+    color: colors.white,
   },
   formError: {
     color: colors.red,
@@ -290,7 +435,7 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   label: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.bold,
     marginTop: spacing.md,
@@ -299,6 +444,7 @@ const styles = StyleSheet.create({
   list: {
     flexGrow: 1,
     padding: spacing.md,
+    paddingTop: spacing.sm,
   },
   meta: {
     color: colors.muted,
@@ -325,14 +471,14 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
   },
   modalRule: {
-    backgroundColor: colors.gold,
+    backgroundColor: colors.emerald,
     borderRadius: radius.sm,
     height: 3,
     marginTop: spacing.xs,
-    width: 40,
+    width: 44,
   },
   modalTitle: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.heading,
     fontWeight: fontWeight.bold,
   },
@@ -341,6 +487,10 @@ const styles = StyleSheet.create({
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
   },
+  pressed: {
+    opacity: 0.9,
+    transform: [{ scale: 0.99 }],
+  },
   root: {
     backgroundColor: colors.background,
     flex: 1,
@@ -348,19 +498,37 @@ const styles = StyleSheet.create({
   row: {
     alignItems: "center",
     backgroundColor: colors.card,
-    borderRadius: radius.md,
-    elevation: 1,
+    borderRadius: radius.lg,
+    elevation: 2,
     flexDirection: "row",
     gap: spacing.sm,
     marginBottom: spacing.sm,
     padding: spacing.md,
-    shadowColor: "#0B2447",
+    shadowColor: colors.greenDark,
     shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.06,
-    shadowRadius: 3,
+    shadowOpacity: 0.08,
+    shadowRadius: 6,
   },
   rowMain: {
     flex: 1,
     minWidth: 0,
+  },
+  searchInput: {
+    color: colors.text,
+    flex: 1,
+    fontSize: fontSize.body,
+    marginLeft: spacing.sm,
+  },
+  searchWrap: {
+    alignItems: "center",
+    backgroundColor: colors.white,
+    borderColor: colors.border,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    flexDirection: "row",
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
   },
 });

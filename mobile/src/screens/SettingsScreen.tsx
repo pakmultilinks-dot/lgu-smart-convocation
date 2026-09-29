@@ -13,6 +13,12 @@ import { ApiError, fetchGates } from "../api/client";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SectionCard } from "../components/SectionCard";
 import {
+  APP_NAME,
+  CONVOCATION_YEAR,
+  MOTTO,
+  UNIVERSITY_NAME,
+} from "../config";
+import {
   DEFAULT_API_BASE_URL,
   getApiBaseUrl,
   getVolunteerName,
@@ -22,16 +28,13 @@ import {
 } from "../store/settings";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
-const APP_NAME = "LGU Smart Convocation System";
-const UNIVERSITY = "Lahore Garrison University";
-const MOTTO = "Nurturing the Future of Pakistan in an Excellent Environment";
-
 export function SettingsScreen() {
   const [baseUrl, setBaseUrl] = useState(DEFAULT_API_BASE_URL);
   const [volunteer, setVolunteer] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
   const [health, setHealth] = useState<string | null>(null);
+  const [healthOk, setHealthOk] = useState(false);
   const [checking, setChecking] = useState(false);
 
   useEffect(() => {
@@ -59,8 +62,10 @@ export function SettingsScreen() {
     setHealth(null);
     try {
       const gates = await fetchGates();
+      setHealthOk(true);
       setHealth(`Connected. ${gates.length} gate(s) found.`);
     } catch (e) {
+      setHealthOk(false);
       setHealth(
         e instanceof ApiError
           ? `Connection failed: ${e.message}`
@@ -81,51 +86,76 @@ export function SettingsScreen() {
 
   return (
     <ScrollView style={styles.root}>
-      <SectionCard title="Backend Connection">
+      <SectionCard title="Backend Connection" subtitle="Where this app sends its scans">
         <Text style={styles.label}>API base URL</Text>
         <TextInput
           style={styles.input}
           value={baseUrl}
           onChangeText={setBaseUrl}
           placeholder={DEFAULT_API_BASE_URL}
+          placeholderTextColor={colors.muted}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
         />
         {urlError && <Text style={styles.error}>{urlError}</Text>}
         <View style={styles.buttonRow}>
-          <PrimaryButton title="Save URL" onPress={() => void saveUrl()} />
+          <PrimaryButton title="Save URL" onPress={() => void saveUrl()} style={styles.flexButton} />
           <PrimaryButton
             title="Test connection"
             onPress={() => void testConnection()}
             loading={checking}
             variant="outline"
+            style={styles.flexButton}
           />
         </View>
-        {health && <Text style={styles.health}>{health}</Text>}
+        {health && (
+          <View style={[styles.healthBox, healthOk ? styles.healthOk : styles.healthBad]}>
+            <Ionicons
+              name={healthOk ? "checkmark-circle" : "alert-circle"}
+              size={18}
+              color={healthOk ? colors.green : colors.red}
+            />
+            <Text style={[styles.healthText, { color: healthOk ? colors.green : colors.red }]}>
+              {health}
+            </Text>
+          </View>
+        )}
       </SectionCard>
 
-      <SectionCard title="Volunteer">
+      <SectionCard title="Volunteer" subtitle="Shown on every scan you make">
         <Text style={styles.label}>Volunteer name</Text>
         <TextInput
           style={styles.input}
           value={volunteer}
           onChangeText={setVolunteer}
           placeholder="Your name as shown on scans"
+          placeholderTextColor={colors.muted}
           autoCapitalize="words"
         />
         <View style={styles.buttonRow}>
           <PrimaryButton
             title="Save name"
             onPress={() => void saveVolunteer()}
+            style={styles.flexButton}
           />
         </View>
-        {savedNote && <Text style={styles.saved}>{savedNote}</Text>}
+        {savedNote && (
+          <View style={styles.savedBox}>
+            <Ionicons name="checkmark-circle" size={18} color={colors.green} />
+            <Text style={styles.saved}>{savedNote}</Text>
+          </View>
+        )}
       </SectionCard>
 
       <SectionCard title="Admin Tools">
-        <Pressable style={styles.linkRow} onPress={() => void openCards()}>
-          <Ionicons name="id-card-outline" size={22} color={colors.navy} />
+        <Pressable
+          style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+          onPress={() => void openCards()}
+        >
+          <View style={styles.linkIcon}>
+            <Ionicons name="id-card-outline" size={22} color={colors.green} />
+          </View>
           <View style={styles.linkText}>
             <Text style={styles.linkTitle}>ID card printing</Text>
             <Text style={styles.linkSub}>Open /admin/cards in the browser</Text>
@@ -140,11 +170,13 @@ export function SettingsScreen() {
             <Text style={styles.monogramText}>LGU</Text>
           </View>
           <View style={styles.aboutTitles}>
-            <Text style={styles.appName}>{APP_NAME}</Text>
-            <Text style={styles.university}>{UNIVERSITY}</Text>
+            <Text style={styles.appName}>
+              {APP_NAME} {CONVOCATION_YEAR}
+            </Text>
+            <Text style={styles.university}>{UNIVERSITY_NAME}</Text>
           </View>
         </View>
-        <View style={styles.goldRule} />
+        <View style={styles.greenRule} />
         <Text style={styles.motto}>"{MOTTO}"</Text>
         <Text style={styles.aboutBody}>
           Official gate companion for convocation day. Volunteers scan QR-coded
@@ -162,6 +194,7 @@ const styles = StyleSheet.create({
   aboutBody: {
     color: colors.muted,
     fontSize: fontSize.body,
+    lineHeight: 21,
     marginTop: spacing.sm,
   },
   aboutHeader: {
@@ -173,7 +206,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   appName: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.subheading,
     fontWeight: fontWeight.bold,
   },
@@ -191,18 +224,34 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.semibold,
     marginTop: spacing.xs,
   },
-  goldRule: {
-    backgroundColor: colors.gold,
+  flexButton: {
+    flex: 1,
+  },
+  greenRule: {
+    backgroundColor: colors.emerald,
     borderRadius: radius.sm,
     height: 3,
     marginTop: spacing.md,
     width: 48,
   },
-  health: {
-    color: colors.navy,
+  healthBad: {
+    backgroundColor: colors.redSoft,
+  },
+  healthBox: {
+    alignItems: "center",
+    borderRadius: radius.md,
+    flexDirection: "row",
+    gap: spacing.xs,
+    marginTop: spacing.sm,
+    padding: spacing.sm,
+  },
+  healthOk: {
+    backgroundColor: colors.emeraldSoft,
+  },
+  healthText: {
+    flex: 1,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.semibold,
-    marginTop: spacing.sm,
   },
   input: {
     backgroundColor: colors.inputBg,
@@ -216,11 +265,19 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   label: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.bold,
     marginTop: spacing.sm,
     textTransform: "uppercase",
+  },
+  linkIcon: {
+    alignItems: "center",
+    backgroundColor: colors.tint,
+    borderRadius: radius.full,
+    height: 44,
+    justifyContent: "center",
+    width: 44,
   },
   linkRow: {
     alignItems: "center",
@@ -243,23 +300,26 @@ const styles = StyleSheet.create({
   },
   monogram: {
     alignItems: "center",
-    backgroundColor: colors.navy,
-    borderRadius: radius.md,
-    height: 56,
+    backgroundColor: colors.green,
+    borderRadius: radius.lg,
+    height: 58,
     justifyContent: "center",
-    width: 56,
+    width: 58,
   },
   monogramText: {
-    color: colors.gold,
+    color: colors.white,
     fontSize: fontSize.subheading,
     fontWeight: fontWeight.bold,
   },
   motto: {
-    color: colors.navy,
+    color: colors.greenDark,
     fontSize: fontSize.body,
     fontStyle: "italic",
     fontWeight: fontWeight.semibold,
     marginTop: spacing.sm,
+  },
+  pressed: {
+    opacity: 0.85,
   },
   root: {
     backgroundColor: colors.background,
@@ -267,9 +327,18 @@ const styles = StyleSheet.create({
   },
   saved: {
     color: colors.green,
+    flex: 1,
     fontSize: fontSize.caption,
     fontWeight: fontWeight.semibold,
+    marginLeft: spacing.xs,
+  },
+  savedBox: {
+    alignItems: "center",
+    backgroundColor: colors.emeraldSoft,
+    borderRadius: radius.md,
+    flexDirection: "row",
     marginTop: spacing.sm,
+    padding: spacing.sm,
   },
   university: {
     color: colors.muted,
