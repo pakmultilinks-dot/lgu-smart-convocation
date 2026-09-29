@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Admin | {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Admin: IDs and Cards</h1>
+<p class="page-sub">Generate the signed QR IDs, print the card sheets, and download the vendor print file.</p>
+
+{% if msg %}<div class="notice ok">{{ msg }}</div>{% endif %}
+
+<div class="grid two">
+  <div class="card">
+    <h2>1. Generate QR IDs</h2>
+    <p class="page-sub">{{ total }} students in roster &middot; {{ with_ids }} already have IDs</p>
+    <form method="post">
+      <input type="hidden" name="action" value="generate">
+      <button class="btn green" type="submit">Generate IDs for students missing them</button>
+    </form>
+    <p class="page-sub" style="margin-top:10px">IDs are opaque 8-character codes, HMAC-signed.
+    No name, roll number, or gender is encoded in the QR.</p>
+  </div>
+  <div class="card">
+    <h2>2. Print and vendor files</h2>
+    <div class="btn-row" style="margin-top:0">
+      <a class="btn" href="{{ url_for('main.print_cards') }}" target="_blank">Open printable card sheet</a>
+      <a class="btn ghost" href="{{ url_for('main.vendor_csv') }}">Download vendor CSV</a>
+    </div>
+    <p class="page-sub" style="margin-top:10px">The card sheet shows name + roll number + QR per card.
+    The vendor CSV (roll_no, name, program, qr_payload) is the print file you hand to the vendor.
+    The vendor never sees gender data.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>3. Load a real roster (CSV)</h2>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="action" value="upload_roster">
+    <label for="roster">CSV with columns: roll_no, name, gender, program</label>
+    <input type="file" id="roster" name="roster" accept=".csv">
+    <div class="btn-row"><button class="btn" type="submit">Upload and assign IDs</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>4. Gate labels</h2>
+  <p class="page-sub">Rename gates to match the real campus. The scanner and dashboard use these labels.</p>
+  {% for g in gates %}
+  <form method="post" style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+    <input type="hidden" name="action" value="rename_gate">
+    <input type="hidden" name="gate_id" value="{{ g.id }}">
+    <span style="flex:0 0 50px;font-weight:700;color:var(--navy)">{{ g.code }}</span>
+    <input type="text" name="label" value="{{ g.label }}" style="flex:1">
+    <button class="btn ghost" type="submit">Save</button>
+  </form>
+  {% endfor %}
+</div>
+{% endblock %}
