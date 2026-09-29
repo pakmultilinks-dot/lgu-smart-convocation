@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Guests | {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Guest Management</h1>
+<p class="page-sub">Every student gets one free guest. Each guest QR works exactly once; a second scan is rejected at every gate.</p>
+
+{% if err %}<div class="notice warn">{{ err }}</div>{% endif %}
+
+<div class="grid two">
+  <div class="card">
+    <h2>Register a guest</h2>
+    <form method="post">
+      <label for="name">Guest full name</label>
+      <input type="text" id="name" name="name" required placeholder="e.g. Nasir Khan">
+      <label for="phone">Guest phone</label>
+      <input type="tel" id="phone" name="phone" required placeholder="e.g. 0300 1112233">
+      <label for="host">Host student roll number</label>
+      <input type="text" id="host" name="host_roll_no" required placeholder="e.g. LGU-2024-101">
+      <div class="btn-row"><button class="btn green" type="submit">Register and issue QR pass</button></div>
+    </form>
+  </div>
+  <div class="card">
+    <h2>How guest passes work</h2>
+    <p class="page-sub" style="margin:0">The exam department generates the guest QR batch and hands it
+    to the vendor for printing, alongside the student cards. At the gate the scanner verifies the
+    signature in real time. Once used, the code is consumed: any copy, screenshot, or reprint is
+    rejected instantly at every gate.</p>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Registered guests</h2>
+  <table>
+    <tr><th>Guest</th><th>Phone</th><th>Host roll no</th><th>Status</th><th>Pass</th></tr>
+    {% for g in guests %}
+    <tr>
+      <td>{{ g.name }}</td><td>{{ g.phone }}</td><td>{{ g.host_roll_no }}</td>
+      <td>{% if g.used %}<span class="badge exit">USED</span>{% else %}<span class="badge entry">ACTIVE</span>{% endif %}</td>
+      <td><a href="{{ url_for('main.guest_pass', gid=g.id) }}" target="_blank">Print pass</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}
