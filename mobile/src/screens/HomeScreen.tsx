@@ -3,6 +3,7 @@ import * as Haptics from "expo-haptics";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import {
+  Image,
   ImageBackground,
   Pressable,
   RefreshControl,
@@ -23,6 +24,7 @@ import {
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
 const HERO_IMAGE = require("../../assets/convocation-hero.jpg");
+const LGU_LOGO = require("../../assets/lgu-logo.jpg");
 
 function useCountdown(target: string) {
   const [now, setNow] = useState(() => Date.now());
@@ -125,9 +127,7 @@ export function HomeScreen() {
           </Svg>
           <View style={styles.heroTop}>
             <View style={styles.brandRow}>
-              <View style={styles.monogram}>
-                <Text style={styles.monogramText}>LGU</Text>
-              </View>
+              <Image source={LGU_LOGO} style={styles.logo} />
               <View>
                 <Text style={styles.brandName}>{UNIVERSITY_NAME}</Text>
                 <Text style={styles.brandSub}>{APP_NAME}</Text>
@@ -361,18 +361,10 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     paddingTop: spacing.xl,
   },
-  monogram: {
-    alignItems: "center",
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  monogramText: {
-    color: colors.greenDark,
-    fontSize: fontSize.subheading,
-    fontWeight: fontWeight.bold,
+  logo: {
+    borderRadius: 24,
+    height: 48,
+    width: 48,
   },
   mottoCard: {
     alignItems: "center",
