@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% block title %}Live Dashboard | {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Live Dashboard</h1>
+<p class="page-sub">Vice Chancellor view &middot; updates every 5 seconds &middot; <span id="gen"></span></p>
+
+<div class="grid kpi">
+  <div class="kpi-tile"><div class="num" id="k-inside">0</div><div class="lbl">Students inside now</div></div>
+  <div class="kpi-tile green">
+    <div class="num"><span id="k-male">0</span> / <span id="k-female">0</span></div>
+    <div class="lbl">Male / Female inside</div>
+  </div>
+  <div class="kpi-tile"><div class="num" id="k-guests">0</div><div class="lbl">Guests inside</div></div>
+  <div class="kpi-tile"><div class="num" id="k-busy" style="font-size:20px;line-height:1.4">-</div><div class="lbl">Busiest gate today</div></div>
+</div>
+
+<div class="grid two" style="margin-top:16px">
+  <div class="card">
+    <h2>Per-gate throughput</h2>
+    <p class="page-sub">Entries in the last 15 minutes</p>
+    <div id="bars"></div>
+  </div>
+  <div class="card">
+    <h2>Gate sync status</h2>
+    <p class="page-sub">Last scan received per gate (offline-first: gates keep scanning without signal)</p>
+    <div id="sync"></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Live scan feed</h2>
+  <div id="feed"></div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+function ago(ts) {
+  if (!ts) return "no scans yet";
+  const d = (Date.now() - new Date(ts.replace(" ", "T"))) / 1000;
+  if (d < 60) return Math.floor(d) + "s ago";
+  if (d < 3600) return Math.floor(d / 60) + "m ago";
+  return Math.floor(d / 3600) + "h ago";
+}
+async function refresh() {
+  try {
+    const r = await fetch("{{ url_for('main.api_dashboard') }}");
+    const d = await r.json();
+    document.getElementById("k-inside").textContent = d.inside_total;
+    document.getElementById("k-male").textContent = d.male;
+    document.getElementById("k-female").textContent = d.female;
+    document.getElementById("k-guests").textContent = d.guests_inside;
+    document.getElementById("k-busy").textContent = d.busiest_gate;
+    document.getElementById("gen").textContent = "generated " + d.generated_at;
+
+    const max = Math.max(1, ...d.throughput.map(t => t.count));
+    document.getElementById("bars").innerHTML = d.throughput.map(t => {
+      const hot = t.count === max && t.count > 0;
+      return `<div class="bar-row"><div class="bl">${t.gate.label}</div>` +
+        `<div class="bar-track"><div class="bar-fill${hot ? " hot" : ""}" style="width:${(t.count / max * 100).toFixed(1)}%"></div></div>` +
+        `<div class="bv">${t.count}</div></div>`;
+    }).join("");
+
+    document.getElementById("sync").innerHTML = d.sync.map(s => {
+      const cls = !s.last ? "dead" : ((Date.now() - new Date(s.last.replace(" ", "T"))) > 15 * 60000 ? "stale" : "");
+      return `<div class="feed-item"><span class="sync-dot ${cls}"></span>` +
+        `<span class="g">${s.gate.label}</span><span class="t">${ago(s.last)}</span>` +
+        `<span style="color:var(--muted);font-size:13px">${s.count} scans total</span></div>`;
+    }).join("");
+
+    document.getElementById("feed").innerHTML = d.feed.length ? d.feed.map(f =>
+      `<div class="feed-item"><span class="t">${f.scanned_at.slice(11)}</span>` +
+      `<span class="g">${f.gate_label}</span>` +
+      `<span class="badge ${f.mode}">${f.mode.toUpperCase()}</span>` +
+      `<span><strong>${f.person_name}</strong> <span style="color:var(--muted)">(${f.person_type}${f.source === "queued" ? ", queued offline" : ""})</span></span></div>`
+    ).join("") : '<p class="page-sub">No scans yet. Open the Gate Scanner to record the first entry.</p>';
+  } catch (e) { /* keep last good state on transient errors */ }
+}
+refresh();
+setInterval(refresh, 5000);
+</script>
+{% endblock %}
