@@ -1,1 +1,57 @@
-{"expo":{"android":{"adaptiveIcon":{"backgroundColor":"#0B2447","foregroundImage":"./assets/adaptive-icon.png"},"package":"pk.edu.lgu.smartconvocation","permissions":["CAMERA"]},"assetBundlePatterns":["**/*"],"experiments":{"typedRoutes":true},"icon":"./assets/icon.png","ios":{"bundleIdentifier":"pk.edu.lgu.smartconvocation","supportsTablet":true},"name":"LGU Smart Convocation","orientation":"portrait","plugins":["expo-router","expo-splash-screen",["expo-camera",{"cameraPermission":"Allow LGU Smart Convocation to scan QR codes at convocation gates."}]],"scheme":"lgu-smart-convocation","slug":"lgu-smart-convocation","splash":{"backgroundColor":"#0B2447","image":"./assets/splash.png","resizeMode":"contain"},"userInterfaceStyle":"light","version":"1.0.0","web":{"bundler":"metro","favicon":"./assets/favicon.png","output":"static"}}}
+{
+  "expo": {
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0B2447",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "package": "pk.edu.lgu.smartconvocation",
+      "permissions": [
+        "CAMERA"
+      ]
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "experiments": {
+      "typedRoutes": true
+    },
+    "icon": "./assets/icon.png",
+    "ios": {
+      "bundleIdentifier": "pk.edu.lgu.smartconvocation",
+      "supportsTablet": true
+    },
+    "name": "LGU Smart Convocation",
+    "orientation": "portrait",
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow LGU Smart Convocation to scan QR codes at convocation gates."
+        }
+      ]
+    ],
+    "scheme": "lgu-smart-convocation",
+    "slug": "lgu-smart-convocation",
+    "splash": {
+      "backgroundColor": "#0B2447",
+      "image": "./assets/splash.png",
+      "resizeMode": "contain"
+    },
+    "userInterfaceStyle": "light",
+    "version": "1.0.0",
+    "web": {
+      "bundler": "metro",
+      "favicon": "./assets/favicon.png",
+      "output": "static"
+    },
+    "owner": "kominman",
+    "extra": {
+      "eas": {
+        "projectId": "d0246603-e0e3-4327-bbf8-801ca99e30eb"
+      }
+    }
+  }
+}
