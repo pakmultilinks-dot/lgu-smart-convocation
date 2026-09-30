@@ -14,6 +14,7 @@ import {
 } from "react-native";
 import { Defs, LinearGradient, Rect, Stop, Svg } from "react-native-svg";
 import { fetchBroadcasts, type BroadcastEntry } from "../api/client";
+import { getSettings } from "../api/settingsApi";
 import {
   APP_NAME,
   CONVOCATION_DATE,
@@ -71,9 +72,27 @@ const FALLBACK_ANNOUNCEMENTS: BroadcastEntry[] = [
 ];
 
 export function HomeScreen() {
-  const countdown = useCountdown(CONVOCATION_DATE);
+  // Convocation date/year come from the server (set in Admin); the
+  // compiled-in config values are only a fallback when offline.
+  const [eventDate, setEventDate] = useState(CONVOCATION_DATE);
+  const [eventYear, setEventYear] = useState(CONVOCATION_YEAR);
+  const countdown = useCountdown(eventDate);
   const [announcements, setAnnouncements] = useState<BroadcastEntry[]>(FALLBACK_ANNOUNCEMENTS);
   const [refreshing, setRefreshing] = useState(false);
+
+  const loadEventDetails = useCallback(async () => {
+    try {
+      const settings = await getSettings();
+      if (settings.convocation_datetime) {
+        setEventDate(settings.convocation_datetime);
+      }
+      if (settings.convocation_year) {
+        setEventYear(settings.convocation_year);
+      }
+    } catch {
+      // Keep the compiled-in fallback when the backend is unreachable.
+    }
+  }, []);
 
   const loadAnnouncements = useCallback(async () => {
     try {
@@ -90,8 +109,9 @@ export function HomeScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      void loadEventDetails();
       void loadAnnouncements();
-    }, [loadAnnouncements]),
+    }, [loadAnnouncements, loadEventDetails]),
   );
 
   const go = useCallback((route: QuickAction["route"]) => {
@@ -136,7 +156,7 @@ export function HomeScreen() {
           </View>
           <View style={styles.heroBottom}>
             <Text style={styles.heroKicker}>CONVOCATION</Text>
-            <Text style={styles.heroTitle}>Class of {CONVOCATION_YEAR}</Text>
+            <Text style={styles.heroTitle}>Class of {eventYear}</Text>
             {countdown.passed ? (
               <Text style={styles.dayHere}>The big day is here. Congratulations, graduates.</Text>
             ) : (

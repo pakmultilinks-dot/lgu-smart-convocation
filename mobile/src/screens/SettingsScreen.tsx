@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { PrimaryButton } from "../components/PrimaryButton";
+import { BackendConnectionCard } from "../components/BackendConnectionCard";
 import { SectionCard } from "../components/SectionCard";
 import {
   APP_NAME,
@@ -36,6 +37,7 @@ export function SettingsScreen() {
   const [appMode, setAppMode] = useState<AppMode | null>(null);
   const [volunteer, setVolunteer] = useState("");
   const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [linkError, setLinkError] = useState<string | null>(null);
 
   useEffect(() => {
     void getAppMode().then(setAppMode);
@@ -53,10 +55,15 @@ export function SettingsScreen() {
   };
 
   const openCards = async () => {
+    setLinkError(null);
     const url = `${await getApiBaseUrl()}/admin/cards`;
     const supported = await Linking.canOpenURL(url);
     if (supported) {
       await Linking.openURL(url);
+    } else {
+      setLinkError(
+        "Could not open the link. Check the backend URL above first.",
+      );
     }
   };
 
@@ -104,6 +111,8 @@ export function SettingsScreen() {
         )}
       </SectionCard>
 
+      <BackendConnectionCard />
+
       <SectionCard title="Admin Tools">
         <Pressable
           style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
@@ -118,6 +127,7 @@ export function SettingsScreen() {
           </View>
           <Ionicons name="open-outline" size={18} color={colors.muted} />
         </Pressable>
+        {linkError && <Text style={styles.linkError}>{linkError}</Text>}
       </SectionCard>
 
       <SectionCard title="About">
@@ -201,6 +211,11 @@ const styles = StyleSheet.create({
     fontWeight: fontWeight.bold,
     marginTop: spacing.sm,
     textTransform: "uppercase",
+  },
+  linkError: {
+    color: colors.red,
+    fontSize: fontSize.caption,
+    marginTop: spacing.xs,
   },
   linkIcon: {
     alignItems: "center",
