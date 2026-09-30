@@ -46,6 +46,11 @@ CREATE TABLE IF NOT EXISTS broadcasts (
     sent_by TEXT NOT NULL,
     sent_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
 CREATE INDEX IF NOT EXISTS idx_scans_qr ON scans(qr_id);
 CREATE INDEX IF NOT EXISTS idx_scans_gate ON scans(gate_id);
 CREATE INDEX IF NOT EXISTS idx_scans_time ON scans(scanned_at);
@@ -114,6 +119,55 @@ SEED_GUESTS = [
     ("Tariq Mehmood", "0333 7788990", "LGU-2024-112"),
 ]
 
+# Event-level settings with their factory defaults. Seeded with INSERT OR
+# IGNORE so existing values are never overwritten.
+SETTING_KEYS = ("convocation_name", "convocation_year", "convocation_datetime", "venue")
+
+DEFAULT_SETTINGS = [
+    ("convocation_name", "LGU Convocation 2026"),
+    ("convocation_year", "2026"),
+    # Placeholder until the user confirms the real date.
+    ("convocation_datetime", "2026-12-12T09:00:00+05:00"),
+    ("venue", "Lahore Garrison University, Lahore"),
+]
+
+
+def seed_settings(db):
+    """Insert default settings, leaving any existing keys untouched."""
+    for key, value in DEFAULT_SETTINGS:
+        db.execute(
+            "INSERT OR IGNORE INTO settings (key, value, updated_at) VALUES (?, ?, ?)",
+            (key, value, _now()),
+        )
+    db.commit()
+
+
+def get_settings():
+    """Return a flat dict of the four event settings."""
+    db = get_db()
+    rows = db.execute(
+        "SELECT key, value FROM settings WHERE key IN (?, ?, ?, ?)", SETTING_KEYS
+    ).fetchall()
+    db.close()
+    settings = {key: "" for key in SETTING_KEYS}
+    for row in rows:
+        settings[row["key"]] = row["value"]
+    return settings
+
+
+def update_settings(updates):
+    """Update any subset of settings; stamps updated_at with current UTC time."""
+    from datetime import datetime, timezone
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    db = get_db()
+    for key, value in updates.items():
+        db.execute(
+            "UPDATE settings SET value = ?, updated_at = ? WHERE key = ?",
+            (value, now, key),
+        )
+    db.commit()
+    db.close()
+
 
 def get_db():
     conn = sqlite3.connect(config.DB_PATH)
@@ -136,6 +190,8 @@ def _now():
 
 def seed():
     db = get_db()
+    # Settings defaults are idempotent: existing values are never overwritten.
+    seed_settings(db)
     already = db.execute("SELECT COUNT(*) c FROM gates").fetchone()["c"]
     if already:
         db.close()

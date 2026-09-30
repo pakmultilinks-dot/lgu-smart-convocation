@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
 import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
 import {
@@ -9,7 +10,6 @@ import {
   TextInput,
   View,
 } from "react-native";
-import { ApiError, fetchGates } from "../api/client";
 import { PrimaryButton } from "../components/PrimaryButton";
 import { SectionCard } from "../components/SectionCard";
 import {
@@ -18,62 +18,38 @@ import {
   MOTTO,
   UNIVERSITY_NAME,
 } from "../config";
+import { clearAppMode, getAppMode, type AppMode } from "../store/appMode";
 import {
-  DEFAULT_API_BASE_URL,
   getApiBaseUrl,
   getVolunteerName,
-  isValidBaseUrl,
-  setApiBaseUrl,
   setVolunteerName,
 } from "../store/settings";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
+function modeLabel(mode: AppMode | null): string {
+  if (mode === "volunteer") return "Volunteer";
+  if (mode === "liveboard") return "Live Board";
+  return "Not set";
+}
+
 export function SettingsScreen() {
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [appMode, setAppMode] = useState<AppMode | null>(null);
   const [volunteer, setVolunteer] = useState("");
-  const [urlError, setUrlError] = useState<string | null>(null);
   const [savedNote, setSavedNote] = useState<string | null>(null);
-  const [health, setHealth] = useState<string | null>(null);
-  const [healthOk, setHealthOk] = useState(false);
-  const [checking, setChecking] = useState(false);
 
   useEffect(() => {
-    void getApiBaseUrl().then(setBaseUrl);
+    void getAppMode().then(setAppMode);
     void getVolunteerName().then(setVolunteer);
   }, []);
-
-  const saveUrl = async () => {
-    if (!isValidBaseUrl(baseUrl)) {
-      setUrlError("Enter a valid URL, for example http://10.0.2.2:5000");
-      return;
-    }
-    setUrlError(null);
-    await setApiBaseUrl(baseUrl);
-    setSavedNote("API base URL saved.");
-  };
 
   const saveVolunteer = async () => {
     await setVolunteerName(volunteer);
     setSavedNote("Volunteer name saved.");
   };
 
-  const testConnection = async () => {
-    setChecking(true);
-    setHealth(null);
-    try {
-      const gates = await fetchGates();
-      setHealthOk(true);
-      setHealth(`Connected. ${gates.length} gate(s) found.`);
-    } catch (e) {
-      setHealthOk(false);
-      setHealth(
-        e instanceof ApiError
-          ? `Connection failed: ${e.message}`
-          : "Connection failed.",
-      );
-    } finally {
-      setChecking(false);
-    }
+  const switchMode = async () => {
+    await clearAppMode();
+    router.replace("/mode-picker");
   };
 
   const openCards = async () => {
@@ -86,41 +62,21 @@ export function SettingsScreen() {
 
   return (
     <ScrollView style={styles.root}>
-      <SectionCard title="Backend Connection" subtitle="Where this app sends its scans">
-        <Text style={styles.label}>API base URL</Text>
-        <TextInput
-          style={styles.input}
-          value={baseUrl}
-          onChangeText={setBaseUrl}
-          placeholder={DEFAULT_API_BASE_URL}
-          placeholderTextColor={colors.muted}
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-        {urlError && <Text style={styles.error}>{urlError}</Text>}
-        <View style={styles.buttonRow}>
-          <PrimaryButton title="Save URL" onPress={() => void saveUrl()} style={styles.flexButton} />
-          <PrimaryButton
-            title="Test connection"
-            onPress={() => void testConnection()}
-            loading={checking}
-            variant="outline"
-            style={styles.flexButton}
+      <SectionCard title="App mode" subtitle="Choose what this app is used for">
+        <View style={styles.modeRow}>
+          <Ionicons
+            name={appMode === "liveboard" ? "tv" : "qr-code"}
+            size={22}
+            color={colors.green}
           />
+          <Text style={styles.modeText}>Current mode: {modeLabel(appMode)}</Text>
         </View>
-        {health && (
-          <View style={[styles.healthBox, healthOk ? styles.healthOk : styles.healthBad]}>
-            <Ionicons
-              name={healthOk ? "checkmark-circle" : "alert-circle"}
-              size={18}
-              color={healthOk ? colors.green : colors.red}
-            />
-            <Text style={[styles.healthText, { color: healthOk ? colors.green : colors.red }]}>
-              {health}
-            </Text>
-          </View>
-        )}
+        <PrimaryButton
+          title="Switch mode"
+          onPress={() => void switchMode()}
+          variant="outline"
+          style={styles.topMargin}
+        />
       </SectionCard>
 
       <SectionCard title="Volunteer" subtitle="Shown on every scan you make">
@@ -177,11 +133,11 @@ export function SettingsScreen() {
           </View>
         </View>
         <View style={styles.greenRule} />
-        <Text style={styles.motto}>"{MOTTO}"</Text>
+        <Text style={styles.motto}>&ldquo;{MOTTO}&rdquo;</Text>
         <Text style={styles.aboutBody}>
           Official gate companion for convocation day. Volunteers scan QR-coded
           student cards and guest passes, and the control room watches every
-          gate live. Version 1.0.0.
+          gate live. Version 1.1.0.
         </Text>
       </SectionCard>
 
@@ -218,12 +174,6 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     marginTop: spacing.md,
   },
-  error: {
-    color: colors.red,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-    marginTop: spacing.xs,
-  },
   flexButton: {
     flex: 1,
   },
@@ -233,25 +183,6 @@ const styles = StyleSheet.create({
     height: 3,
     marginTop: spacing.md,
     width: 48,
-  },
-  healthBad: {
-    backgroundColor: colors.redSoft,
-  },
-  healthBox: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    flexDirection: "row",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-  },
-  healthOk: {
-    backgroundColor: colors.emeraldSoft,
-  },
-  healthText: {
-    flex: 1,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
   },
   input: {
     backgroundColor: colors.inputBg,
@@ -298,6 +229,16 @@ const styles = StyleSheet.create({
     fontSize: fontSize.body,
     fontWeight: fontWeight.semibold,
   },
+  modeRow: {
+    alignItems: "center",
+    flexDirection: "row",
+    gap: spacing.sm,
+  },
+  modeText: {
+    color: colors.text,
+    fontSize: fontSize.body,
+    fontWeight: fontWeight.semibold,
+  },
   monogram: {
     alignItems: "center",
     backgroundColor: colors.green,
@@ -339,6 +280,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     marginTop: spacing.sm,
     padding: spacing.sm,
+  },
+  topMargin: {
+    marginTop: spacing.md,
   },
   university: {
     color: colors.muted,

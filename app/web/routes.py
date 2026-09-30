@@ -3,11 +3,13 @@
 import csv
 import io
 import os
+from datetime import datetime
 
 from flask import (Blueprint, Flask, Response, jsonify, redirect, render_template,
                    request, url_for)
 
 import config
+import database
 import ids
 import models
 import qrgen
@@ -40,6 +42,40 @@ def api_dashboard():
 def api_dashboard_summary():
     """Lightweight KPI summary: expected roster totals plus live counts."""
     return jsonify(models.dashboard_summary())
+
+
+# ---------------------------------------------------------------- settings
+# Event-level settings (convocation name/year/datetime/venue), editable via
+# the settings screen. Dates remain placeholders until confirmed.
+
+@bp.route("/api/settings")
+def api_get_settings():
+    return jsonify(database.get_settings())
+
+
+@bp.route("/api/settings", methods=["PUT"])
+def api_put_settings():
+    data = request.get_json(force=True, silent=True) or {}
+    updates = {}
+    for key, value in data.items():
+        if key not in database.SETTING_KEYS:
+            return jsonify({"ok": False,
+                            "error": "Unknown setting: %s" % key}), 400
+        updates[key] = value
+    if "convocation_datetime" in updates:
+        try:
+            datetime.fromisoformat(updates["convocation_datetime"])
+        except (TypeError, ValueError):
+            return jsonify({"ok": False, "error":
+                            "convocation_datetime must be a valid ISO 8601 datetime."}), 400
+    if "convocation_year" in updates:
+        year = str(updates["convocation_year"])
+        if not (year.isdigit() and len(year) == 4):
+            return jsonify({"ok": False, "error":
+                            "convocation_year must be 4 digits."}), 400
+        updates["convocation_year"] = year
+    database.update_settings(updates)
+    return jsonify(database.get_settings())
 
 
 # ---------------------------------------------------------------- scanner

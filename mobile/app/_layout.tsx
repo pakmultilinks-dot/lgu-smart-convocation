@@ -10,7 +10,7 @@ export {
 } from "expo-router";
 
 export const unstable_settings = {
-  initialRouteName: "(tabs)",
+  initialRouteName: "(volunteer)",
 };
 
 void SplashScreen.preventAutoHideAsync();
@@ -30,7 +30,10 @@ export default function RootLayout() {
           headerTitleStyle: { fontWeight: "700" },
         }}
       >
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="mode-picker" options={{ headerShown: false }} />
+        <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />
+        <Stack.Screen name="(liveboard)" options={{ headerShown: false }} />
         <Stack.Screen
           name="guest-pass"
           options={{ title: "Guest Pass", headerBackTitle: "Guests" }}
