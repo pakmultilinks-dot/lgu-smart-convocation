@@ -37,7 +37,7 @@ import {
   enqueueScan,
   getQueue,
   queueCount,
-  removeSynced,
+  reconcileSync,
 } from "../store/offlineQueue";
 import { getVolunteerName, setVolunteerName } from "../store/settings";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
@@ -177,7 +177,7 @@ export function ScannerScreen() {
           return;
         }
         if (offline) {
-          await enqueueScan({
+          const { duplicate } = await enqueueScan({
             gate_id: gateId,
             mode,
             payload,
@@ -189,10 +189,12 @@ export function ScannerScreen() {
             Haptics.NotificationFeedbackType.Warning,
           );
           showResult({
-            detail: "Saved on this device. Press Sync now when back online.",
+            detail: duplicate
+              ? "This scan is already queued on this device."
+              : "Saved on this device. Press Sync now when back online.",
             level: "amber",
             status: "ok",
-            title: "SCAN QUEUED",
+            title: duplicate ? "ALREADY QUEUED" : "SCAN QUEUED",
           });
           return;
         }
@@ -240,15 +242,27 @@ export function ScannerScreen() {
     setSyncing(true);
     try {
       const response = await postSync(items);
-      const payloads = response.results.map((r) => r.payload);
-      const remaining = await removeSynced(payloads);
+      const { remaining, accepted, rejected } = await reconcileSync(
+        response.results,
+      );
       setQueued(remaining.length);
       await Haptics.notificationAsync(
         Haptics.NotificationFeedbackType.Success,
       );
+      const lines = [`${accepted} scan(s) counted.`];
+      if (rejected.length > 0) {
+        lines.push(
+          `${rejected.length} did NOT count: ` +
+            rejected.map((r) => r.title).join(", ") +
+            ".",
+        );
+      }
+      if (remaining.length > 0) {
+        lines.push(`${remaining.length} still queued, will retry.`);
+      }
       showResult({
-        detail: `${response.synced} scan(s) uploaded. ${remaining.length} still queued.`,
-        level: "green",
+        detail: lines.join(" "),
+        level: rejected.length > 0 ? "amber" : "green",
         status: "ok",
         title: "SYNC COMPLETE",
       });
@@ -325,6 +339,11 @@ export function ScannerScreen() {
         <SectionCard title="Gate Setup" subtitle="Pick your gate before the crowd arrives">
           {gatesError ? (
             <ErrorState message={gatesError} onRetry={() => void loadGates()} />
+          ) : gates.length === 0 ? (
+            <Text style={styles.noGatesText}>
+              No gates found on the server. Ask the admin to add gates, then
+              pull to refresh.
+            </Text>
           ) : (
             <ScrollView
               horizontal
@@ -412,7 +431,7 @@ export function ScannerScreen() {
             />
           </View>
 
-          {offline && queued > 0 && (
+          {queued > 0 && (
             <View style={styles.syncWrap}>
               <PrimaryButton
                 title={syncing ? "Syncing..." : `Sync now (${queued})`}
@@ -619,6 +638,11 @@ const styles = StyleSheet.create({
     fontSize: fontSize.body,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  noGatesText: {
+    color: colors.muted,
+    fontSize: fontSize.body,
     paddingVertical: spacing.sm,
   },
   offlineLabel: {

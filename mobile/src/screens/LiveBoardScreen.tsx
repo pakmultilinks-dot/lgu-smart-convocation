@@ -282,7 +282,7 @@ export function LiveBoardScreen() {
           <View style={styles.card}>
             <View style={styles.gateHeader}>
               <Text style={styles.cardTitle}>Gate activity</Text>
-              {data.busiest_gate ? (
+              {data.busiest_gate && data.busiest_gate !== "No scans yet" ? (
                 <View style={styles.busyBadge}>
                   <Ionicons name="flame-outline" size={14} color={colors.amber} />
                   <Text style={styles.busyText}>{data.busiest_gate}</Text>

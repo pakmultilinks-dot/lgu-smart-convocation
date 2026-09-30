@@ -21,6 +21,58 @@ def _gates():
     return models.gates()
 
 
+def _normalise_gender(value):
+    """Accept M/F, male/female, any case; return Male/Female or the raw value."""
+    v = (value or "").strip().lower()
+    if v in ("m", "male", "boy", "men"):
+        return "Male"
+    if v in ("f", "female", "girl", "women"):
+        return "Female"
+    return (value or "").strip()
+
+
+def _parse_roster(rows):
+    """Parse roster CSV rows into (roll_no, name, gender, program) tuples.
+
+    If the first row is a header, columns are mapped by name so any column
+    order works; otherwise roll_no, name, gender, program order is assumed.
+    Returns (parsed_rows, error_message_or_None).
+    """
+    if not rows:
+        return [], None
+    header_map = {
+        "roll_no": "roll_no", "roll no": "roll_no", "rollno": "roll_no",
+        "rollnumber": "roll_no", "roll number": "roll_no",
+        "name": "name", "student name": "name", "fullname": "name",
+        "full name": "name",
+        "gender": "gender", "sex": "gender",
+        "program": "program", "programme": "program", "degree": "program",
+    }
+    first = [c.strip().lower() for c in rows[0]]
+    if any(c in header_map for c in first):
+        idx = {}
+        for i, c in enumerate(first):
+            key = header_map.get(c)
+            if key and key not in idx:
+                idx[key] = i
+        missing = [k for k in ("roll_no", "name", "gender", "program") if k not in idx]
+        if missing:
+            return [], ("Roster header is missing columns: %s. Expected "
+                        "roll_no, name, gender, program." % ", ".join(missing))
+        data = rows[1:]
+        parsed = [
+            (r[idx["roll_no"]].strip(), r[idx["name"]].strip(),
+             _normalise_gender(r[idx["gender"]]), r[idx["program"]].strip())
+            for r in data if len(r) > max(idx.values())
+        ]
+        return parsed, None
+    parsed = [
+        (r[0].strip(), r[1].strip(), _normalise_gender(r[2]), r[3].strip())
+        for r in rows if len(r) >= 4
+    ]
+    return parsed, None
+
+
 # ---------------------------------------------------------------- home
 @bp.route("/")
 def index():
@@ -163,7 +215,8 @@ def api_sync():
         r = process_scan(it.get("payload"), it.get("gate_id"), it.get("mode"),
                          it.get("volunteer"), it.get("scanned_at"), source="queued")
         results.append({"payload": it.get("payload"), "result": r})
-    return jsonify({"synced": len(results), "results": results})
+    return jsonify({"synced": sum(1 for r in results if r["result"]["status"] == "ok"),
+                    "results": results})
 
 
 @bp.route("/api/demo-payload")
@@ -195,14 +248,15 @@ def admin():
             if f and f.filename:
                 text = f.read().decode("utf-8-sig")
                 rows = [r for r in csv.reader(io.StringIO(text)) if any(r)]
-                if rows and rows[0][0].strip().lower() in ("roll_no", "roll no", "rollno"):
-                    rows = rows[1:]
-                parsed = [(r[0], r[1], r[2], r[3]) for r in rows if len(r) >= 4]
-                added, skipped = models.add_students(parsed)
-                missing = models.students_missing_ids()
-                models.assign_ids(missing, ids.generate_id)
-                msg = "Roster loaded: %d added, %d skipped (duplicates). IDs assigned." % (
-                    added, skipped)
+                parsed, header_error = _parse_roster(rows)
+                if header_error:
+                    msg = header_error
+                else:
+                    added, skipped = models.add_students(parsed)
+                    missing = models.students_missing_ids()
+                    models.assign_ids(missing, ids.generate_id)
+                    msg = ("Roster loaded: %d added, %d skipped "
+                           "(duplicates or bad rows). IDs assigned." % (added, skipped))
             else:
                 msg = "No file selected."
     return render_template("admin.html", gates=_gates(), msg=msg,

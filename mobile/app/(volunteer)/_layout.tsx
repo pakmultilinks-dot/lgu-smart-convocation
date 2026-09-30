@@ -34,6 +34,13 @@ export default function VolunteerTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="dashboard"
+        options={{
+          tabBarIcon: tabIcon("stats-chart"),
+          title: "Dashboard",
+        }}
+      />
+      <Tabs.Screen
         name="guests"
         options={{
           tabBarIcon: tabIcon("people"),

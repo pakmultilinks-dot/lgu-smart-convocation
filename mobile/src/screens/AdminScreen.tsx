@@ -65,8 +65,10 @@ export function AdminScreen() {
 
   const [gates, setGates] = useState<Gate[]>([]);
 
-  useEffect(() => {
+  const load = () => {
     let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
     void (async () => {
       try {
         const [settings, storedUrl, storedVolunteer] = await Promise.all([
@@ -104,7 +106,9 @@ export function AdminScreen() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  };
+
+  useEffect(() => load(), []);
 
   const saveSettings = async () => {
     setFormError(null);
@@ -164,7 +168,7 @@ export function AdminScreen() {
 
   const saveUrl = async () => {
     if (!isValidBaseUrl(baseUrl)) {
-      setUrlError("Enter a valid URL, for example http://10.0.2.2:5000");
+      setUrlError("Enter a valid URL, for example http://192.168.1.10:5000");
       return;
     }
     setUrlError(null);
@@ -215,6 +219,16 @@ export function AdminScreen() {
       <View style={styles.centered}>
         <Ionicons name="alert-circle" size={40} color={colors.red} />
         <Text style={styles.errorText}>{loadError}</Text>
+        <Text style={styles.errorHint}>
+          If this is a fresh install, set the backend URL in the Settings tab
+          first, then retry.
+        </Text>
+        <PrimaryButton
+          title="Retry"
+          onPress={() => load()}
+          variant="outline"
+          style={styles.retryButton}
+        />
       </View>
     );
   }
@@ -425,6 +439,16 @@ const styles = StyleSheet.create({
     color: colors.red,
     fontSize: fontSize.body,
     textAlign: "center",
+  },
+  errorHint: {
+    color: colors.muted,
+    fontSize: fontSize.caption,
+    marginTop: spacing.sm,
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: spacing.md,
+    minWidth: 160,
   },
   flex: {
     flex: 1,

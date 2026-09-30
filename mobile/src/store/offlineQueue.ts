@@ -26,24 +26,94 @@ export async function getQueue(): Promise<QueuedScan[]> {
   return safeParse(await AsyncStorage.getItem(KEY_QUEUE));
 }
 
-export async function enqueueScan(item: QueuedScan): Promise<QueuedScan[]> {
+export interface EnqueueResult {
+  queue: QueuedScan[];
+  duplicate: boolean;
+}
+
+/**
+ * Queue a scan for later upload. The same person scanned twice for the same
+ * mode while offline is a double-scan, not two scans: the second one is
+ * skipped and reported as a duplicate so the queue (and the sync report)
+ * stays honest.
+ */
+export async function enqueueScan(item: QueuedScan): Promise<EnqueueResult> {
   const queue = await getQueue();
-  queue.push(item);
-  await AsyncStorage.setItem(KEY_QUEUE, JSON.stringify(queue));
-  return queue;
+  const duplicate = queue.some(
+    (q) => q.payload === item.payload && q.mode === item.mode,
+  );
+  if (!duplicate) {
+    queue.push(item);
+    await AsyncStorage.setItem(KEY_QUEUE, JSON.stringify(queue));
+  }
+  return { queue, duplicate };
 }
 
 export async function queueCount(): Promise<number> {
   return (await getQueue()).length;
 }
 
-/** Remove every queued item whose payload was accepted by the server. */
-export async function removeSynced(payloads: string[]): Promise<QueuedScan[]> {
-  const remaining = (await getQueue()).filter(
-    (item) => !payloads.includes(item.payload),
-  );
+/** Minimal shape of a per-item sync result (mirrors ScanResult in api/client). */
+export interface SyncItemResult {
+  status: "ok" | "error";
+  title: string;
+  detail?: string;
+}
+
+/**
+ * Scan rejections that will never succeed on retry: duplicates, invalid
+ * codes, unknown people, and client-side mistakes. These are safe to drop
+ * after reporting them; everything else stays queued for the next sync.
+ */
+const PERMANENT_REJECTIONS = new Set([
+  "ALREADY INSIDE",
+  "ALREADY USED",
+  "NOT INSIDE",
+  "INVALID CODE",
+  "UNKNOWN CODE",
+  "NO GATE SELECTED",
+  "NO MODE SELECTED",
+  "UNKNOWN GATE",
+  "GUEST PASS IS ENTRY ONLY",
+]);
+
+export interface SyncReconciliation {
+  remaining: QueuedScan[];
+  accepted: number;
+  rejected: { title: string; detail?: string }[];
+}
+
+/**
+ * Reconcile the queue against the server's per-item sync results, which the
+ * backend returns in the same order as the uploaded items. Drops accepted
+ * scans and permanently rejected ones, keeps transient failures queued for
+ * retry, and reports every rejected scan so the volunteer knows exactly
+ * what did not count. Matching is by position, never by payload, because
+ * one person can legitimately have several queued scans (entry then exit).
+ */
+export async function reconcileSync(
+  results: { payload: string; result: SyncItemResult }[],
+): Promise<SyncReconciliation> {
+  const queue = await getQueue();
+  const rejected: { title: string; detail?: string }[] = [];
+  let accepted = 0;
+  const remaining = queue.filter((_item, index) => {
+    const r = results[index]?.result;
+    if (!r) {
+      return true; // no server verdict for this item: keep it queued
+    }
+    if (r.status === "ok") {
+      accepted += 1;
+      return false;
+    }
+    if (PERMANENT_REJECTIONS.has(r.title)) {
+      rejected.push({ title: r.title, detail: r.detail });
+      return false;
+    }
+    return true; // transient failure: retry on the next sync
+  });
   await AsyncStorage.setItem(KEY_QUEUE, JSON.stringify(remaining));
-  return remaining;
+  return { remaining, rejected, accepted };
 }
 
 export async function clearQueue(): Promise<void> {
