@@ -87,7 +87,10 @@ export function HomeScreen() {
         setEventDate(settings.convocation_datetime);
       }
       if (settings.convocation_year) {
-        setEventYear(settings.convocation_year);
+        const parsedYear = Number(settings.convocation_year);
+        if (Number.isFinite(parsedYear)) {
+          setEventYear(parsedYear);
+        }
       }
     } catch {
       // Keep the compiled-in fallback when the backend is unreachable.
