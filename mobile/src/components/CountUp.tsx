@@ -9,15 +9,12 @@ interface Props {
 
 /** Number that tweens to its new value with a smooth count-up animation. */
 export function CountUp({ value, style, duration = 900 }: Props) {
-  const animRef = useRef<Animated.Value | null>(null);
-  if (!animRef.current) {
-    animRef.current = new Animated.Value(0);
-  }
+  const animRef = useRef(new Animated.Value(0));
   const [text, setText] = useState("0");
   const lastRef = useRef(0);
 
   useEffect(() => {
-    const anim = animRef.current as Animated.Value;
+    const anim = animRef.current;
     anim.setValue(lastRef.current);
     const id = anim.addListener(({ value: v }: { value: number }) =>
       setText(String(Math.round(v))),

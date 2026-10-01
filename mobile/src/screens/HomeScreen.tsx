@@ -22,6 +22,7 @@ import {
   MOTTO,
   UNIVERSITY_NAME,
 } from "../config";
+import { setAppMode } from "../store/appMode";
 import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
 
 const HERO_IMAGE = require("../../assets/convocation-hero.jpg");
@@ -55,16 +56,8 @@ interface QuickAction {
   icon: keyof typeof Ionicons.glyphMap;
   title: string;
   subtitle: string;
-  route: "/scanner" | "/guests" | "/broadcast" | "/dashboard";
-  tint: string;
+  onPress: () => void;
 }
-
-const QUICK_ACTIONS: QuickAction[] = [
-  { icon: "qr-code", title: "Scan QR", subtitle: "Gate entry scanner", route: "/scanner", tint: colors.emeraldSoft },
-  { icon: "people", title: "Guests", subtitle: "Guest passes", route: "/guests", tint: "#E3ECF5" },
-  { icon: "megaphone", title: "Broadcast", subtitle: "Announcements", route: "/broadcast", tint: colors.goldSoft },
-  { icon: "stats-chart", title: "Dashboard", subtitle: "Live gate stats", route: "/dashboard", tint: colors.tint },
-];
 
 const FALLBACK_ANNOUNCEMENTS: BroadcastEntry[] = [
   { id: -1, audience: "All students", message: "Convocation rehearsal schedule will be announced here. Keep your student card ready.", sent_by: "Registrar Office", sent_at: "" },
@@ -117,10 +110,26 @@ export function HomeScreen() {
     }, [loadAnnouncements, loadEventDetails]),
   );
 
-  const go = useCallback((route: QuickAction["route"]) => {
+  const tap = useCallback((fn: () => void) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    router.push(route);
+    fn();
   }, []);
+
+  const switchToLiveBoard = useCallback(() => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    void (async () => {
+      await setAppMode("liveboard");
+      router.replace("/(liveboard)");
+    })();
+  }, []);
+
+  const QUICK_ACTIONS: QuickAction[] = [
+    { icon: "qr-code", title: "Scan QR", subtitle: "Gate entry scanner", onPress: () => router.push("/(volunteer)/scanner") },
+    { icon: "stats-chart", title: "Dashboard", subtitle: "Live gate stats", onPress: () => router.push("/(volunteer)/dashboard") },
+    { icon: "people", title: "Guests", subtitle: "Guest passes", onPress: () => router.push("/(volunteer)/guests") },
+    { icon: "megaphone", title: "Broadcast", subtitle: "Announcements", onPress: () => router.push("/(volunteer)/broadcast") },
+    { icon: "shield-checkmark", title: "Admin", subtitle: "Event settings", onPress: () => router.push("/(volunteer)/admin") },
+  ];
 
   return (
     <ScrollView
@@ -174,16 +183,34 @@ export function HomeScreen() {
         </ImageBackground>
       </View>
 
+      <Pressable
+        onPress={switchToLiveBoard}
+        style={({ pressed }) => [styles.liveBoardCard, pressed && styles.pressed]}
+        accessibilityRole="button"
+        accessibilityLabel="Open the live board"
+      >
+        <View style={styles.liveBoardIcon}>
+          <Ionicons name="tv" size={24} color={colors.white} />
+        </View>
+        <View style={styles.liveBoardText}>
+          <Text style={styles.liveBoardTitle}>Live Board</Text>
+          <Text style={styles.liveBoardSubtitle}>
+            Watch the convocation live, switches app mode
+          </Text>
+        </View>
+        <Ionicons name="chevron-forward" size={22} color="rgba(255,255,255,0.85)" />
+      </Pressable>
+
       <Text style={styles.sectionTitle}>Quick Actions</Text>
       <View style={styles.actionGrid}>
         {QUICK_ACTIONS.map((action) => (
           <Pressable
-            key={action.route}
-            onPress={() => go(action.route)}
+            key={action.title}
+            onPress={() => tap(action.onPress)}
             style={({ pressed }) => [styles.actionCard, pressed && styles.pressed]}
           >
-            <View style={[styles.actionIcon, { backgroundColor: action.tint }]}>
-              <Ionicons name={action.icon} size={26} color={colors.greenDark} />
+            <View style={styles.actionIcon}>
+              <Ionicons name={action.icon} size={24} color={colors.greenDark} />
             </View>
             <Text style={styles.actionTitle}>{action.title}</Text>
             <Text style={styles.actionSubtitle}>{action.subtitle}</Text>
@@ -192,8 +219,8 @@ export function HomeScreen() {
       </View>
 
       <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Latest Announcements</Text>
-        <Pressable onPress={() => router.push("/broadcast")}>
+        <Text style={styles.sectionTitleInline}>Latest Announcements</Text>
+        <Pressable onPress={() => tap(() => router.push("/(volunteer)/broadcast"))}>
           <Text style={styles.seeAll}>View all</Text>
         </Pressable>
       </View>
@@ -222,8 +249,8 @@ export function HomeScreen() {
       </ScrollView>
 
       <View style={styles.mottoCard}>
-        <Ionicons name="school" size={28} color={colors.gold} />
-        <Text style={styles.mottoText}>"{MOTTO}"</Text>
+        <Ionicons name="school" size={26} color={colors.gold} />
+        <Text style={styles.mottoText}>&ldquo;{MOTTO}&rdquo;</Text>
       </View>
 
       <View style={styles.bottomPad} />
@@ -234,16 +261,18 @@ export function HomeScreen() {
 const styles = StyleSheet.create({
   actionCard: {
     backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    elevation: 3,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    elevation: 1,
     flex: 1,
     margin: spacing.xs,
     minWidth: "44%",
     padding: spacing.md,
     shadowColor: colors.greenDark,
-    shadowOffset: { height: 2, width: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowOffset: { height: 1, width: 0 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
   },
   actionGrid: {
     flexDirection: "row",
@@ -252,11 +281,12 @@ const styles = StyleSheet.create({
   },
   actionIcon: {
     alignItems: "center",
-    borderRadius: radius.lg,
-    height: 52,
+    backgroundColor: colors.tint,
+    borderRadius: radius.md,
+    height: 48,
     justifyContent: "center",
     marginBottom: spacing.sm,
-    width: 52,
+    width: 48,
   },
   actionSubtitle: {
     color: colors.muted,
@@ -266,27 +296,27 @@ const styles = StyleSheet.create({
   actionTitle: {
     color: colors.text,
     fontSize: fontSize.body,
-    fontWeight: fontWeight.bold,
+    fontWeight: fontWeight.semibold,
   },
   announceAudience: {
     color: colors.green,
     flex: 1,
     fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
+    fontWeight: fontWeight.semibold,
     marginLeft: spacing.xs,
   },
   announceCard: {
     backgroundColor: colors.card,
-    borderLeftColor: colors.emerald,
-    borderLeftWidth: 4,
-    borderRadius: radius.lg,
-    elevation: 2,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    elevation: 1,
     marginRight: spacing.sm,
     padding: spacing.md,
     shadowColor: colors.greenDark,
     shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
     width: 250,
   },
   announceMessage: {
@@ -356,9 +386,9 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
   },
   hero: {
-    borderBottomLeftRadius: radius.lg,
-    borderBottomRightRadius: radius.lg,
-    height: 420,
+    borderBottomLeftRadius: radius.md,
+    borderBottomRightRadius: radius.md,
+    height: 380,
     overflow: "hidden",
   },
   heroBottom: {
@@ -376,13 +406,49 @@ const styles = StyleSheet.create({
   },
   heroTitle: {
     color: colors.white,
-    fontSize: 40,
+    fontSize: 36,
     fontWeight: fontWeight.bold,
     marginTop: spacing.xs,
   },
   heroTop: {
     padding: spacing.lg,
     paddingTop: spacing.xl,
+  },
+  liveBoardCard: {
+    alignItems: "center",
+    backgroundColor: colors.greenDark,
+    borderRadius: radius.md,
+    elevation: 2,
+    flexDirection: "row",
+    gap: spacing.md,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    shadowColor: colors.greenDark,
+    shadowOffset: { height: 2, width: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 6,
+  },
+  liveBoardIcon: {
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.14)",
+    borderRadius: radius.md,
+    height: 48,
+    justifyContent: "center",
+    width: 48,
+  },
+  liveBoardSubtitle: {
+    color: "rgba(255,255,255,0.75)",
+    fontSize: fontSize.caption,
+    marginTop: 2,
+  },
+  liveBoardText: {
+    flex: 1,
+  },
+  liveBoardTitle: {
+    color: colors.white,
+    fontSize: fontSize.subheading,
+    fontWeight: fontWeight.bold,
   },
   logo: {
     borderRadius: 24,
@@ -392,7 +458,7 @@ const styles = StyleSheet.create({
   mottoCard: {
     alignItems: "center",
     backgroundColor: colors.greenDark,
-    borderRadius: radius.lg,
+    borderRadius: radius.md,
     marginHorizontal: spacing.md,
     marginTop: spacing.lg,
     padding: spacing.lg,
@@ -405,8 +471,7 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   pressed: {
-    opacity: 0.85,
-    transform: [{ scale: 0.97 }],
+    opacity: 0.88,
   },
   root: {
     backgroundColor: colors.background,
@@ -428,9 +493,14 @@ const styles = StyleSheet.create({
     marginTop: spacing.lg,
     paddingHorizontal: spacing.md,
   },
+  sectionTitleInline: {
+    color: colors.greenDark,
+    fontSize: fontSize.subheading,
+    fontWeight: fontWeight.bold,
+  },
   seeAll: {
     color: colors.green,
     fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
+    fontWeight: fontWeight.semibold,
   },
 });

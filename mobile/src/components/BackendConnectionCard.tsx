@@ -79,7 +79,7 @@ export function BackendConnectionCard() {
     >
       <Text style={styles.label}>API base URL</Text>
       <Text style={styles.hint}>
-        On a real phone this must be your laptop's Wi-Fi address, for example
+        On a real phone this must be your laptop&apos;s Wi-Fi address, for example
         http://192.168.1.10:5000 (10.0.2.2 works only in the Android emulator).
       </Text>
       <TextInput

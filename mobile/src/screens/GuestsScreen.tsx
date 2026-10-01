@@ -391,7 +391,6 @@ const styles = StyleSheet.create({
   },
   fabPressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.94 }],
   },
   filterChip: {
     backgroundColor: colors.tint,
@@ -489,7 +488,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.9,
-    transform: [{ scale: 0.99 }],
   },
   root: {
     backgroundColor: colors.background,

@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
 import type { ColorValue } from "react-native";
-import { colors } from "../../src/theme";
+import { colors, fontWeight } from "../../src/theme";
 
 function tabIcon(name: keyof typeof Ionicons.glyphMap) {
   function TabBarIcon({ color, size }: { color: ColorValue; size: number }) {
@@ -17,15 +17,23 @@ export default function VolunteerTabLayout() {
         headerStyle: { backgroundColor: colors.greenDark },
         headerTintColor: colors.white,
         headerTitleStyle: { fontWeight: "700" },
-        tabBarActiveTintColor: colors.white,
-        tabBarInactiveTintColor: "rgba(255, 255, 255, 0.6)",
+        tabBarActiveTintColor: colors.greenDark,
+        tabBarInactiveTintColor: colors.muted,
+        tabBarLabelStyle: { fontSize: 11, fontWeight: fontWeight.semibold },
         tabBarStyle: {
-          backgroundColor: colors.greenDark,
-          borderTopColor: colors.greenDeep,
+          backgroundColor: colors.white,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
         },
       }}
     >
+      <Tabs.Screen
+        name="home"
+        options={{
+          tabBarIcon: tabIcon("home"),
+          title: "Home",
+        }}
+      />
       <Tabs.Screen
         name="scanner"
         options={{
@@ -48,24 +56,27 @@ export default function VolunteerTabLayout() {
         }}
       />
       <Tabs.Screen
+        name="settings"
+        options={{
+          tabBarIcon: tabIcon("settings"),
+          title: "Settings",
+        }}
+      />
+      {/* Kept out of the tab bar but still reachable via Home quick
+          actions and Settings. href: null hides the tab, the route stays
+          registered so router.push("/(volunteer)/broadcast") works. */}
+      <Tabs.Screen
         name="broadcast"
         options={{
-          tabBarIcon: tabIcon("megaphone"),
+          href: null,
           title: "Broadcast",
         }}
       />
       <Tabs.Screen
         name="admin"
         options={{
-          tabBarIcon: tabIcon("shield-checkmark"),
+          href: null,
           title: "Admin",
-        }}
-      />
-      <Tabs.Screen
-        name="settings"
-        options={{
-          tabBarIcon: tabIcon("settings"),
-          title: "Settings",
         }}
       />
     </Tabs>

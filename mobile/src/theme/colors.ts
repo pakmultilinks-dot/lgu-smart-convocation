@@ -1,24 +1,25 @@
-// LGU brand palette, green and white edition, softened.
-// Muted forest and sage greens lead, white stays dominant, and gold is
-// reserved for the convocation hero premium touch only.
+// LGU brand palette, institutional green edition.
+// Deep ink greens lead, white stays dominant, gold is reserved for the
+// convocation hero premium touch only. Accents are muted on purpose: this
+// is an official university tool, not a game.
 
 export const colors = {
-  greenDark: "#1E4D33",
-  greenDeep: "#2A5F40",
-  green: "#2F7D4E",
-  emerald: "#3E8E5A",
-  emeraldSoft: "#E2EFE7",
-  tint: "#EFF5F1",
+  greenDark: "#16382B",
+  greenDeep: "#1E4D38",
+  green: "#2A6B47",
+  emerald: "#35794C",
+  emeraldSoft: "#E3EDE5",
+  tint: "#EDF2EE",
   white: "#FFFFFF",
-  background: "#F6F9F7",
+  background: "#F4F6F5",
   card: "#FFFFFF",
-  text: "#1C2B23",
-  muted: "#6B7F73",
-  border: "#DEE8E1",
+  text: "#182420",
+  muted: "#64766B",
+  border: "#DCE5DE",
   inputBg: "#FFFFFF",
-  overlay: "rgba(30, 77, 51, 0.55)",
-  gold: "#C9A227",
-  goldSoft: "#F8F1DA",
+  overlay: "rgba(22, 56, 43, 0.55)",
+  gold: "#B8912A",
+  goldSoft: "#F6EED6",
   red: "#B3261E",
   redSoft: "#F9E4E2",
   amber: "#9A6B1A",

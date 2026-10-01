@@ -671,7 +671,6 @@ const styles = StyleSheet.create({
   },
   pressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.96 }],
   },
   queueBadge: {
     backgroundColor: colors.gold,

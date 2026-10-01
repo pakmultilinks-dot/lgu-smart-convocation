@@ -16,7 +16,7 @@ export default function Index() {
       if (mode === null) {
         router.replace("/mode-picker");
       } else if (mode === "volunteer") {
-        router.replace("/(volunteer)/scanner");
+        router.replace("/(volunteer)/home");
       } else {
         router.replace("/(liveboard)");
       }

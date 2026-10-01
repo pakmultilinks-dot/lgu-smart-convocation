@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import Constants from "expo-constants";
 import { router } from "expo-router";
 import * as Linking from "expo-linking";
 import { useEffect, useState } from "react";
@@ -32,6 +33,8 @@ function modeLabel(mode: AppMode | null): string {
   if (mode === "liveboard") return "Live Board";
   return "Not set";
 }
+
+const APP_VERSION = Constants.expoConfig?.version ?? "";
 
 export function SettingsScreen() {
   const [appMode, setAppMode] = useState<AppMode | null>(null);
@@ -116,6 +119,19 @@ export function SettingsScreen() {
       <SectionCard title="Admin Tools">
         <Pressable
           style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+          onPress={() => router.push("/(volunteer)/admin")}
+        >
+          <View style={styles.linkIcon}>
+            <Ionicons name="shield-checkmark-outline" size={22} color={colors.green} />
+          </View>
+          <View style={styles.linkText}>
+            <Text style={styles.linkTitle}>Admin console</Text>
+            <Text style={styles.linkSub}>Event settings, gates, and connection</Text>
+          </View>
+          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
+        </Pressable>
+        <Pressable
+          style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
           onPress={() => void openCards()}
         >
           <View style={styles.linkIcon}>
@@ -147,7 +163,7 @@ export function SettingsScreen() {
         <Text style={styles.aboutBody}>
           Official gate companion for convocation day. Volunteers scan QR-coded
           student cards and guest passes, and the control room watches every
-          gate live. Version 1.1.0.
+          gate live.{APP_VERSION ? ` Version ${APP_VERSION}.` : ""}
         </Text>
       </SectionCard>
 

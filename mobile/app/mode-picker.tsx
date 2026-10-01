@@ -33,8 +33,8 @@ const OPTIONS: CardOption[] = [
   },
 ];
 
-function targetFor(mode: AppMode): "/(volunteer)/scanner" | "/(liveboard)" {
-  return mode === "volunteer" ? "/(volunteer)/scanner" : "/(liveboard)";
+function targetFor(mode: AppMode): "/(volunteer)/home" | "/(liveboard)" {
+  return mode === "volunteer" ? "/(volunteer)/home" : "/(liveboard)";
 }
 
 export default function ModePickerScreen() {
@@ -132,7 +132,6 @@ const styles = StyleSheet.create({
   },
   cardPressed: {
     opacity: 0.85,
-    transform: [{ scale: 0.98 }],
   },
   cardSubtitle: {
     color: colors.muted,
