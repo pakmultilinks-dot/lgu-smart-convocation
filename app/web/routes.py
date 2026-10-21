@@ -197,9 +197,31 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None, source="onl
             "gate": gate["label"], "time": scanned_at or models.now_str()}
 
 
+def _bad_scan_request(message):
+    """Return consistent JSON errors for malformed scanner HTTP requests."""
+    return jsonify({"ok": False, "error": message}), 400
+
+
+def _scan_item_shape_error(item, queued=False):
+    """Validate only request structure, leaving QR verdicts to process_scan."""
+    if not isinstance(item, dict):
+        return "Each scan must be a JSON object."
+    volunteer = item.get("volunteer")
+    if volunteer is not None and not isinstance(volunteer, str):
+        return "Volunteer must be a string."
+    if queued:
+        scanned_at = item.get("scanned_at")
+        if scanned_at is not None and not isinstance(scanned_at, str):
+            return "Queued scan timestamp must be a string."
+    return None
+
+
 @bp.route("/api/scan", methods=["POST"])
 def api_scan():
-    data = request.get_json(force=True) or {}
+    data = request.get_json(force=True, silent=True)
+    error = _scan_item_shape_error(data)
+    if error:
+        return _bad_scan_request(error)
     result = process_scan(data.get("payload"), data.get("gate_id"),
                           data.get("mode"), data.get("volunteer"))
     return jsonify(result)
@@ -207,9 +229,17 @@ def api_scan():
 
 @bp.route("/api/sync", methods=["POST"])
 def api_sync():
-    """Push a queue of offline scans. Each item keeps its original timestamp."""
-    data = request.get_json(force=True) or {}
+    """Validate an entire offline batch before recording any attendance."""
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return _bad_scan_request("Sync request must be a JSON object.")
     items = data.get("items", [])
+    if not isinstance(items, list):
+        return _bad_scan_request("Queued scans must be a JSON array.")
+    for item in items:
+        error = _scan_item_shape_error(item, queued=True)
+        if error:
+            return _bad_scan_request(error)
     results = []
     for it in items:
         r = process_scan(it.get("payload"), it.get("gate_id"), it.get("mode"),
