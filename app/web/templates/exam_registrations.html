@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Registrations · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Convocation Registrations</h1>
+<p class="page-sub">{% if conv %}{{ conv.name }} · {% endif %}{{ totals.get('active', 0) }} active · {{ totals.get('cancelled', 0) }} cancelled · {{ totals.get('revoked', 0) }} revoked</p>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+<div class="btn-row">
+  <a class="btn green" href="{{ url_for('exam.import_upload') }}">Import Excel</a>
+  <a class="btn ghost" href="{{ url_for('exam.import_template') }}">Download template</a>
+  <a class="btn ghost" href="{{ url_for('exam.import_history') }}">Import history</a>
+  <a class="btn ghost" href="{{ url_for('exam.dashboard') }}">Dashboard</a>
+</div>
+<div class="card">
+  <form method="get">
+    <label for="q">Search registrations</label>
+    <input id="q" type="text" name="q" value="{{ q }}" maxlength="80" placeholder="Registration number, roll number, name or email">
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      <option value="" {% if not status %}selected{% endif %}>All statuses</option>
+      <option value="active" {% if status == 'active' %}selected{% endif %}>Active</option>
+      <option value="cancelled" {% if status == 'cancelled' %}selected{% endif %}>Cancelled</option>
+      <option value="revoked" {% if status == 'revoked' %}selected{% endif %}>Revoked</option>
+    </select>
+    <div class="btn-row"><button class="btn" type="submit">Search</button></div>
+  </form>
+</div>
+<table>
+  <tr><th>Registration</th><th>Roll no.</th><th>Student</th><th>Department</th><th>Email</th><th>Status</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td><a href="{{ url_for('exam.registration_detail', reg_id=r.id) }}">{{ r.registration_number }}</a></td>
+    <td>{{ r.roll_number }}</td>
+    <td>{{ r.student_name }}</td>
+    <td>{{ r.department or '—' }}</td>
+    <td>{{ r.university_email }}</td>
+    <td><span class="badge {{ {'active': 'entry', 'cancelled': 'queued', 'revoked': 'bad'}[r.status] }}">{{ r.status }}</span></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="6">{% if q or status %}No registrations match this search.{% else %}No registrations yet. Use Import Excel to upload the official list.{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% if page > 1 or has_next %}
+<div class="btn-row">
+  {% if page > 1 %}<a class="btn ghost" href="{{ url_for('exam.registrations', q=q, status=status, page=page - 1) }}">Previous</a>{% endif %}
+  {% if has_next %}<a class="btn ghost" href="{{ url_for('exam.registrations', q=q, status=status, page=page + 1) }}">Next</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

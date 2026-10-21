@@ -1,0 +1,124 @@
+{% extends "base.html" %}
+{% block title %}Convocation event · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Convocation Event</h1>
+<p class="page-sub">Working details are drafts — students only ever see what you explicitly publish.
+Date states: <strong>Not announced</strong> → <strong>Expected (provisional)</strong> → <strong>Officially confirmed</strong>.
+An expected date is never presented as confirmed.</p>
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+{% if conv %}
+<div class="card">
+  <h2>Working details (draft)</h2>
+  <p class="page-sub">
+    <span class="badge {{ 'entry' if state == 'confirmed' else 'queued' if state == 'expected' else 'bad' }}">{{ state.replace('_', ' ') }}</span>
+    {% if dirty %}<span class="badge queued">UNPUBLISHED CHANGES</span>{% endif %}
+    {% if pub %}Last published {{ pub.published_at }} by {{ pub.published_by }}{% else %}Never published — students see nothing yet{% endif %}
+  </p>
+  <form method="post" action="{{ url_for('exam.event_save') }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="name">Event name</label>
+    <input id="name" name="name" value="{{ draft.name }}" required maxlength="120">
+    <label for="year">Year</label>
+    <input id="year" name="year" value="{{ draft.year }}" required maxlength="20">
+    <div class="grid two">
+      <div>
+        <label for="expected_date">Expected date (provisional)</label>
+        <input id="expected_date" name="expected_date" type="date" value="{{ draft.expected_date }}">
+      </div>
+      <div>
+        <label for="confirmed_date">Officially confirmed date</label>
+        <input id="confirmed_date" name="confirmed_date" type="date" value="{{ draft.confirmed_date }}">
+      </div>
+      <div>
+        <label for="rehearsal_date">Rehearsal date</label>
+        <input id="rehearsal_date" name="rehearsal_date" type="date" value="{{ draft.rehearsal_date }}">
+      </div>
+      <div>
+        <label for="rehearsal_time">Rehearsal time</label>
+        <input id="rehearsal_time" name="rehearsal_time" type="time" value="{{ draft.rehearsal_time }}">
+      </div>
+      <div>
+        <label for="ceremony_time">Ceremony start time</label>
+        <input id="ceremony_time" name="ceremony_time" type="time" value="{{ draft.ceremony_time }}">
+      </div>
+      <div>
+        <label for="rehearsal_venue">Rehearsal venue</label>
+        <input id="rehearsal_venue" name="rehearsal_venue" value="{{ draft.rehearsal_venue }}" maxlength="200">
+      </div>
+    </div>
+    <label for="venue">Venue</label>
+    <input id="venue" name="venue" value="{{ draft.venue }}" maxlength="200">
+    <label for="instructions">Approved instructions</label>
+    <textarea id="instructions" name="instructions" rows="5" maxlength="2000">{{ draft.instructions }}</textarea>
+    <div class="btn-row">
+      <button class="btn" type="submit">Save draft</button>
+      <button class="btn green" type="submit" formaction="{{ url_for('exam.event_publish') }}">Publish to students</button>
+    </div>
+  </form>
+  <p class="page-sub">Saving never publishes. Publishing copies these details into the student-facing
+  record and stamps who published it and when — changing a confirmed date later requires another explicit publish.</p>
+</div>
+
+<div class="card">
+  <h2>Published snapshot</h2>
+  {% if pub %}
+  <p class="page-sub">
+    <span class="badge {{ 'entry' if pub_state == 'confirmed' else 'queued' if pub_state == 'expected' else 'bad' }}">{{ pub_state.replace('_', ' ') }}</span>
+    expected {{ pub.expected_date or '—' }} · confirmed {{ pub.confirmed_date or '—' }} ·
+    ceremony time {{ pub.ceremony_time or '—' }} ·
+    rehearsal {{ pub.rehearsal_date or '—' }} {{ pub.rehearsal_time or '' }} at {{ pub.rehearsal_venue or pub.venue or '—' }} · {{ pub.venue or 'no venue' }}
+  </p>
+  {% else %}
+  <p class="page-sub">Nothing published yet. The student app shows an empty event card until you publish.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Change history</h2>
+  {% for a in trail %}
+  <p class="page-sub">{{ a.created_at }} · <strong>{{ a.actor }}</strong> {{ a.action }}</p>
+  {% else %}
+  <p class="page-sub">No recorded changes yet.</p>
+  {% endfor %}
+</div>
+{% else %}
+<div class="notice warn"><p>No active convocation. Create one below.</p></div>
+{% endif %}
+
+<div class="card">
+  <h2>All events</h2>
+  <table>
+    <tr><th>Event</th><th>State</th><th>Active</th><th></th></tr>
+    {% for e in events %}
+    <tr>
+      <td>{{ e.name }} ({{ e.year }})</td>
+      <td>{{ 'confirmed' if e.confirmed_date else 'expected' if e.expected_date else 'not announced' }}</td>
+      <td>{{ 'Yes' if e.is_active else 'No' }}</td>
+      <td>
+        {% if not e.is_active %}
+        <form method="post" action="{{ url_for('exam.event_activate') }}">
+          <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+          <input type="hidden" name="convocation_id" value="{{ e.id }}">
+          <button class="btn ghost" type="submit">Make active</button>
+        </form>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </table>
+  <h2>Create a new event</h2>
+  <form method="post" action="{{ url_for('exam.event_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="new_name">Event name</label>
+    <input id="new_name" name="name" required maxlength="120">
+    <label for="new_year">Year</label>
+    <input id="new_year" name="year" required maxlength="20">
+    <div class="btn-row">
+      <button class="btn" type="submit">Create event</button>
+      <a class="btn ghost" href="{{ url_for('exam.dashboard') }}">Back to dashboard</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

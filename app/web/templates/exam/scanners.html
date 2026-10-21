@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% block title %}Scanner accounts{% endblock %}
+{% block content %}
+<h1 class="page-title">Scanner accounts</h1>
+<p class="page-sub">Signed in as {{ staff.display_name }} ({{ staff.username }}).
+Provisioned volunteer scanners, the gates each may admit through, and every
+management action taken on them. This is the only browser-based way to manage
+these accounts; the host command line records <em>local operator attestation</em>
+(<code>via=cli</code>) whereas everything here is an authenticated staff action
+(<code>via=portal</code>) attributed to your session.</p>
+
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+{% if one_time %}
+<div class="notice warn">
+  <p>One-time PIN for <strong>{{ one_time.username }}</strong>:
+     <strong>{{ one_time.pin }}</strong></p>
+  <p>This PIN is shown once and only in this page. It is stored solely as a
+     scrypt hash, so it cannot be retrieved again — not from this screen, not
+     from a refresh, not from the database. Give it to the volunteer now. If it
+     is lost, open the account and use <strong>Reset PIN</strong> to issue a
+     new one; the previous value stops working immediately.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <div class="btn-row">
+    <a class="btn" href="{{ url_for('exam.scanner_new') }}">Create a scanner account</a>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Accounts</h2>
+  {% if scanners %}
+  <table>
+    <tr><th>Username</th><th>Volunteer</th><th>Status</th><th>Credential</th>
+        <th>Gates</th><th>Live sessions</th><th>Last sign-in</th><th></th></tr>
+    {% for s in scanners %}
+    <tr>
+      <td><a href="{{ url_for('exam.scanner_detail', scanner_id=s.id) }}">{{ s.username }}</a></td>
+      <td>{{ s.display_name }}</td>
+      <td><span class="badge {{ 'entry' if s.is_active else 'bad' }}">{{ 'Active' if s.is_active else 'Disabled' }}</span>
+        {% if s.locked_until %}<span class="badge bad">Locked</span>{% endif %}</td>
+      <td><span class="badge {{ 'queued' if s.credential_established else 'exit' }}">{{ 'Established' if s.credential_established else 'Not yet set' }}</span></td>
+      <td>{{ s.gates | join(', ') or '— none —' }}</td>
+      <td>{{ s.live_sessions }}</td>
+      <td>{{ s.last_login_at[:16] if s.last_login_at else '—' }}</td>
+      <td><a class="btn ghost" href="{{ url_for('exam.scanner_detail', scanner_id=s.id) }}">Manage</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="page-sub">No scanner accounts exist yet. Nothing can sign a volunteer
+  into the scanner app until an account is created here.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Management history</h2>
+  <p class="page-sub">The most recent management actions, newest first. PINs,
+  scanner session tokens and password material never appear in this trail.</p>
+  {% if history %}
+  <table>
+    <tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr>
+    {% for h in history %}
+    <tr>
+      <td>{{ h.created_at[:16] }}</td>
+      <td>{{ h.actor }}</td>
+      <td><span class="badge {{ 'bad' if h.action == 'scanner_mgmt_denied' else 'exit' }}">{{ h.action }}</span></td>
+      <td>{{ h.detail }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="page-sub">No management actions recorded yet.</p>
+  {% endif %}
+</div>
+
+<form method="post" action="{{ url_for('exam.logout') }}" style="margin-top: 16px;">
+  <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+  <button class="btn ghost" type="submit">Sign out</button>
+</form>
+{% endblock %}

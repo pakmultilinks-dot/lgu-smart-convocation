@@ -1,550 +1,932 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
+import { Modal, Pressable, ScrollView, Text, View } from "react-native";
+import { getSettings, updateSettings } from "../api/settingsApi";
+import { getQueue } from "../store/offlineQueue";
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import {
-  ApiError,
-  fetchGates,
-  type Gate,
-} from "../api/client";
-import {
-  getSettings,
-  updateSettings,
-  type ConvocationSettings,
-} from "../api/settingsApi";
-import { PrimaryButton } from "../components/PrimaryButton";
-import { SectionCard } from "../components/SectionCard";
-import {
-  DEFAULT_API_BASE_URL,
   getApiBaseUrl,
-  getVolunteerName,
+  getApiBaseUrlMode,
   isValidBaseUrl,
+  resetToAutomaticBackend,
   setApiBaseUrl,
-  setVolunteerName,
 } from "../store/settings";
-import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
+import { colors, fonts, radius, spacing } from "../theme";
+import {
+  AppButton,
+  AppHeader,
+  ErrorState,
+  Field,
+  LoadingState,
+  Screen,
+  SectionCard,
+  SectionEyebrow,
+  StatusPill,
+  formatClock,
+} from "../ui";
 
-const CONNECT_TIMEOUT_MS = 10000;
+type ProbeState = "idle" | "probing" | "ok" | "fail";
 
-function splitDatetime(datetime: string): { date: string; time: string } {
-  const match = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})/.exec(datetime);
-  if (match) {
-    return { date: match[1], time: match[2] };
+/** Direct health probe against a custom address (the config surface only —
+    technical values never appear in operator-facing list UI). */
+async function probe(url: string): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
+  try {
+    const res = await fetch(`${url.replace(/\/$/, "")}/api/health`, {
+      signal: controller.signal,
+    });
+    const body = (await res.json()) as { ok?: boolean };
+    return res.ok && body.ok === true;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
   }
-  return { date: "", time: "" };
 }
 
+/**
+ * 33-QA (I16): every connection verdict carries WHEN it was taken. A
+ * "Connected" note without a timestamp reads as current truth forever —
+ * the note now leads with the local clock time of the probe itself.
+ */
+function probeNoteFor(reachable: boolean): string {
+  return `${formatClock(Date.now())} — ${
+    reachable
+      ? "Connection successful. Server is reachable."
+      : "Could not reach the server. Confirm the address and that the server is running on the same network."
+  }`;
+}
+
+/** "2500" -> "2,500" for idle display; empty/invalid pass through. */
+function formatNumberDisplay(value: string | null | undefined): string {
+  const digits = (value ?? "").replace(/[^0-9]/g, "");
+  if (!digits) return "";
+  const n = Number(digits);
+  if (!Number.isFinite(n)) return value ?? "";
+  return n.toLocaleString("en-US");
+}
+
+interface DateTimeParts {
+  y: number;
+  m: number;
+  d: number;
+  hh: number;
+  mm: number;
+}
+
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+];
+const MONTHS_LONG = [
+  "January", "February", "March", "April", "May", "June",
+  "July", "August", "September", "October", "November", "December",
+];
+
+/** "2026-12-12T09:00:00+05:00" -> structured parts (stored form stays ISO). */
+function parseIsoLocal(value: string | null | undefined): DateTimeParts | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/.exec(value);
+  if (!m) return null;
+  return { y: Number(m[1]), m: Number(m[2]), d: Number(m[3]), hh: Number(m[4]), mm: Number(m[5]) };
+}
+
+function buildIso(p: DateTimeParts): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${p.y}-${pad(p.m)}-${pad(p.d)}T${pad(p.hh)}:${pad(p.mm)}:00+05:00`;
+}
+
+function formatDayLabel(p: DateTimeParts): string {
+  return `${p.d} ${MONTHS_SHORT[p.m - 1]} ${p.y}`;
+}
+
+function formatTimeLabel(p: DateTimeParts): string {
+  const h12 = p.hh % 12 === 0 ? 12 : p.hh % 12;
+  return `${h12}:${String(p.mm).padStart(2, "0")} ${p.hh < 12 ? "AM" : "PM"}`;
+}
+
+/** "2026-12-12T09:00:00+05:00" -> "12 Dec 2026, 9:00 AM" (falls back raw). */
+function formatFullLabel(value: string | null | undefined): string {
+  if (!value) return "";
+  const p = parseIsoLocal(value);
+  if (!p) return value;
+  return `${formatDayLabel(p)}, ${formatTimeLabel(p)}`;
+}
+
+/** Percentage width for one of seven equal day columns (typed literal). */
+const DAY_CELL_WIDTH = `${100 / 7}%` as `${number}%`;
+
+/** Sunday-first day grid; 0 = padding cell. */
+function calendarGrid(year: number, month: number): number[] {
+  const firstWeekday = new Date(Date.UTC(year, month - 1, 1)).getUTCDay();
+  const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const cells: number[] = Array.from({ length: firstWeekday }, () => 0);
+  for (let d = 1; d <= daysInMonth; d += 1) cells.push(d);
+  while (cells.length % 7 !== 0) cells.push(0);
+  return cells;
+}
+
+/**
+ * Admin — the ONLY surface where server addresses and convocation
+ * configuration live (spec §7 exception). Everything else in the app
+ * speaks plain operational language. Sections (35I W.1): two clearly
+ * separated surfaces — "Server connection" (address + connectivity) and
+ * "Convocation details" (event config + expected attendance) — plus
+ * operational quick actions. 35I (W.2): operator copy says "server",
+ * never the architecture word "backend". 35I (W.3): the connection pill
+ * probes on load, so it always resolves to Connected / Can't reach
+ * server — never a stuck CHECKING state. 33-QA (I16): every verdict is
+ * stamped with the probe time (see probeNoteFor).
+ */
 export function AdminScreen() {
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState<string | null>(null);
-
-  const [convocationName, setConvocationName] = useState("");
-  const [year, setYear] = useState("");
-  const [date, setDate] = useState("");
-  const [time, setTime] = useState("");
-  const [venue, setVenue] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [savedNote, setSavedNote] = useState<string | null>(null);
-  const [formError, setFormError] = useState<string | null>(null);
-
-  const [volunteer, setVolunteer] = useState("");
-  const [volunteerSaved, setVolunteerSaved] = useState(false);
-
-  const [baseUrl, setBaseUrl] = useState(DEFAULT_API_BASE_URL);
+  const [mode, setMode] = useState<"auto" | "custom">("auto");
+  const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
-  const [urlSaved, setUrlSaved] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [reachability, setReachability] = useState<string | null>(null);
-  const [reachable, setReachable] = useState(false);
+  // 33-QA (P8-27): in automatic mode the address field shows the
+  // EFFECTIVE server as its placeholder — operators see which server the
+  // device is actually using before deciding to pin one.
+  const [effectiveUrl, setEffectiveUrl] = useState("");
+  const [probeState, setProbeState] = useState<ProbeState>("idle");
+  const [probeNote, setProbeNote] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
 
-  const [gates, setGates] = useState<Gate[]>([]);
+  const [settings, setSettings] = useState<Parameters<typeof updateSettings>[0] | null>(null);
+  const [settingsError, setSettingsError] = useState<string | null>(null);
+  const [settingsLoading, setSettingsLoading] = useState(true);
+  const [savingSettings, setSavingSettings] = useState(false);
+  const [savedNote, setSavedNote] = useState<string | null>(null);
+  const [queueDepth, setQueueDepth] = useState(0);
+  // Attendance display: raw digits while focused, grouped when idle.
+  const [attendanceFocused, setAttendanceFocused] = useState(false);
+  // Date/time picker sheet (Phase 35H): structured editors, no free text.
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [pickerParts, setPickerParts] = useState<DateTimeParts | null>(null);
+  const [cursor, setCursor] = useState<{ y: number; m: number }>({
+    y: 2026,
+    m: 12,
+  });
+  // Baseline snapshot of the last loaded/saved settings — drives the
+  // dirty check that disables Save when nothing has changed (35H).
+  const [baseline, setBaseline] = useState<string | null>(null);
 
-  const load = () => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    void (async () => {
-      try {
-        const [settings, storedUrl, storedVolunteer] = await Promise.all([
-          getSettings(),
-          getApiBaseUrl(),
-          getVolunteerName(),
-        ]);
-        if (cancelled) return;
-        const split = splitDatetime(settings.convocation_datetime ?? "");
-        setConvocationName(settings.convocation_name ?? "");
-        setYear(settings.convocation_year ?? "");
-        setDate(split.date);
-        setTime(split.time);
-        setVenue(settings.venue ?? "");
-        setBaseUrl(storedUrl);
-        setVolunteer(storedVolunteer);
-        try {
-          const loadedGates = await fetchGates();
-          if (!cancelled) setGates(loadedGates);
-        } catch {
-          if (!cancelled) setGates([]);
-        }
-      } catch (e) {
-        if (!cancelled) {
-          setLoadError(
-            e instanceof ApiError
-              ? `Could not load settings: ${e.message}`
-              : "Could not load settings.",
-          );
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  };
-
-  useEffect(() => load(), []);
-
-  const saveSettings = async () => {
-    setFormError(null);
-    setSavedNote(null);
-    if (!convocationName.trim()) {
-      setFormError("Enter the convocation name.");
-      return;
-    }
-    if (!/^\d{4}$/.test(year.trim())) {
-      setFormError("Enter the year as 4 digits, for example 2026.");
-      return;
-    }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(date.trim())) {
-      setFormError("Enter the date as YYYY-MM-DD, for example 2026-12-12.");
-      return;
-    }
-    if (!/^\d{2}:\d{2}$/.test(time.trim())) {
-      setFormError("Enter the time as HH:MM, for example 09:00.");
-      return;
-    }
-    if (!venue.trim()) {
-      setFormError("Enter the venue.");
-      return;
-    }
-    setSaving(true);
+  const load = useCallback(async () => {
+    setSettingsLoading(true);
     try {
-      const patch: Partial<ConvocationSettings> = {
-        convocation_name: convocationName.trim(),
-        convocation_year: year.trim(),
-        convocation_datetime: `${date.trim()}T${time.trim()}:00+05:00`,
-        venue: venue.trim(),
-      };
-      const updated = await updateSettings(patch);
-      const split = splitDatetime(updated.convocation_datetime ?? "");
-      setConvocationName(updated.convocation_name ?? "");
-      setYear(updated.convocation_year ?? "");
-      setDate(split.date);
-      setTime(split.time);
-      setVenue(updated.venue ?? "");
-      setSavedNote("Saved. The new convocation details are live.");
+      const [storedMode, storedUrl, convocation, queue] = await Promise.all([
+        getApiBaseUrlMode(),
+        getApiBaseUrl(),
+        getSettings(),
+        getQueue(),
+      ]);
+      setMode(storedMode);
+      setUrl(storedMode === "custom" ? storedUrl : "");
+      setSettings(convocation);
+      setBaseline(JSON.stringify(convocation));
+      setSettingsError(null);
+      setQueueDepth(queue.length);
+      // 35I (W.3): probe the EFFECTIVE server address on load so the pill
+      // always resolves to a real state — never a stuck "Checking".
+      const effective = (await getApiBaseUrl()) ?? storedUrl;
+      setEffectiveUrl(effective);
+      const reachable = await probe(effective);
+      setProbeState(reachable ? "ok" : "fail");
+      setProbeNote(probeNoteFor(reachable));
     } catch (e) {
-      setFormError(
-        e instanceof ApiError
-          ? `Could not save: ${e.message}`
-          : "Could not save the settings.",
+      setSettingsError(
+        e instanceof Error
+          ? e.message
+          : "Admin data could not be loaded. Check the connection and retry.",
       );
     } finally {
-      setSaving(false);
+      setSettingsLoading(false);
     }
-  };
+  }, []);
 
-  const saveVolunteer = async () => {
-    await setVolunteerName(volunteer);
-    setVolunteerSaved(true);
-    setTimeout(() => setVolunteerSaved(false), 2500);
-  };
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
-  const saveUrl = async () => {
-    if (!isValidBaseUrl(baseUrl)) {
-      setUrlError("Enter a valid URL, for example http://192.168.1.10:5000");
+  const runProbe = useCallback(
+    async (candidate: string) => {
+      setProbeState("probing");
+      setProbeNote(null);
+      const reachable = await probe(candidate);
+      if (reachable) {
+        setProbeState("ok");
+        setProbeNote(probeNoteFor(true));
+      } else {
+        setProbeState("fail");
+        setProbeNote(probeNoteFor(false));
+      }
+      return reachable;
+    },
+    [],
+  );
+
+  const saveConnection = useCallback(async () => {
+    const trimmed = url.trim().replace(/\/$/, "");
+    if (!isValidBaseUrl(trimmed)) {
+      setUrlError("Enter a full address, e.g. http://192.168.1.10:5000");
       return;
     }
     setUrlError(null);
-    await setApiBaseUrl(baseUrl);
-    setUrlSaved(true);
-    setTimeout(() => setUrlSaved(false), 2500);
-  };
-
-  const testConnection = async () => {
-    setTesting(true);
-    setReachability(null);
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), CONNECT_TIMEOUT_MS);
+    setBusy(true);
     try {
-      const response = await fetch(`${baseUrl.trim()}/api/gates`, {
-        signal: controller.signal,
-      });
-      clearTimeout(timer);
-      if (!response.ok) {
-        setReachable(false);
-        setReachability(`Not reachable: server returned ${response.status}.`);
-        return;
-      }
-      const body = (await response.json()) as { gates?: Gate[] };
-      const count = Array.isArray(body.gates) ? body.gates.length : 0;
-      setReachable(true);
-      setReachability(`Reachable. ${count} gate(s) found.`);
-    } catch {
-      clearTimeout(timer);
-      setReachable(false);
-      setReachability("Not reachable. Check the URL and server.");
+      const reachable = await runProbe(trimmed);
+      if (!reachable) return;
+      await setApiBaseUrl(trimmed);
+      setMode("custom");
     } finally {
-      setTesting(false);
+      setBusy(false);
     }
-  };
+  }, [url, runProbe]);
 
-  if (loading) {
-    return (
-      <View style={styles.centered}>
-        <ActivityIndicator size="large" color={colors.green} />
-        <Text style={styles.loadingText}>Loading admin settings...</Text>
-      </View>
-    );
-  }
+  const applyAutomatic = useCallback(async () => {
+    setBusy(true);
+    try {
+      await resetToAutomaticBackend();
+      setMode("auto");
+      setUrl("");
+      setUrlError(null);
+      // 35I (W.3): re-probe the newly effective server so the pill
+      // resolves instead of idling at "Checking".
+      const effective = await getApiBaseUrl();
+      setEffectiveUrl(effective);
+      const reachable = await probe(effective);
+      setProbeState(reachable ? "ok" : "fail");
+      setProbeNote(probeNoteFor(reachable));
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
-  if (loadError) {
-    return (
-      <View style={styles.centered}>
-        <Ionicons name="alert-circle" size={40} color={colors.red} />
-        <Text style={styles.errorText}>{loadError}</Text>
-        <Text style={styles.errorHint}>
-          If this is a fresh install, set the backend URL in the Settings tab
-          first, then retry.
-        </Text>
-        <PrimaryButton
-          title="Retry"
-          onPress={() => load()}
-          variant="outline"
-          style={styles.retryButton}
-        />
-      </View>
-    );
-  }
+  const settingsDirty =
+    baseline !== null &&
+    settings !== null &&
+    JSON.stringify(settings) !== baseline;
+
+  const saveSettings = useCallback(async () => {
+    if (!settings) return;
+    const parts = parseIsoLocal(settings.convocation_datetime);
+    if (!parts) {
+      setSettingsError(
+        "Enter a valid date and time — e.g. 12 Dec 2026, 9:00 AM.",
+      );
+      return;
+    }
+    const attendance = Number(settings.expected_attendance);
+    // 33-QA (I24): realistic cap — values beyond convocation scale are
+    // rejected instead of silently accepted.
+    if (!Number.isFinite(attendance) || attendance < 0 || attendance > 25000) {
+      setSettingsError("Enter an expected attendance between 0 and 25,000.");
+      return;
+    }
+    setSavingSettings(true);
+    setSavedNote(null);
+    setSettingsError(null);
+    try {
+      // Year is derived from the chosen date — never a free-text field.
+      const next = await updateSettings({
+        ...settings,
+        convocation_year: String(parts.y),
+        convocation_datetime: buildIso(parts),
+      });
+      setSettings(next);
+      setBaseline(JSON.stringify(next));
+      setSavedNote("Convocation details saved.");
+    } catch (e) {
+      setSettingsError(
+        e instanceof Error ? e.message : "Settings could not be saved.",
+      );
+    } finally {
+      setSavingSettings(false);
+      setTimeout(() => setSavedNote(null), 2500);
+    }
+  }, [settings]);
+
+  const patchSettings = useCallback(
+    (patch: Partial<NonNullable<typeof settings>>) => {
+      setSettings((prev) => (prev ? { ...prev, ...patch } : prev));
+    },
+    [],
+  );
+
+  const shiftMonth = useCallback((delta: number) => {
+    setCursor((prev) => {
+      const next = new Date(Date.UTC(prev.y, prev.m - 1 + delta, 1));
+      return { y: next.getUTCFullYear(), m: next.getUTCMonth() + 1 };
+    });
+  }, []);
+
+  const commitPicker = useCallback(() => {
+    if (!pickerParts) return;
+    patchSettings({ convocation_datetime: buildIso(pickerParts) });
+    setPickerOpen(false);
+  }, [pickerParts, patchSettings]);
 
   return (
-    <ScrollView style={styles.root}>
-      <SectionCard
-        title="Convocation Details"
-        subtitle="Shown on the Live Board and ID cards"
-      >
-        <Text style={styles.label}>Convocation name</Text>
-        <TextInput
-          style={styles.input}
-          value={convocationName}
-          onChangeText={setConvocationName}
-          placeholder="LGU Convocation"
-          placeholderTextColor={colors.muted}
-        />
-        <Text style={styles.label}>Year</Text>
-        <TextInput
-          style={styles.input}
-          value={year}
-          onChangeText={setYear}
-          placeholder="2026"
-          placeholderTextColor={colors.muted}
-          keyboardType="numeric"
-          maxLength={4}
-        />
-        <View style={styles.row}>
-          <View style={styles.flex}>
-            <Text style={styles.label}>Date</Text>
-            <TextInput
-              style={styles.input}
-              value={date}
-              onChangeText={setDate}
-              placeholder="2026-12-12"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
+    // Light in-screen header (Phase 35G: dark native header removed).
+    <Screen>
+      {/* 35M item 16: the eyebrow "Admin" is a plain sans label —
+          the shared eyebrowSans family, not DM Mono. */}
+      <AppHeader
+        onBack={() =>
+          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
+        }
+        eyebrow="Admin"
+        eyebrowSans
+        title="System configuration"
+        subtitle="Server connection and convocation details"
+      />
+
+      {/* ------------------------------------------------- server connection */}
+      <SectionCard>
+        <SectionEyebrow>Server connection</SectionEyebrow>
+        <View style={styles.connRow}>
+          <View style={styles.flex1}>
+            <Text style={styles.connTitle}>
+              {mode === "custom" ? "Custom address" : "Automatic discovery"}
+            </Text>
+            <Text style={styles.connBody}>
+              {mode === "custom"
+                ? "Using a manually saved server address"
+                : "Server found automatically on the local network"}
+            </Text>
+            {/* QA fix cycle 2 (server address): the operator always sees
+                WHICH server the device is actually using. QA fix cycle 4
+                (Finding 12): automatic mode states "dynamic IP" instead of
+                leaking a discovered host; custom shows the saved address. */}
+            {effectiveUrl ? (
+              <Text style={styles.connBody}>
+                {mode === "custom"
+                  ? `Using: Custom (${effectiveUrl.replace(/^https?:\/\//, "")})`
+                  : "Using: Automatic (dynamic IP)"}
+              </Text>
+            ) : null}
           </View>
-          <View style={styles.flex}>
-            <Text style={styles.label}>Time</Text>
-            <TextInput
-              style={styles.input}
-              value={time}
-              onChangeText={setTime}
-              placeholder="09:00"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="none"
-              autoCorrect={false}
-            />
-          </View>
+          <StatusPill
+            state={
+              probeState === "ok"
+                ? "live"
+                : probeState === "fail"
+                  ? "offline"
+                  : "connecting"
+            }
+            label={
+              probeState === "ok"
+                ? "Connected"
+                : probeState === "fail"
+                  ? "Can't reach server"
+                  : "Checking"
+            }
+            size="sm"
+          />
         </View>
-        <Text style={styles.label}>Venue</Text>
-        <TextInput
-          style={styles.input}
-          value={venue}
-          onChangeText={setVenue}
-          placeholder="Main Hall"
-          placeholderTextColor={colors.muted}
-        />
-        {formError && <Text style={styles.error}>{formError}</Text>}
-        <PrimaryButton
-          title="Save convocation details"
-          onPress={() => void saveSettings()}
-          loading={saving}
-          style={styles.topMargin}
-        />
-        {savedNote && (
-          <View style={styles.savedBox}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.green} />
-            <Text style={styles.saved}>{savedNote}</Text>
-          </View>
-        )}
-      </SectionCard>
 
-      <SectionCard title="Volunteer" subtitle="Shown on every scan you make">
-        <Text style={styles.label}>Volunteer name</Text>
-        <TextInput
-          style={styles.input}
-          value={volunteer}
-          onChangeText={setVolunteer}
-          placeholder="Your name as shown on scans"
-          placeholderTextColor={colors.muted}
-          autoCapitalize="words"
-        />
-        <PrimaryButton
-          title="Save name"
-          onPress={() => void saveVolunteer()}
-          style={styles.topMargin}
-        />
-        {volunteerSaved && (
-          <View style={styles.savedBox}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.green} />
-            <Text style={styles.saved}>Volunteer name saved.</Text>
-          </View>
-        )}
-      </SectionCard>
-
-      <SectionCard
-        title="Backend Connection"
-        subtitle="Where this app sends its scans"
-      >
-        <Text style={styles.label}>API base URL</Text>
-        <TextInput
-          style={styles.input}
-          value={baseUrl}
-          onChangeText={setBaseUrl}
-          placeholder={DEFAULT_API_BASE_URL}
-          placeholderTextColor={colors.muted}
+        {/* 33-QA (P8-27): automatic mode shows the effective server in
+            the placeholder — the field never hides which server the
+            device is using. */}
+        <Field
+          label="Server address"
+          placeholder={
+            mode === "custom" || !effectiveUrl
+              ? "e.g. http://192.168.1.10:5000"
+              : effectiveUrl
+          }
+          value={url}
+          onChangeText={(t) => {
+            setUrl(t);
+            setUrlError(null);
+          }}
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
+          error={urlError}
+          hint="Used when Automatic discovery cannot find the server (e.g. a different subnet)."
         />
-        {urlError && <Text style={styles.error}>{urlError}</Text>}
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            title="Save URL"
-            onPress={() => void saveUrl()}
-            style={styles.flexButton}
-          />
-          <PrimaryButton
-            title="Test connection"
-            onPress={() => void testConnection()}
-            loading={testing}
-            variant="outline"
-            style={styles.flexButton}
-          />
-        </View>
-        {urlSaved && (
-          <View style={styles.savedBox}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.green} />
-            <Text style={styles.saved}>API base URL saved.</Text>
-          </View>
-        )}
-        {reachability && (
-          <View
+        {probeNote ? (
+          <Text
             style={[
-              styles.healthBox,
-              reachable ? styles.healthOk : styles.healthBad,
+              styles.probeNote,
+              probeState === "ok" ? styles.probeOk : styles.probeFail,
             ]}
           >
-            <Ionicons
-              name={reachable ? "checkmark-circle" : "alert-circle"}
-              size={18}
-              color={reachable ? colors.green : colors.red}
+            {probeNote}
+          </Text>
+        ) : null}
+
+        <View style={styles.connButtons}>
+          <View style={styles.flex1}>
+            <AppButton
+              label={busy ? "Working…" : "Save & test"}
+              icon="cloud-upload-outline"
+              loading={busy}
+              onPress={() => void saveConnection()}
             />
-            <Text
-              style={[
-                styles.healthText,
-                { color: reachable ? colors.green : colors.red },
-              ]}
+          </View>
+          <View style={styles.flex1}>
+            <AppButton
+              label="Use automatic"
+              icon="flash-outline"
+              variant="secondary"
+              disabled={busy || mode === "auto"}
+              onPress={() => void applyAutomatic()}
+            />
+          </View>
+        </View>
+        {/* QA fix cycle 3 (Issue 12): a disabled action always explains
+            itself — never a dead control with no reason. */}
+        {mode === "auto" && !busy ? (
+          <Text style={styles.btnNote}>Automatic is already active.</Text>
+        ) : null}
+      </SectionCard>
+
+      {/* ----------------------------------------------- convocation details */}
+      {settingsLoading ? (
+        <SectionCard>
+          <LoadingState label="Loading convocation details…" />
+        </SectionCard>
+      ) : settingsError && !settings ? (
+        <SectionCard>
+          <ErrorState title="Settings unavailable" body={settingsError} onRetry={() => void load()} />
+        </SectionCard>
+      ) : settings ? (
+        <SectionCard>
+          <SectionEyebrow>Convocation details</SectionEyebrow>
+          <Field
+            label="Convocation name"
+            value={settings.convocation_name}
+            onChangeText={(t) => patchSettings({ convocation_name: t })}
+          />
+          {/* Phase 35K (F): the institution name shown on event screens is
+              saved here — event screens read it from /api/config, not from
+              a hard-coded constant. */}
+          <Field
+            label="University name"
+            value={settings.university_name}
+            onChangeText={(t) => patchSettings({ university_name: t })}
+          />
+          <View>
+            <Text style={styles.dtLabel}>Date and time</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Date and time, ${formatFullLabel(settings.convocation_datetime)}`}
+              onPress={() => {
+                const parts =
+                  parseIsoLocal(settings.convocation_datetime) ??
+                  { y: 2026, m: 12, d: 12, hh: 9, mm: 0 };
+                setPickerParts(parts);
+                setCursor({ y: parts.y, m: parts.m });
+                setPickerOpen(true);
+              }}
+              style={styles.dtField}
             >
-              {reachability}
+              <Text style={styles.dtValue}>
+                {formatFullLabel(settings.convocation_datetime)}
+              </Text>
+              <Ionicons name="calendar-outline" size={18} color={colors.muted} />
+            </Pressable>
+            <Text style={styles.dtHint}>
+              All convocation times are Pakistan Standard Time (UTC+5).
             </Text>
           </View>
-        )}
+          <Field
+            label="Expected attendance"
+            value={
+              attendanceFocused
+                ? settings.expected_attendance
+                : formatNumberDisplay(settings.expected_attendance)
+            }
+            onChangeText={(t) =>
+              patchSettings({ expected_attendance: t.replace(/[^0-9]/g, "") })
+            }
+            onFocus={() => setAttendanceFocused(true)}
+            onBlur={() => setAttendanceFocused(false)}
+            keyboardType="number-pad"
+            hint="Enter a number up to 25,000"
+          />
+          <Field
+            label="Venue"
+            value={settings.venue}
+            onChangeText={(t) => patchSettings({ venue: t })}
+          />
+          {settingsError ? <Text style={styles.formError}>{settingsError}</Text> : null}
+          {savedNote ? <Text style={styles.savedNote}>{savedNote}</Text> : null}
+          <AppButton
+            label={savingSettings ? "Saving…" : "Save details"}
+            icon="save-outline"
+            loading={savingSettings}
+            disabled={!settingsDirty || savingSettings}
+            onPress={() => void saveSettings()}
+          />
+          {/* QA fix cycle 3 (Issue 12): explain the disabled save. */}
+          {!settingsDirty && !savingSettings ? (
+            <Text style={styles.btnNote}>No changes to save.</Text>
+          ) : null}
+        </SectionCard>
+      ) : null}
+
+      {/* ------------------------------------------------- operational tools */}
+      <SectionCard>
+        <SectionEyebrow>Operations</SectionEyebrow>
+        <View style={styles.opsRow}>
+          <View style={styles.flex1}>
+            <Text style={styles.connTitle}>Queued offline scans</Text>
+            <Text style={styles.connBody}>
+              {queueDepth > 0
+                ? `${queueDepth} scan(s) waiting on this device — sync from the Scanner.`
+                : "Nothing waiting — all scans are synced."}
+            </Text>
+          </View>
+          <View style={styles.opsStatus}>
+            <Ionicons
+              name={queueDepth > 0 ? "time-outline" : "checkmark-circle"}
+              size={20}
+              color={queueDepth > 0 ? colors.amber : colors.valid}
+            />
+            <Text style={styles.opsStatusText}>
+              {queueDepth > 0 ? `${queueDepth} waiting` : "All synced"}
+            </Text>
+          </View>
+        </View>
+        <AppButton
+          label="Open announcements"
+          icon="megaphone-outline"
+          variant="secondary"
+          onPress={() => router.push("/(volunteer)/broadcast")}
+        />
       </SectionCard>
 
-      <SectionCard title="Gates" subtitle="Read only, managed by the server">
-        {gates.length === 0 ? (
-          <Text style={styles.mutedText}>No gates found on the server.</Text>
-        ) : (
-          gates.map((gate) => (
-            <View key={gate.id} style={styles.gateRow}>
-              <Ionicons name="location" size={18} color={colors.green} />
-              <View style={styles.gateText}>
-                <Text style={styles.gateName}>{gate.label}</Text>
-                <Text style={styles.gateId}>
-                  Gate #{gate.id} ({gate.code})
+      {/* ------------------------------------- date/time picker sheet (35H) */}
+      <Modal
+        visible={pickerOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setPickerOpen(false)}
+      >
+        <View style={styles.pickerBackdrop}>
+          <View style={styles.pickerCard}>
+            <ScrollView
+              keyboardShouldPersistTaps="handled"
+              showsVerticalScrollIndicator={false}
+            >
+              <Text style={styles.pickerTitle}>Date and time</Text>
+              <Text style={styles.pickerSub}>
+                {pickerParts
+                  ? `${formatDayLabel(pickerParts)}, ${formatTimeLabel(pickerParts)}`
+                  : ""}
+              </Text>
+
+              <View style={styles.monthRow}>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Previous month"
+                  onPress={() => shiftMonth(-1)}
+                  style={styles.monthBtn}
+                >
+                  <Ionicons name="chevron-back" size={20} color={colors.ink} />
+                </Pressable>
+                <Text style={styles.monthLabel}>
+                  {MONTHS_LONG[cursor.m - 1]} {cursor.y}
                 </Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Next month"
+                  onPress={() => shiftMonth(1)}
+                  style={styles.monthBtn}
+                >
+                  <Ionicons name="chevron-forward" size={20} color={colors.ink} />
+                </Pressable>
               </View>
-            </View>
-          ))
-        )}
-      </SectionCard>
 
-      <View style={styles.bottomPad} />
-    </ScrollView>
+              <View style={styles.weekRow}>
+                {["S", "M", "T", "W", "T", "F", "S"].map((d, i) => (
+                  <Text key={`${d}-${i}`} style={styles.weekday}>
+                    {d}
+                  </Text>
+                ))}
+              </View>
+              <View style={styles.dayGrid}>
+                {calendarGrid(cursor.y, cursor.m).map((day, idx) => {
+                  if (day === 0) {
+                    return <View key={`pad-${idx}`} style={styles.dayCell} />;
+                  }
+                  const selected =
+                    pickerParts !== null &&
+                    pickerParts.y === cursor.y &&
+                    pickerParts.m === cursor.m &&
+                    pickerParts.d === day;
+                  return (
+                    <Pressable
+                      key={day}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected }}
+                      accessibilityLabel={`${day} ${MONTHS_LONG[cursor.m - 1]} ${cursor.y}`}
+                      onPress={() =>
+                        setPickerParts((prev) =>
+                          prev ? { ...prev, y: cursor.y, m: cursor.m, d: day } : prev,
+                        )
+                      }
+                      style={[styles.dayCell, selected && styles.dayCellActive]}
+                    >
+                      <Text
+                        style={[styles.dayText, selected && styles.dayTextActive]}
+                      >
+                        {day}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.pickerLabel}>Hour</Text>
+              <View style={styles.chipWrap}>
+                {Array.from({ length: 24 }, (_, h) => h).map((h) => {
+                  const label = `${h % 12 === 0 ? 12 : h % 12} ${h < 12 ? "AM" : "PM"}`;
+                  const active = pickerParts?.hh === h;
+                  return (
+                    <Pressable
+                      key={h}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={label}
+                      onPress={() =>
+                        setPickerParts((prev) => (prev ? { ...prev, hh: h } : prev))
+                      }
+                      style={[styles.chip, active && styles.chipActive]}
+                    >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.pickerLabel}>Minute</Text>
+              <View style={styles.chipWrap}>
+                {[0, 15, 30, 45].map((m) => {
+                  const label = String(m).padStart(2, "0");
+                  const active = pickerParts?.mm === m;
+                  return (
+                    <Pressable
+                      key={m}
+                      accessibilityRole="button"
+                      accessibilityState={{ selected: active }}
+                      accessibilityLabel={`Minute ${label}`}
+                      onPress={() =>
+                        setPickerParts((prev) => (prev ? { ...prev, mm: m } : prev))
+                      }
+                      style={[styles.chip, active && styles.chipActive]}
+                    >
+                      <Text style={[styles.chipText, active && styles.chipTextActive]}>
+                        {label}
+                      </Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </ScrollView>
+            <AppButton
+              label="Set date and time"
+              icon="checkmark"
+              onPress={commitPicker}
+            />
+            <AppButton
+              label="Cancel"
+              variant="secondary"
+              onPress={() => setPickerOpen(false)}
+            />
+          </View>
+        </View>
+      </Modal>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  bottomPad: {
-    height: spacing.xl,
+const styles = {
+  // 33-QA (I7): text containers beside StatusPills need minWidth:0 —
+  // long server URLs must not inflate the row and clip the pill.
+  flex1: { flex: 1, minWidth: 0 },
+  connRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: spacing.sm,
+    marginBottom: spacing.md,
   },
-  buttonRow: {
-    flexDirection: "row",
+  connTitle: {
+    fontFamily: fonts.display,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  connBody: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 18,
+  },
+  probeNote: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
+  probeOk: {
+    color: colors.valid,
+  },
+  probeFail: {
+    color: colors.invalid,
+  },
+  connButtons: {
+    flexDirection: "row" as const,
     gap: spacing.sm,
     marginTop: spacing.md,
   },
-  centered: {
-    alignItems: "center",
-    backgroundColor: colors.background,
-    flex: 1,
+  formError: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.invalid,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  savedNote: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.valid,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
+  },
+  opsRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
     gap: spacing.sm,
-    justifyContent: "center",
-    padding: spacing.lg,
+    marginBottom: spacing.md,
   },
-  error: {
-    color: colors.red,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-    marginTop: spacing.xs,
+  opsStatus: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: 4,
   },
-  errorText: {
-    color: colors.red,
-    fontSize: fontSize.body,
-    textAlign: "center",
+  opsStatusText: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.ink,
   },
-  errorHint: {
-    color: colors.muted,
-    fontSize: fontSize.caption,
-    marginTop: spacing.sm,
-    textAlign: "center",
+  dtLabel: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.ink,
+    marginBottom: 6,
   },
-  retryButton: {
-    marginTop: spacing.md,
-    minWidth: 160,
-  },
-  flex: {
-    flex: 1,
-  },
-  flexButton: {
-    flex: 1,
-  },
-  gateId: {
-    color: colors.muted,
-    fontSize: fontSize.caption,
-  },
-  gateName: {
-    color: colors.text,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-  },
-  gateRow: {
-    alignItems: "center",
-    borderBottomColor: colors.border,
-    borderBottomWidth: 1,
-    flexDirection: "row",
-    gap: spacing.sm,
-    paddingVertical: spacing.sm,
-  },
-  gateText: {
-    flex: 1,
-  },
-  healthBad: {
-    backgroundColor: colors.redSoft,
-  },
-  healthBox: {
-    alignItems: "center",
-    borderRadius: radius.md,
-    flexDirection: "row",
-    gap: spacing.xs,
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-  },
-  healthOk: {
-    backgroundColor: colors.emeraldSoft,
-  },
-  healthText: {
-    flex: 1,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-  },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderColor: colors.border,
-    borderRadius: radius.md,
+  dtField: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
+    minHeight: 52,
     borderWidth: 1,
-    color: colors.text,
-    fontSize: fontSize.body,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  label: {
-    color: colors.greenDark,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
-    marginTop: spacing.sm,
-    textTransform: "uppercase",
-  },
-  loadingText: {
-    color: colors.muted,
-    fontSize: fontSize.body,
-  },
-  mutedText: {
-    color: colors.muted,
-    fontSize: fontSize.body,
-  },
-  root: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  row: {
-    flexDirection: "row",
-    gap: spacing.sm,
-  },
-  saved: {
-    color: colors.green,
-    flex: 1,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-    marginLeft: spacing.xs,
-  },
-  savedBox: {
-    alignItems: "center",
-    backgroundColor: colors.emeraldSoft,
+    borderColor: colors.track,
     borderRadius: radius.md,
-    flexDirection: "row",
+    backgroundColor: colors.paper,
+    paddingHorizontal: spacing.md,
+  },
+  dtValue: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  dtHint: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  btnNote: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 6,
+    lineHeight: 18,
+  },
+  pickerBackdrop: {
+    flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: "flex-end" as const,
+  },
+  pickerCard: {
+    backgroundColor: colors.paper,
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.track,
+    padding: spacing.screen,
+    paddingBottom: spacing.lg,
+    gap: spacing.sm,
+    maxHeight: "88%" as const,
+  },
+  pickerTitle: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    letterSpacing: -0.4,
+    color: colors.ink,
+  },
+  pickerSub: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
+  },
+  pickerLabel: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.ink,
     marginTop: spacing.sm,
-    padding: spacing.sm,
   },
-  topMargin: {
-    marginTop: spacing.md,
+  monthRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    justifyContent: "space-between" as const,
   },
-});
+  monthBtn: {
+    padding: 8,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.track,
+  },
+  monthLabel: {
+    fontFamily: fonts.display,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  weekRow: {
+    flexDirection: "row" as const,
+  },
+  weekday: {
+    // 35M item 18: calendar day letters are normal labels — sans,
+    // not DM Mono (mono is reserved for status chips + identifiers).
+    flex: 1,
+    textAlign: "center" as const,
+    fontFamily: fonts.displayMedium,
+    fontSize: 11,
+    color: colors.muted,
+    marginBottom: 4,
+  },
+  dayGrid: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+  },
+  dayCell: {
+    width: DAY_CELL_WIDTH,
+    aspectRatio: 1,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+  },
+  dayCellActive: {
+    backgroundColor: colors.ink,
+    borderRadius: radius.sm,
+  },
+  dayText: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  dayTextActive: {
+    // 35M R2 (item 14): family encodes the weight — display (bold).
+    fontFamily: fonts.display,
+    color: colors.paper,
+  },
+  chipWrap: {
+    flexDirection: "row" as const,
+    flexWrap: "wrap" as const,
+    gap: 6,
+  },
+  chip: {
+    flexGrow: 1,
+    flexBasis: "30%",
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    minHeight: 40,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.track,
+    backgroundColor: colors.paper,
+  },
+  chipActive: {
+    backgroundColor: colors.ink,
+    borderColor: colors.ink,
+  },
+  chipText: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.ink,
+  },
+  chipTextActive: {
+    // 35M R2 (item 14): family encodes the weight — display (bold).
+    fontFamily: fonts.display,
+    color: colors.paper,
+  },
+};

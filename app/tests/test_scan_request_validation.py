@@ -15,6 +15,8 @@ from pathlib import Path
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
+import review_test_support as review_support  # noqa: E402
+
 import config  # noqa: E402
 import database  # noqa: E402
 import ids  # noqa: E402
@@ -48,6 +50,7 @@ class ScanSyncRequestValidationTests(unittest.TestCase):
         self.app = create_app()
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
+        review_support.authenticate(self.client)
 
     def tearDown(self):
         config.DB_PATH = self.old_db_path

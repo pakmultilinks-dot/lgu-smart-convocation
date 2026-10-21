@@ -1,532 +1,534 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  FlatList,
-  Modal,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { useCallback, useState } from "react";
+import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import {
   ApiError,
   fetchGuests,
   isValidPhone,
   registerGuest,
+  revokeGuestPass,
   type Guest,
 } from "../api/client";
-import { EmptyState, ErrorState, LoadingState } from "../components/States";
-import { PrimaryButton } from "../components/PrimaryButton";
-import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
+import { colors, fonts, radius, spacing } from "../theme";
+import { maskPhone } from "../utils/phone";
+import {
+  AppButton,
+  AppHeader,
+  EmptyState,
+  ErrorState,
+  Field,
+  LoadingState,
+  Screen,
+  SectionCard,
+  SectionEyebrow,
+  SegmentedControl,
+  StatusPill,
+  formatLocalClock,
+} from "../ui";
 
-const AVATAR_COLORS = [colors.green, colors.emerald, colors.greenDeep, "#4C8056", "#7BA98C"];
+/**
+ * Guests — Screen 4 of the institutional system (Phase 35C).
+ * List FIRST: full name (wraps, never truncated), host roll on its own
+ * line, masked phone (tap to reveal — Phase 35H; single line, never
+ * ellipsised — 35I T.2), live pass state + pass action. Used passes show
+ * "Entered [date, ]HH:MM, gate" — 12h local clock; the DATE prefix appears
+ * when the entry is not from today (35I T.4). Top action is the primary
+ * "+ Add guest" toggle; the registration form sits below the list on
+ * paper/ink. Submit/showPass/list logic is unchanged from Phase 35B
+ * (single-use pass truth comes from the backend). 35M R2 (item 4): the
+ * phone mask lives in src/utils/phone.ts — the guest list and the guest
+ * pass artwork share one convention.
+ */
 
-function avatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) {
-    hash = (hash * 31 + name.charCodeAt(i)) >>> 0;
-  }
-  return AVATAR_COLORS[hash % AVATAR_COLORS.length];
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) {
-    return parts[0].slice(0, 1).toUpperCase();
-  }
-  return (parts[0].slice(0, 1) + parts[parts.length - 1].slice(0, 1)).toUpperCase();
-}
-
-type Filter = "all" | "active" | "used";
-
-function GuestRow({ guest }: { guest: Guest }) {
-  return (
-    <Pressable
-      onPress={() =>
-        router.push({ params: { gid: String(guest.id) }, pathname: "/guest-pass" })
-      }
-      style={({ pressed }) => [styles.row, pressed && styles.pressed]}
-    >
-      <View style={[styles.avatar, { backgroundColor: avatarColor(guest.name) }]}>
-        <Text style={styles.avatarText}>{initials(guest.name)}</Text>
-      </View>
-      <View style={styles.rowMain}>
-        <Text style={styles.name} numberOfLines={1}>
-          {guest.name}
-        </Text>
-        <Text style={styles.meta} numberOfLines={1}>
-          Host: {guest.host_roll_no} {"\u00B7"} {guest.phone}
-        </Text>
-      </View>
-      <View
-        style={[
-          styles.badge,
-          guest.used ? styles.badgeUsed : styles.badgeActive,
-        ]}
-      >
-        <Text
-          style={[
-            styles.badgeText,
-            guest.used ? styles.badgeTextUsed : styles.badgeTextActive,
-          ]}
-        >
-          {guest.used ? "USED" : "ACTIVE"}
-        </Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.muted} />
-    </Pressable>
-  );
-}
-
-const FILTERS: { label: string; value: Filter }[] = [
-  { label: "All", value: "all" },
-  { label: "Active", value: "active" },
-  { label: "Used", value: "used" },
+const MONTHS_SHORT = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
+/** 35I (T.4): 12h local time, with a "d MMM, " prefix when the entry
+    date is not today (viewer-local date — gate devices share the server's
+    timezone, so this matches the physical event day). */
+function usedStamp(usedAt: string | null | undefined): string | null {
+  if (!usedAt) return null;
+  const time = formatLocalClock(usedAt);
+  const m = /^(\d{4})-(\d{2})-(\d{2})[ T]/.exec(usedAt);
+  if (!m) return time;
+  const entryDay = `${m[1]}-${m[2]}-${m[3]}`;
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  if (entryDay === today) return time;
+  return `${Number(m[3])} ${MONTHS_SHORT[Number(m[2]) - 1]}, ${time}`;
+}
 export function GuestsScreen() {
-  const [guests, setGuests] = useState<Guest[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [filter, setFilter] = useState<Filter>("all");
-  const [formOpen, setFormOpen] = useState(false);
+  const [guests, setGuests] = useState<Guest[] | null>(null);
+  const [listError, setListError] = useState<string | null>(null);
+  // Phase 26C: the roster is scanner-gated; a 401 means sign in first.
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
   const [hostRoll, setHostRoll] = useState("");
+  const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+  const [formOpen, setFormOpen] = useState(false);
+  const [lastPass, setLastPass] = useState<{ gid: number; payload: string } | null>(
+    null,
+  );
+  // Phase 35H list tools: client-side search + Ready/Used filter +
+  // per-guest phone reveal (masked by default on shared gate devices).
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "used">("all");
+  const [revealedPhones, setRevealedPhones] = useState<Record<number, boolean>>({});
 
-  const load = useCallback(async (showSpinner: boolean) => {
-    if (showSpinner) {
-      setLoading(true);
-    }
+  const loadGuests = useCallback(async () => {
+    setListError(null);
+    setNeedsSignIn(false);
     try {
-      setGuests(await fetchGuests());
-      setError(null);
+      const list = await fetchGuests();
+      setGuests(list);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load guests.");
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
+      setGuests(null);
+      setNeedsSignIn(e instanceof ApiError && e.code === "scanner_auth_required");
+      setListError(
+        e instanceof Error ? e.message : "The guest list could not be loaded.",
+      );
     }
   }, []);
 
   useFocusEffect(
     useCallback(() => {
-      void load(true);
-    }, [load]),
+      void loadGuests();
+    }, [loadGuests]),
   );
 
-  // Search runs against the already-fetched list; the 300 ms debounce
-  // keeps the filter from re-running on every keystroke.
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(query), 300);
-    return () => clearTimeout(t);
-  }, [query]);
-
-  const visible = useMemo(() => {
-    const q = debouncedQuery.trim().toLowerCase();
-    return guests.filter((g) => {
-      if (filter === "active" && g.used) return false;
-      if (filter === "used" && !g.used) return false;
-      if (q.length === 0) return true;
-      return (
-        g.name.toLowerCase().includes(q) ||
-        g.host_roll_no.toLowerCase().includes(q) ||
-        g.phone.includes(q)
-      );
-    });
-  }, [guests, debouncedQuery, filter]);
-
-  const activeCount = guests.filter((g) => !g.used).length;
-
-  const resetForm = () => {
-    setName("");
-    setPhone("");
-    setHostRoll("");
+  const submit = useCallback(async () => {
+    const trimmedName = name.trim();
+    const trimmedPhone = phone.trim();
+    const trimmedHost = hostRoll.trim().toUpperCase();
+    if (!trimmedName) {
+      setFormError("Enter the guest's name.");
+      return;
+    }
+    if (!isValidPhone(trimmedPhone)) {
+      setFormError("Enter a valid Pakistani mobile number, e.g. 03001234567.");
+      return;
+    }
+    if (!trimmedHost) {
+      setFormError("Enter the host student's roll number.");
+      return;
+    }
+    setSaving(true);
     setFormError(null);
-  };
-
-  const submit = async () => {
-    if (name.trim().length === 0) {
-      setFormError("Guest name is required.");
-      return;
-    }
-    if (!isValidPhone(phone)) {
-      setFormError("Enter a valid mobile number, for example 03001234567.");
-      return;
-    }
-    if (hostRoll.trim().length === 0) {
-      setFormError("Host roll number is required.");
-      return;
-    }
-    setSubmitting(true);
-    setFormError(null);
+    setFormOpen(true);
     try {
-      const result = await registerGuest({
-        host_roll_no: hostRoll.trim(),
-        name: name.trim(),
-        phone: phone.trim(),
+      const pass = await registerGuest({
+        name: trimmedName,
+        phone: trimmedPhone,
+        host_roll_no: trimmedHost,
       });
-      setFormOpen(false);
-      resetForm();
-      await load(false);
-      router.push({
-        params: { gid: String(result.gid) },
-        pathname: "/guest-pass",
-      });
+      if (pass.ok && pass.gid != null && pass.payload) {
+        setLastPass({ gid: pass.gid, payload: pass.payload });
+      }
+      setName("");
+      setPhone("");
+      setHostRoll("");
+      await loadGuests();
     } catch (e) {
       setFormError(
-        e instanceof ApiError ? e.message : "Registration failed. Try again.",
+        e instanceof ApiError
+          ? e.message
+          : "The guest could not be registered. Check the connection and retry.",
       );
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
-  };
+  }, [name, phone, hostRoll, loadGuests]);
 
-  if (loading) {
-    return <LoadingState message="Loading guest list..." />;
-  }
+  const showPass = useCallback((gid: number) => {
+    router.push({ pathname: "/guest-pass", params: { gid: String(gid) } });
+  }, []);
 
-  if (error) {
-    return <ErrorState message={error} onRetry={() => void load(true)} />;
-  }
+  // Phase 34 (Part C): revoke an UNUSED active pass. Scanner-staff gated
+  // server-side; the confirm step keeps a shared gate device from revoking
+  // on a mis-tap. A used pass has no revoke (it keeps its 'used' meaning).
+  const revoke = useCallback((guest: Guest) => {
+    Alert.alert(
+      "Revoke guest pass?",
+      `${guest.name}'s pass will be refused at every gate. This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Revoke",
+          style: "destructive",
+          onPress: () => {
+            void revokeGuestPass(guest.id)
+              .then(() => loadGuests())
+              .catch((e: unknown) =>
+                Alert.alert(
+                  "Could not revoke",
+                  e instanceof Error ? e.message : "Try again.",
+                ),
+              );
+          },
+        },
+      ],
+    );
+  }, [loadGuests]);
+
+  const isReady = (g: Guest) => !g.used && g.status !== "revoked";
+
+  const filtered =
+    guests === null
+      ? []
+      : guests.filter((guest) => {
+          // Revoked is neither Ready nor Used — the filters stay honest.
+          if (statusFilter === "ready" && !isReady(guest)) return false;
+          if (statusFilter === "used" && !guest.used) return false;
+          const q = query.trim().toLowerCase();
+          if (!q) return true;
+          return (
+            guest.name.toLowerCase().includes(q) ||
+            guest.host_roll_no.toLowerCase().includes(q) ||
+            (guest.host_name ?? "").toLowerCase().includes(q) ||
+            guest.phone.includes(q)
+          );
+        });
 
   return (
-    <View style={styles.root}>
-      <View style={styles.searchWrap}>
-        <Ionicons name="search" size={20} color={colors.muted} />
-        <TextInput
-          style={styles.searchInput}
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search name, roll number, phone"
-          placeholderTextColor={colors.muted}
-          returnKeyType="search"
-        />
-        {query.length > 0 && (
-          <Pressable onPress={() => setQuery("")}>
-            <Ionicons name="close-circle" size={20} color={colors.muted} />
-          </Pressable>
-        )}
-      </View>
-
-      <View style={styles.filterRow}>
-        {FILTERS.map((f) => {
-          const active = filter === f.value;
-          return (
-            <Pressable
-              key={f.value}
-              onPress={() => setFilter(f.value)}
-              style={[styles.filterChip, active && styles.filterChipActive]}
-            >
-              <Text style={[styles.filterText, active && styles.filterTextActive]}>
-                {f.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-        <Text style={styles.countText}>
-          {activeCount} active of {guests.length}
-        </Text>
-      </View>
-
-      <FlatList
-        data={visible}
-        keyExtractor={(g) => String(g.id)}
-        renderItem={({ item }) => <GuestRow guest={item} />}
-        contentContainerStyle={styles.list}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={() => {
-              setRefreshing(true);
-              void load(false);
-            }}
-            colors={[colors.green]}
-          />
-        }
-        ListEmptyComponent={
-          <EmptyState
-            icon="people-outline"
-            title={debouncedQuery ? "No matches" : "No guests yet"}
-            message={
-              debouncedQuery
-                ? "Try a different name, roll number, or phone number."
-                : "Register a guest with the button below to issue a single-use entry pass."
-            }
-          />
-        }
+    <Screen>
+      <AppHeader
+        title="Guest registration"
+        subtitle="Single-use passes, tied to a host."
       />
 
-      <Pressable
-        style={({ pressed }) => [styles.fab, pressed && styles.fabPressed]}
-        onPress={() => {
-          resetForm();
-          setFormOpen(true);
-        }}
-      >
-        <Ionicons name="add" size={30} color={colors.white} />
-      </Pressable>
+      {/* Top action — primary (35I T.3), no icon, never a hero card. */}
+      <AppButton
+        label="+ Add guest"
+        variant="primary"
+        onPress={() => setFormOpen((open) => !open)}
+      />
 
-      <Modal visible={formOpen} animationType="slide" transparent>
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Register Guest</Text>
-            <View style={styles.modalRule} />
-
-            <Text style={styles.label}>Guest name</Text>
-            <TextInput
-              style={styles.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Full name"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="words"
+      {/* 1 — Guest list FIRST. */}
+      <SectionCard>
+        <SectionEyebrow>
+          {guests
+            ? `Guest list · ${guests.length} registered · ${guests.filter(isReady).length} ready · ${guests.filter((g) => g.used).length} used${guests.some((g) => g.status === "revoked") ? ` · ${guests.filter((g) => g.status === "revoked").length} revoked` : ""}`
+            : "Guest list"}
+        </SectionEyebrow>
+        {listError ? (
+          <ErrorState
+            title={needsSignIn ? "Sign in to view guests" : "Guest list unavailable"}
+            body={
+              needsSignIn
+                ? "The guest list is restricted to signed-in scanner staff. Sign in on the Scanner tab, then retry."
+                : listError
+            }
+            onRetry={() => void loadGuests()}
+          />
+        ) : guests === null ? (
+          <LoadingState label="Loading guests..." />
+        ) : guests.length === 0 ? (
+          <EmptyState
+            icon="people-outline"
+            title="No guests registered yet"
+            body="Registered guests appear here with their live pass state."
+          />
+        ) : (
+          <>
+            {/* 35I (T.6): no label — the placeholder + proximity to the
+                list make the field's purpose obvious. 33-QA (I20): the
+                placeholder reads "Name or phone" — the fields volunteers
+                actually search by; roll/host matching still works
+                server-side and in the filter below. */}
+            <Field
+              placeholder="Name or phone"
+              value={query}
+              onChangeText={setQuery}
+              autoCapitalize="none"
             />
-
-            <Text style={styles.label}>Phone</Text>
-            <TextInput
-              style={styles.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="03001234567"
-              placeholderTextColor={colors.muted}
-              keyboardType="phone-pad"
-            />
-
-            <Text style={styles.label}>Host roll number</Text>
-            <TextInput
-              style={styles.input}
-              value={hostRoll}
-              onChangeText={setHostRoll}
-              placeholder="Student roll number of the host"
-              placeholderTextColor={colors.muted}
-              autoCapitalize="characters"
-            />
-
-            {formError && <Text style={styles.formError}>{formError}</Text>}
-
-            <View style={styles.modalButtons}>
-              <PrimaryButton
-                title="Cancel"
-                onPress={() => setFormOpen(false)}
-                variant="outline"
-                style={styles.modalButton}
-              />
-              <PrimaryButton
-                title="Register"
-                onPress={() => void submit()}
-                loading={submitting}
-                style={styles.modalButton}
+            <View style={styles.filterRow}>
+              <SegmentedControl
+                options={[
+                  { label: "All", value: "all" },
+                  { label: "Ready", value: "ready" },
+                  { label: "Used", value: "used" },
+                ]}
+                value={statusFilter}
+                onChange={setStatusFilter}
               />
             </View>
-          </View>
-        </View>
-      </Modal>
-    </View>
+            {query.trim() !== "" || statusFilter !== "all" ? (
+              <AppButton
+                label="Clear filters"
+                variant="ghost"
+                size="md"
+                onPress={() => {
+                  setQuery("");
+                  setStatusFilter("all");
+                }}
+              />
+            ) : null}
+            {filtered.length === 0 ? (
+              <EmptyState
+                icon="search-outline"
+                title="No guests match"
+                body="Try a different name, roll number, or phone — or clear the filters."
+              />
+            ) : (
+              <ScrollView nestedScrollEnabled showsVerticalScrollIndicator={false}>
+                {filtered.map((guest) => (
+                  <View key={guest.id} style={styles.guestRow}>
+                    <View style={styles.flex1}>
+                      <View style={styles.guestTitleRow}>
+                        {/* Names wrap — never truncated (bug 9). */}
+                        <Text style={styles.guestName}>{guest.name}</Text>
+                        <StatusPill
+                          state={
+                            guest.status === "revoked"
+                              ? "duplicate"
+                              : guest.used
+                                ? "nodata"
+                                : "accept"
+                          }
+                          label={
+                            guest.status === "revoked"
+                              ? "Revoked"
+                              : guest.used
+                                ? "Used"
+                                : "Ready"
+                          }
+                          size="sm"
+                        />
+                      </View>
+                      {/* 33-QA (I23): the host line carries NAME + roll —
+                          the roll alone means nothing at the gate. */}
+                      <Text style={styles.guestMeta}>
+                        Host{" "}
+                        {guest.host_name
+                          ? `${guest.host_name} (${guest.host_roll_no})`
+                          : guest.host_roll_no}
+                      </Text>
+                      {/* QA fix cycle 2: no phone on record says so —
+                          never an empty row or a fake mask. */}
+                      {guest.phone ? (
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={
+                            revealedPhones[guest.id]
+                              ? `Hide phone number for ${guest.name}`
+                              : `Show phone number for ${guest.name}`
+                          }
+                          onPress={() =>
+                            setRevealedPhones((prev) => ({
+                              ...prev,
+                              [guest.id]: !prev[guest.id],
+                            }))
+                          }
+                        >
+                          {/* 35I (T.2): single line — long numbers never
+                              ellipsise into a wrong-looking number. */}
+                          <Text style={styles.guestMeta} numberOfLines={1}>
+                            {revealedPhones[guest.id]
+                              ? guest.phone
+                              : maskPhone(guest.phone)}
+                          </Text>
+                        </Pressable>
+                      ) : (
+                        <Text style={styles.guestMeta}>No phone</Text>
+                      )}
+                      {guest.used ? (
+                        <Text style={styles.guestMeta}>
+                          Entered {usedStamp(guest.used_at)}
+                          {guest.used_gate ? `, ${guest.used_gate}` : ""}
+                        </Text>
+                      ) : null}
+                    </View>
+                    {guest.used ? null : (
+                      <View style={styles.passActions}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel={`Open pass for ${guest.name}`}
+                          onPress={() => showPass(guest.id)}
+                          style={styles.passLink}
+                        >
+                          {/* QA fix cycle 3 (Issue 10): an explicit action
+                              label — always "Show pass", never a bare
+                              "Pass" or an id the operator must decode. */}
+                          <Text style={styles.passLinkText}>Show pass</Text>
+                        </Pressable>
+                        {/* Phase 34 (Part C): revoke is only offered for an
+                            active pass — a revoked pass offers nothing. */}
+                        {guest.status === "revoked" ? null : (
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel={`Revoke pass for ${guest.name}`}
+                            onPress={() => revoke(guest)}
+                            style={styles.passLink}
+                          >
+                            <Text style={[styles.passLinkText, styles.revokeText]}>
+                              Revoke
+                            </Text>
+                          </Pressable>
+                        )}
+                      </View>
+                    )}
+                  </View>
+                ))}
+              </ScrollView>
+            )}
+          </>
+        )}
+      </SectionCard>
+
+      {/* 2 — Registration form below the list, paper/ink, revealed by the
+          inline Add guest action. Submit/showPass logic unchanged. */}
+      {formOpen ? (
+        <SectionCard tone="tint">
+          <SectionEyebrow>Register a guest</SectionEyebrow>
+          <Field
+            label="Guest name"
+            placeholder="Full name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+          />
+          <Field
+            label="Mobile number"
+            placeholder="03XXXXXXXXX"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            hint="Used to verify the pass at the gate."
+          />
+          <Field
+            label="Host roll number"
+            placeholder="LGU-2024-XXXX"
+            value={hostRoll}
+            onChangeText={(t) => setHostRoll(t.toUpperCase())}
+            autoCapitalize="characters"
+            hint="The host student must already exist in the system."
+          />
+          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+          <AppButton
+            label={saving ? "Registering..." : "Register guest"}
+            icon="person-add-outline"
+            loading={saving}
+            onPress={() => void submit()}
+          />
+          {lastPass ? (
+            <View style={styles.passCreated}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.valid} />
+              <View style={styles.flex1}>
+                <Text style={styles.passCreatedTitle}>Guest registered</Text>
+                <Text style={styles.passCreatedBody} numberOfLines={2}>
+                  Pass created. Show the QR pass to the guest now.
+                </Text>
+              </View>
+              <AppButton
+                label="Show pass"
+                variant="secondary"
+                size="md"
+                onPress={() => showPass(lastPass.gid)}
+                style={styles.passCreatedButton}
+              />
+            </View>
+          ) : null}
+        </SectionCard>
+      ) : null}
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  avatar: {
-    alignItems: "center",
-    borderRadius: radius.full,
-    height: 48,
-    justifyContent: "center",
-    width: 48,
+const styles = {
+  flex1: { flex: 1 },
+  formError: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.invalid,
+    marginBottom: spacing.sm,
+    lineHeight: 18,
   },
-  avatarText: {
-    color: colors.white,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.bold,
+  passCreated: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
+    gap: spacing.sm,
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.track,
+    backgroundColor: colors.paper,
   },
-  badge: {
-    borderRadius: radius.full,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  passCreatedTitle: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
+    color: colors.ink,
   },
-  badgeActive: {
-    backgroundColor: colors.emeraldSoft,
-  },
-  badgeText: {
-    fontSize: fontSize.small,
-    fontWeight: fontWeight.bold,
-  },
-  badgeTextActive: {
-    color: colors.green,
-  },
-  badgeTextUsed: {
+  passCreatedBody: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
     color: colors.muted,
+    marginTop: 2,
+    lineHeight: 18,
   },
-  badgeUsed: {
-    backgroundColor: colors.border,
+  passCreatedButton: {
+    minHeight: 48,
   },
-  countText: {
-    color: colors.muted,
-    fontSize: fontSize.caption,
-    marginLeft: "auto",
-  },
-  fab: {
-    alignItems: "center",
-    backgroundColor: colors.green,
-    borderRadius: radius.full,
-    bottom: spacing.lg,
-    elevation: 6,
-    height: 62,
-    justifyContent: "center",
-    position: "absolute",
-    right: spacing.lg,
-    shadowColor: colors.greenDark,
-    shadowOffset: { height: 3, width: 0 },
-    shadowOpacity: 0.35,
-    shadowRadius: 8,
-    width: 62,
-  },
-  fabPressed: {
-    opacity: 0.85,
-  },
-  filterChip: {
-    backgroundColor: colors.tint,
-    borderRadius: radius.full,
-    marginRight: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  filterChipActive: {
-    backgroundColor: colors.green,
+  guestRow: {
+    flexDirection: "row" as const,
+    alignItems: "flex-start" as const,
+    gap: spacing.md,
+    paddingVertical: spacing.md,
   },
   filterRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  filterText: {
-    color: colors.muted,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-  },
-  filterTextActive: {
-    color: colors.white,
-  },
-  formError: {
-    color: colors.red,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-    marginTop: spacing.sm,
-  },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: fontSize.body,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  label: {
-    color: colors.greenDark,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
-    marginTop: spacing.md,
-    textTransform: "uppercase",
-  },
-  list: {
-    flexGrow: 1,
-    padding: spacing.md,
-    paddingTop: spacing.sm,
-  },
-  meta: {
-    color: colors.muted,
-    fontSize: fontSize.caption,
-    marginTop: 2,
-  },
-  modalBackdrop: {
-    backgroundColor: colors.overlay,
-    flex: 1,
-    justifyContent: "flex-end",
-  },
-  modalButton: {
-    flex: 1,
-  },
-  modalButtons: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  modalCard: {
-    backgroundColor: colors.white,
-    borderTopLeftRadius: radius.lg,
-    borderTopRightRadius: radius.lg,
-    padding: spacing.lg,
-  },
-  modalRule: {
-    backgroundColor: colors.emerald,
-    borderRadius: radius.sm,
-    height: 3,
-    marginTop: spacing.xs,
-    width: 44,
-  },
-  modalTitle: {
-    color: colors.greenDark,
-    fontSize: fontSize.heading,
-    fontWeight: fontWeight.bold,
-  },
-  name: {
-    color: colors.text,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-  },
-  pressed: {
-    opacity: 0.9,
-  },
-  root: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  row: {
-    alignItems: "center",
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    elevation: 2,
-    flexDirection: "row",
-    gap: spacing.sm,
     marginBottom: spacing.sm,
-    padding: spacing.md,
-    shadowColor: colors.greenDark,
-    shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
   },
-  rowMain: {
+  guestTitleRow: {
+    flexDirection: "row" as const,
+    alignItems: "flex-start" as const,
+    gap: spacing.sm,
+  },
+  guestName: {
     flex: 1,
-    minWidth: 0,
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
+    color: colors.ink,
   },
-  searchInput: {
-    color: colors.text,
-    flex: 1,
-    fontSize: fontSize.body,
-    marginLeft: spacing.sm,
+  guestMeta: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 2,
+    lineHeight: 18,
   },
-  searchWrap: {
-    alignItems: "center",
-    backgroundColor: colors.white,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
+  // 35J (Q): Pass stays a compact text action — but with a real 48px
+  // touch target and an outlined button treatment, aligned with the
+  // guest-name row (Used guests still show no Pass action at all).
+  passLink: {
+    minHeight: 48,
+    minWidth: 48,
+    paddingHorizontal: spacing.sm,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    alignSelf: "flex-start" as const,
+    borderRadius: radius.sm,
     borderWidth: 1,
-    flexDirection: "row",
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    borderColor: colors.track,
+    backgroundColor: colors.paper,
   },
-});
+  passLinkText: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.ink,
+  },
+  // Phase 34 (Part C): stack Show pass / Revoke without widening the row.
+  passActions: {
+    alignItems: "flex-end" as const,
+    justifyContent: "center" as const,
+    gap: spacing.xs,
+  },
+  revokeText: {
+    color: colors.invalid,
+  },
+};

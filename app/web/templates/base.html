@@ -22,7 +22,7 @@
     <a href="{{ url_for('main.dashboard') }}" class="{% if request.path.startswith('/dashboard') %}active{% endif %}">Live Dashboard</a>
     <a href="{{ url_for('main.scan_page') }}" class="{% if request.path.startswith('/scan') %}active{% endif %}">Gate Scanner</a>
     <a href="{{ url_for('main.guests') }}" class="{% if request.path.startswith('/guests') %}active{% endif %}">Guests</a>
-    <a href="{{ url_for('main.broadcast') }}" class="{% if request.path.startswith('/broadcast') %}active{% endif %}">Broadcast</a>
+    <a href="{{ url_for('main.broadcast') }}" class="{% if request.path.startswith('/broadcast') %}active{% endif %}">Announcement</a>
     <a href="{{ url_for('main.admin') }}" class="{% if request.path.startswith('/admin') %}active{% endif %}">Admin</a>
   </div>
 </nav>

@@ -12,9 +12,9 @@
     <a class="btn ghost" href="{{ url_for('main.guests') }}">Back to guests</a>
   </div>
   <div class="guest-pass">
-    <div class="band" style="background:var(--green);color:#fff;font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;display:inline-block;letter-spacing:.5px">GUEST PASS: SINGLE USE</div>
-    <h2 style="color:var(--navy-dark);margin:10px 0 2px">{{ guest.name }}</h2>
-    <p style="margin:0;color:var(--muted);font-size:14px">Guest of {{ guest.host_roll_no }} &middot; {{ guest.phone }}</p>
+    <div class="band" style="background:var(--ink);color:var(--paper);font-size:11px;font-weight:700;padding:4px 10px;border-radius:4px;display:inline-block;letter-spacing:.5px">GUEST PASS: SINGLE USE</div>
+    <h2 style="color:var(--ink);margin:10px 0 2px">{{ guest.name }}</h2>
+    <p style="margin:0;color:var(--muted);font-size:14px">Guest of {% if guest.host_name %}{{ guest.host_name }} ({{ guest.host_roll_no }}){% else %}{{ guest.host_roll_no }}{% endif %} &middot; {{ guest.phone }}</p>
     <p style="margin:12px 0"><img src="{{ qr }}" alt="Guest QR code"></p>
     <p style="font-size:13px;color:var(--muted);margin:0">Present at any gate. This code works exactly once.<br>Present valid ID with this pass.</p>
   </div>

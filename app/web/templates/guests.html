@@ -28,17 +28,29 @@
   </div>
 </div>
 
+{# Phase 27 C2: the roster only ever reaches this template from the
+   protected /guests/directory route. The public /guests shell passes no
+   `guests` variable, so the page source carries no guest rows, phone
+   numbers or host records for an anonymous caller. #}
+{% if guests is defined %}
 <div class="card">
   <h2>Registered guests</h2>
   <table>
-    <tr><th>Guest</th><th>Phone</th><th>Host roll no</th><th>Status</th><th>Pass</th></tr>
+    <tr><th>Guest</th><th>Phone</th><th>Host</th><th>Status</th><th>Pass</th></tr>
     {% for g in guests %}
     <tr>
-      <td>{{ g.name }}</td><td>{{ g.phone }}</td><td>{{ g.host_roll_no }}</td>
+      <td>{{ g.name }}</td><td>{{ g.phone }}</td><td>{% if g.host_name %}{{ g.host_name }}<br><small>{{ g.host_roll_no }}</small>{% else %}{{ g.host_roll_no }}{% endif %}</td>
       <td>{% if g.used %}<span class="badge exit">USED</span>{% else %}<span class="badge entry">ACTIVE</span>{% endif %}</td>
       <td><a href="{{ url_for('main.guest_pass', gid=g.id) }}" target="_blank">Print pass</a></td>
     </tr>
     {% endfor %}
   </table>
 </div>
+{% elif is_staff %}
+<div class="card no-print">
+  <h2>Registered guests</h2>
+  <p class="page-sub" style="margin:0">Staff session active &mdash;
+    <a href="{{ url_for('main.guest_directory') }}">open the protected guest directory</a>.</p>
+</div>
+{% endif %}
 {% endblock %}

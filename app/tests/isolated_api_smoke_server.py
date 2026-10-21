@@ -3,12 +3,20 @@
 Never import app/run.py or open the default app/lgu.db.
 """
 import os
+import secrets
 from pathlib import Path
 import sys
 import tempfile
 
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
+
+# Only synthetic data is provisioned below. Use per-run keys so this helper
+# can also exercise the explicit-production policy without demo credentials.
+os.environ["LGU_TESTING"] = "1"
+os.environ.setdefault("LGU_SECRET_KEY", secrets.token_urlsafe(48))
+os.environ.setdefault("LGU_HMAC_SECRET", secrets.token_urlsafe(48))
+os.environ.setdefault("LGU_ADMIN_PIN", str(secrets.randbelow(900000) + 100000))
 
 import config  # noqa: E402
 import database  # noqa: E402

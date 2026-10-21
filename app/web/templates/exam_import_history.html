@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Import history · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Import History</h1>
+<p class="page-sub">{% if conv %}{{ conv.name }} · {% endif %}every upload, preview and commit, newest first.</p>
+<div class="btn-row">
+  <a class="btn green" href="{{ url_for('exam.import_upload') }}">New import</a>
+  <a class="btn ghost" href="{{ url_for('exam.registrations') }}">Registrations list</a>
+</div>
+<div class="card">
+  <table>
+    <tr><th>Batch</th><th>File</th><th>Uploaded</th><th>By</th><th>Status</th><th>Rows (valid/invalid/dup/conflict)</th><th>Result</th></tr>
+    {% for b in batches %}
+    <tr>
+      <td><a href="{{ url_for('exam.import_review', batch_id=b.id) }}">#{{ b.id }}</a></td>
+      <td>{{ b.filename }}</td>
+      <td>{{ b.created_at }}</td>
+      <td>{{ b.created_by }}</td>
+      <td><span class="badge {{ 'entry' if b.status == 'committed' else ('bad' if b.status == 'failed' else 'queued') }}">{{ b.status }}</span>{% if b.mode %} <span class="badge exit">{{ b.mode }}</span>{% endif %}</td>
+      <td>{{ b.valid_rows }} / {{ b.invalid_rows }} / {{ b.duplicate_rows }} / {{ b.conflict_rows }}</td>
+      <td>{% if b.result %}{{ b.result.inserted }} inserted, {{ b.result.updated }} updated, {{ b.result.unchanged }} unchanged{% else %}—{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7">No imports yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

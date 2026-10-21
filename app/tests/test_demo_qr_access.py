@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import review_test_support as review_support  # noqa: E402
+
 from web import routes  # noqa: E402
 
 

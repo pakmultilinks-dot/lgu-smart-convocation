@@ -1,0 +1,69 @@
+{% extends "base.html" %}
+{% block title %}{{ 'Add medalist' if not row else row.student_name }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ 'Add Medalist' if not row else row.student_name }}</h1>
+{% if row %}<p class="page-sub">{{ row.department }} · {{ row.award_category }}{{ ' · Position ' + row.position if row.position }} · <span class="badge {{ 'entry' if row.publication == 'published' else 'queued' }}">{{ row.publication }}</span></p>{% endif %}
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+{% if saved %}<p class="notice ok">Saved.</p>{% endif %}
+{% set f = form if form else {'department': row.department, 'student_name': row.student_name, 'award_category': row.award_category, 'position': row.position, 'reference_number': row.reference_number} %}
+<div class="card">
+  <h2>{{ 'Record' if row else 'New record' }}</h2>
+  <form method="post" action="{{ url_for('medalists.edit', medalist_id=row.id) if row else url_for('medalists.create') }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="department">Department *</label>
+    <input id="department" type="text" name="department" value="{{ f.department }}" maxlength="120" required>
+    <label for="student_name">Student name *</label>
+    <input id="student_name" type="text" name="student_name" value="{{ f.student_name }}" maxlength="120" required>
+    <label for="award_category">Award category *</label>
+    <input id="award_category" type="text" name="award_category" value="{{ f.award_category }}" maxlength="60" list="medal-categories" required>
+    <datalist id="medal-categories">
+      <option value="gold"><option value="silver"><option value="bronze">
+    </datalist>
+    <label for="position">Position / award rank</label>
+    <input id="position" type="text" name="position" value="{{ f.position }}" maxlength="60" placeholder="e.g. 1, 2, 3 — optional for single awards">
+    <label for="reference_number">Reference number</label>
+    <input id="reference_number" type="text" name="reference_number" value="{{ f.reference_number }}" maxlength="64" placeholder="Optional identifier matching the official list">
+    <p class="page-sub">Assumption pending LGU confirmation: no official medalist identifier format has been published; the reference is matched against this convocation's registration numbers and roll numbers only.</p>
+    <div class="btn-row"><button class="btn green" type="submit">{{ 'Save changes' if row else 'Create draft record' }}</button>
+    <a class="btn ghost" href="{{ url_for('medalists.list_view') }}">Back to list</a></div>
+  </form>
+</div>
+{% if row %}
+<div class="card">
+  <h2>Approved picture</h2>
+  {% if row.photo_file %}
+  <p class="page-sub">A picture is stored ({{ row.photo_mime }}). Uploading a new one replaces it.</p>
+  {% else %}
+  <p class="page-sub">No picture yet. A picture is required before this record can be published.</p>
+  {% endif %}
+  <form method="post" action="{{ url_for('medalists.upload_photo', medalist_id=row.id) }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="photo">Picture (JPEG, PNG or WebP · up to 5 MB · validated server-side)</label>
+    <input id="photo" type="file" name="photo" accept="image/jpeg,image/png,image/webp" required>
+    <div class="btn-row"><button class="btn" type="submit">Upload picture</button></div>
+  </form>
+  <div class="btn-row">
+    {% if row.publication == 'draft' %}
+    <form method="post" action="{{ url_for('medalists.publication', medalist_id=row.id, action='publish') }}">
+      <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+      <button class="btn green" type="submit">Publish to the student board</button>
+    </form>
+    {% else %}
+    <form method="post" action="{{ url_for('medalists.publication', medalist_id=row.id, action='unpublish') }}">
+      <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+      <button class="btn" type="submit">Unpublish (hide from the board)</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+<div class="card">
+  <h2>Change history</h2>
+  {% for e in trail %}
+  <p class="page-sub">{{ e.created_at }} · {{ e.actor }} · <strong>{{ e.action }}</strong>
+  {% for k, before, after in e.changes %} — {{ k }}: {{ before }} &rarr; {{ after }}{% endfor %}</p>
+  {% else %}
+  <p class="page-sub">No recorded changes.</p>
+  {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,107 @@
+{% extends "base.html" %}
+{% block title %}{{ item.reference }} · Support · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Support request {{ item.reference }}</h1>
+<p class="page-sub">
+  <span class="badge {{ {'resolved': 'entry', 'rejected': 'bad', 'info_required': 'queued'}.get(item.status, 'queued') }}">{{ status_labels.get(item.status, item.status) }}</span>
+  {{ category_labels.get(item.category, item.category) }}
+  · opened {{ item.created_at[:16] }} by {{ account_email or 'a student account' }}
+  {% if item.handled_by %} · last handled by {{ item.handled_by }}{% endif %}
+</p>
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+<div class="card">
+  <h2>What the student reported</h2>
+  <p class="page-sub"><strong>{{ item.subject }}</strong></p>
+  <p>{{ item.message }}</p>
+</div>
+
+{% if registration %}
+<div class="card">
+  <h2>Associated official record</h2>
+  <p class="page-sub">This student had a claimed registration when they opened the request.</p>
+  <table>
+    <tr><th>Registration</th><th>Roll no.</th><th>Student</th><th>Department</th><th>Status</th></tr>
+    <tr>
+      <td>{{ registration.registration_number }}</td>
+      <td>{{ registration.roll_number }}</td>
+      <td>{{ registration.student_name }}</td>
+      <td>{{ registration.department or '—' }}</td>
+      <td><span class="badge {{ {'active': 'entry', 'cancelled': 'queued', 'revoked': 'bad'}.get(registration.status, 'queued') }}">{{ registration.status }}</span></td>
+    </tr>
+  </table>
+  <div class="btn-row">
+    <a class="btn" href="{{ registration_detail_url }}">Open the registration record</a>
+  </div>
+  <p class="page-sub">Corrections are applied on the registration screen, which
+  records its own audit trail. Resolving this request does not change the record.</p>
+</div>
+{% else %}
+<div class="notice warn"><p>No registration is linked to this request — the
+student may be reporting a missing or unclaimed registration number. Confirm the
+official record before applying any correction.</p></div>
+{% endif %}
+
+<div class="card">
+  <h2>Update status</h2>
+  <form method="post" action="{{ url_for('exam.support_status', request_id=item.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="status">Move to</label>
+    <select id="status" name="status">
+      {% for s in statuses %}
+      <option value="{{ s }}" {% if s == item.status %}disabled{% endif %}>{{ status_labels[s] }}{% if s == item.status %} (current){% endif %}</option>
+      {% endfor %}
+    </select>
+    <div class="btn-row"><button class="btn" type="submit">Update status</button></div>
+  </form>
+  <p class="page-sub">Allowed from <strong>{{ status_labels.get(item.status, item.status) }}</strong>:
+  {% if transitions %}{% for t in transitions %}{{ status_labels[t] }}{% if not loop.last %}, {% endif %}{% endfor %}{% else %}none (this is a final status — reopen to review first){% endif %}.</p>
+</div>
+
+<div class="card">
+  <h2>Respond to the student</h2>
+  <p class="page-sub">A reply the student can read in their app. Choose a status
+  to apply with it, or leave it as the default so the request simply moves under review.</p>
+  <form method="post" action="{{ url_for('exam.support_respond', request_id=item.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="message">Response to the student</label>
+    <textarea id="message" name="message" rows="4" required maxlength="{{ message_max }}"></textarea>
+    <label for="status">Apply status with this response</label>
+    <select id="status" name="status">
+      <option value="">Leave status unchanged</option>
+      {% for s in statuses %}
+      <option value="{{ s }}" {% if s == item.status %}disabled{% endif %}>{{ status_labels[s] }}</option>
+      {% endfor %}
+    </select>
+    <div class="btn-row">
+      <button class="btn" type="submit" name="internal" value="0">Send response</button>
+      <button class="btn ghost" type="submit" name="internal" value="1">Save as internal note</button>
+    </div>
+  </form>
+  <p class="page-sub">An <strong>internal note</strong> is saved only in this portal —
+  the student never sees it. A resolved or rejected response should explain the decision.</p>
+</div>
+
+<div class="card">
+  <h2>Update history</h2>
+  <table>
+    <tr><th>When</th><th>Who</th><th>Action</th><th>Detail</th><th>Status</th></tr>
+    {% for e in trail %}
+    <tr>
+      <td>{{ e.created_at[:16] }}</td>
+      <td>{{ e.actor }}{% if e.actor_role == 'staff' %} (staff){% else %} (student){% endif %}{% if not e.student_visible %} <span class="badge queued">INTERNAL</span>{% endif %}</td>
+      <td>{{ e.action }}</td>
+      <td>{{ e.body or '—' }}</td>
+      <td>{% if e.after_status %}{{ status_labels.get(e.after_status, e.after_status) }}{% else %}—{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5">No history recorded.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+
+<div class="btn-row">
+  <a class="btn ghost" href="{{ url_for('exam.support_queue') }}">Back to the queue</a>
+</div>
+{% endblock %}

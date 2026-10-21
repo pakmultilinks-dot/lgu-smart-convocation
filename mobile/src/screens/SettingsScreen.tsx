@@ -1,324 +1,296 @@
 import { Ionicons } from "@expo/vector-icons";
-import Constants from "expo-constants";
-import { router } from "expo-router";
-import * as Linking from "expo-linking";
-import { useEffect, useState } from "react";
-import {
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
-import { PrimaryButton } from "../components/PrimaryButton";
-import { BackendConnectionCard } from "../components/BackendConnectionCard";
-import { SectionCard } from "../components/SectionCard";
-import {
-  APP_NAME,
-  CONVOCATION_YEAR,
-  MOTTO,
-  UNIVERSITY_NAME,
-} from "../config";
-import { clearAppMode, getAppMode, type AppMode } from "../store/appMode";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
+import { Text, View } from "react-native";
 import {
   getApiBaseUrl,
+  getApiBaseUrlMode,
   getVolunteerName,
+  probeBackend,
   setVolunteerName,
 } from "../store/settings";
-import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
+import { isValidVolunteerName } from "../scanner/scanResultLogic";
+import { getAppMode, type AppMode } from "../store/appMode";
+import { queueCount } from "../store/offlineQueue";
+import { colors, fonts, spacing } from "../theme";
+import {
+  AppButton,
+  AppHeader,
+  Field,
+  Screen,
+  SectionCard,
+  SectionEyebrow,
+  StatusPill,
+  formatClock,
+} from "../ui";
 
-function modeLabel(mode: AppMode | null): string {
-  if (mode === "volunteer") return "Volunteer";
-  if (mode === "liveboard") return "Live Board";
-  return "Not set";
-}
-
-const APP_VERSION = Constants.expoConfig?.version ?? "";
-
+/**
+ * Settings — Screen 5 of the institutional system (Phase 35C).
+ * Title exactly "Settings" (35I U.2: no event eyebrow — the title alone
+ * names the screen). Sections: Volunteer name / Mode / Advanced,
+ * separated by dashed divider lines; the broadcast entry moved to More
+ * (admin-gated) in Phase 35G. Exactly ONE
+ * "Change mode" action (the reset row and all developer terminology are
+ * removed); connection wording is operator language only. 35I (U.1):
+ * Save name is disabled unless the text actually changed — the baseline
+ * is the stored volunteer name itself (no duplicate storage key).
+ */
 export function SettingsScreen() {
-  const [appMode, setAppMode] = useState<AppMode | null>(null);
-  const [volunteer, setVolunteer] = useState("");
-  const [savedNote, setSavedNote] = useState<string | null>(null);
-  const [linkError, setLinkError] = useState<string | null>(null);
+  const [name, setName] = useState("");
+  const [nameBaseline, setNameBaseline] = useState("");
+  const [mode, setMode] = useState<AppMode | null>(null);
+  const [baseUrlMode, setBaseUrlMode] = useState<"auto" | "custom">("auto");
+  const [hostHint, setHostHint] = useState("");
+  const [queued, setQueued] = useState(0);
+  const [saved, setSaved] = useState(false);
+  // 33-QA (I16): the Advanced pill reports a REAL probe of the effective
+  // server — never "READY" from queue state alone — and every verdict is
+  // stamped with the time it was taken.
+  const [probe, setProbe] = useState<"idle" | "checking" | "ok" | "down">("idle");
+  const [testedAt, setTestedAt] = useState(0);
 
-  useEffect(() => {
-    void getAppMode().then(setAppMode);
-    void getVolunteerName().then(setVolunteer);
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      void (async () => {
+        const [storedName, storedMode, apiMode, url, q] = await Promise.all([
+          getVolunteerName(),
+          getAppMode(),
+          getApiBaseUrlMode(),
+          getApiBaseUrl(),
+          queueCount(),
+        ]);
+        if (cancelled) return;
+        setName(storedName);
+        setNameBaseline(storedName);
+        setMode(storedMode);
+        setBaseUrlMode(apiMode);
+        // Host portion only — a raw address is never shown in the list.
+        setHostHint(url ? url.replace(/^https?:\/\//, "").split("/")[0] ?? "" : "");
+        setQueued(q);
+        // 33-QA (I16): probe the effective server on every focus so the
+        // pill is a timestamped truth, not a guess from queue state.
+        setProbe("checking");
+        const reachable = await probeBackend(url ?? "");
+        if (cancelled) return;
+        setProbe(reachable ? "ok" : "down");
+        setTestedAt(Date.now());
+      })();
+      return () => {
+        cancelled = true;
+      };
+    }, []),
+  );
+
+  // 35I (U.1): save only meaningful — trimmed text must be non-empty and
+  // different from the stored baseline; after save the baseline follows.
+  // 35L (F): a usable identity is at least 2 letters — invalid names are
+  // never stored or saved.
+  const trimmedName = name.trim();
+  const nameValid = isValidVolunteerName(trimmedName);
+  const nameDirty = nameValid && trimmedName !== nameBaseline;
+
+  const saveName = useCallback(() => {
+    // Same validity rule as scanning (35L F) — the stamped name must be
+    // a real name, never blank/single-char/whitespace.
+    if (!nameValid || trimmedName === nameBaseline) return;
+    void setVolunteerName(trimmedName);
+    setName(trimmedName);
+    setNameBaseline(trimmedName);
+    setSaved(true);
+    setTimeout(() => setSaved(false), 1500);
+  }, [nameValid, trimmedName, nameBaseline]);
+
+  const switchMode = useCallback(() => {
+    // Phase 27 (E3): navigate ONLY — the stored mode is deliberately left
+    // intact so the picker can compare against it and confirm a change.
+    // Clearing it here (the old behaviour) meant the picker loaded no
+    // current mode, its guard passed straight through and the confirm step
+    // (33-QA I21) was skipped: one stray tap silently changed the device
+    // role. Choosing a surface is navigation, never authorization.
+    router.replace("/mode-picker");
   }, []);
 
-  const saveVolunteer = async () => {
-    await setVolunteerName(volunteer);
-    setSavedNote("Volunteer name saved.");
-  };
-
-  const switchMode = async () => {
-    await clearAppMode();
-    router.replace("/mode-picker");
-  };
-
-  const openCards = async () => {
-    setLinkError(null);
-    const url = `${await getApiBaseUrl()}/admin/cards`;
-    const supported = await Linking.canOpenURL(url);
-    if (supported) {
-      await Linking.openURL(url);
-    } else {
-      setLinkError(
-        "Could not open the link. Check the backend URL above first.",
-      );
-    }
-  };
-
   return (
-    <ScrollView style={styles.root}>
-      <SectionCard title="App mode" subtitle="Choose what this app is used for">
-        <View style={styles.modeRow}>
-          <Ionicons
-            name={appMode === "liveboard" ? "tv" : "qr-code"}
-            size={22}
-            color={colors.green}
-          />
-          <Text style={styles.modeText}>Current mode: {modeLabel(appMode)}</Text>
-        </View>
-        <PrimaryButton
-          title="Switch mode"
-          onPress={() => void switchMode()}
-          variant="outline"
-          style={styles.topMargin}
-        />
-      </SectionCard>
+    <Screen>
+      <AppHeader
+        onBack={() =>
+          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
+        }
+        title="Settings"
+        subtitle="Device and operator preferences"
+      />
 
-      <SectionCard title="Volunteer" subtitle="Shown on every scan you make">
-        <Text style={styles.label}>Volunteer name</Text>
-        <TextInput
-          style={styles.input}
-          value={volunteer}
-          onChangeText={setVolunteer}
-          placeholder="Your name as shown on scans"
-          placeholderTextColor={colors.muted}
+      {/* 1 — Volunteer name (QA fix cycle 2: ONE naming — the eyebrow
+          carries it; the field is a placeholder-only input, no second
+          "Name on scan records" label. */}
+      <SectionCard>
+        <SectionEyebrow>Volunteer name</SectionEyebrow>
+        <Field
+          placeholder="e.g. Bilal Ahmad"
+          value={name}
+          onChangeText={setName}
           autoCapitalize="words"
+          returnKeyType="done"
+          onEndEditing={saveName}
+          hint="Stamped on every scan this device records."
         />
-        <View style={styles.buttonRow}>
-          <PrimaryButton
-            title="Save name"
-            onPress={() => void saveVolunteer()}
-            style={styles.flexButton}
+        {/* 35L (F): an explicit note when the typed name can't be used. */}
+        {trimmedName !== "" && !isValidVolunteerName(trimmedName) ? (
+          <Text style={styles.nameError}>
+            Enter a real name of at least 2 letters.
+          </Text>
+        ) : null}
+        {/* QA fix cycle 2: a disabled Save explains itself. */}
+        {!nameDirty && isValidVolunteerName(trimmedName) ? (
+          <Text style={styles.nameHint}>Change the name to save.</Text>
+        ) : null}
+        <AppButton
+          label={saved ? "Saved" : "Save name"}
+          icon={saved ? "checkmark" : "save-outline"}
+          variant={saved ? "secondary" : "primary"}
+          disabled={!nameDirty}
+          onPress={saveName}
+        />
+      </SectionCard>
+
+      {/* 2 — Mode: exactly one change action */}
+      <SectionCard tone="tint">
+        <SectionEyebrow>Mode</SectionEyebrow>
+        <View style={styles.row}>
+          <View style={styles.flex1}>
+            <Text style={styles.rowTitle}>
+              {mode === "liveboard" ? "Live Dashboard" : "Volunteer Operations"}
+            </Text>
+            <Text style={styles.rowBody}>
+              {mode === "liveboard"
+                ? "Public attendance view"
+                : "Gate scanning and guest management"}
+            </Text>
+          </View>
+          <StatusPill state="info" label="Active" size="sm" />
+        </View>
+        <AppButton
+          label="Change mode"
+          icon="swap-horizontal"
+          variant="secondary"
+          onPress={switchMode}
+        />
+      </SectionCard>
+
+      {/* 3 — Advanced: operator language only, quiet queue row */}
+      <SectionCard tone="tint">
+        <SectionEyebrow>Advanced</SectionEyebrow>
+        <View style={styles.row}>
+          <View style={styles.flex1}>
+            <Text style={styles.rowTitle}>
+              {baseUrlMode === "custom" ? "Custom server" : "Automatic"}
+            </Text>
+            <Text style={styles.rowBody}>
+              {baseUrlMode === "custom"
+                ? hostHint || "Address not reachable"
+                : "Connects to the convocation server"}
+            </Text>
+            {/* 33-QA (I16): when the verdict was taken, on the row. */}
+            {testedAt > 0 ? (
+              <Text style={styles.rowBody}>Tested {formatClock(testedAt)}</Text>
+            ) : null}
+          </View>
+          {/* 33-QA (I16) → QA fix cycle 2: the pill is the probe verdict
+              — Live/Offline/Checking (sentence case) — never "Ready"
+              derived from queue state. The queued count stays visible in
+              the queue row below. */}
+          <StatusPill
+            state={
+              probe === "ok"
+                ? "live"
+                : probe === "down"
+                  ? "offline"
+                  : "connecting"
+            }
+            label={
+              probe === "ok" ? "Live" : probe === "down" ? "Offline" : "Checking"
+            }
+            size="sm"
           />
         </View>
-        {savedNote && (
-          <View style={styles.savedBox}>
-            <Ionicons name="checkmark-circle" size={18} color={colors.green} />
-            <Text style={styles.saved}>{savedNote}</Text>
-          </View>
-        )}
-      </SectionCard>
-
-      <BackendConnectionCard />
-
-      <SectionCard title="Admin Tools">
-        <Pressable
-          style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
+        <AppButton
+          label="Connection settings"
+          icon="settings-outline"
+          variant="secondary"
           onPress={() => router.push("/(volunteer)/admin")}
-        >
-          <View style={styles.linkIcon}>
-            <Ionicons name="shield-checkmark-outline" size={22} color={colors.green} />
-          </View>
-          <View style={styles.linkText}>
-            <Text style={styles.linkTitle}>Admin console</Text>
-            <Text style={styles.linkSub}>Event settings, gates, and connection</Text>
-          </View>
-          <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-        </Pressable>
-        <Pressable
-          style={({ pressed }) => [styles.linkRow, pressed && styles.pressed]}
-          onPress={() => void openCards()}
-        >
-          <View style={styles.linkIcon}>
-            <Ionicons name="id-card-outline" size={22} color={colors.green} />
-          </View>
-          <View style={styles.linkText}>
-            <Text style={styles.linkTitle}>ID card printing</Text>
-            <Text style={styles.linkSub}>Open /admin/cards in the browser</Text>
-          </View>
-          <Ionicons name="open-outline" size={18} color={colors.muted} />
-        </Pressable>
-        {linkError && <Text style={styles.linkError}>{linkError}</Text>}
-      </SectionCard>
-
-      <SectionCard title="About">
-        <View style={styles.aboutHeader}>
-          <View style={styles.monogram}>
-            <Text style={styles.monogramText}>LGU</Text>
-          </View>
-          <View style={styles.aboutTitles}>
-            <Text style={styles.appName}>
-              {APP_NAME} {CONVOCATION_YEAR}
-            </Text>
-            <Text style={styles.university}>{UNIVERSITY_NAME}</Text>
-          </View>
+        />
+        {/* Quiet queue status — no technical language. 33-QA (I16): an
+            offline device never claims "All scans synced" — it says the
+            scans are waiting, truthfully, with the count. */}
+        <View style={styles.queueRow}>
+          <Ionicons
+            name={
+              queued > 0
+                ? "cloud-upload-outline"
+                : probe === "down"
+                  ? "cloud-offline-outline"
+                  : "cloud-done-outline"
+            }
+            size={16}
+            color={queued > 0 || probe === "down" ? colors.amber : colors.muted}
+          />
+          <Text style={styles.queueText}>
+            {queued > 0
+              ? `${queued} scan(s) waiting to sync`
+              : probe === "down"
+                ? "No scans waiting to sync · server unreachable"
+                : "All scans synced"}
+          </Text>
         </View>
-        <View style={styles.greenRule} />
-        <Text style={styles.motto}>&ldquo;{MOTTO}&rdquo;</Text>
-        <Text style={styles.aboutBody}>
-          Official gate companion for convocation day. Volunteers scan QR-coded
-          student cards and guest passes, and the control room watches every
-          gate live.{APP_VERSION ? ` Version ${APP_VERSION}.` : ""}
-        </Text>
       </SectionCard>
-
-      <View style={styles.bottomPad} />
-    </ScrollView>
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  aboutBody: {
+const styles = {
+  // 33-QA (I7): text containers beside StatusPills need minWidth:0 —
+  // without it, long single-line text inflates the row and can push
+  // or clip the pill at narrow widths (Yoga automatic minimum sizing).
+  flex1: { flex: 1, minWidth: 0 },
+  nameError: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.invalid,
+  },
+  nameHint: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
     color: colors.muted,
-    fontSize: fontSize.body,
-    lineHeight: 21,
-    marginTop: spacing.sm,
   },
-  aboutHeader: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.md,
-  },
-  aboutTitles: {
-    flex: 1,
-  },
-  appName: {
-    color: colors.greenDark,
-    fontSize: fontSize.subheading,
-    fontWeight: fontWeight.bold,
-  },
-  bottomPad: {
-    height: spacing.xl,
-  },
-  buttonRow: {
-    flexDirection: "row",
-    gap: spacing.sm,
-    marginTop: spacing.md,
-  },
-  flexButton: {
-    flex: 1,
-  },
-  greenRule: {
-    backgroundColor: colors.emerald,
-    borderRadius: radius.sm,
-    height: 3,
-    marginTop: spacing.md,
-    width: 48,
-  },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: fontSize.body,
-    marginTop: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  label: {
-    color: colors.greenDark,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
-    marginTop: spacing.sm,
-    textTransform: "uppercase",
-  },
-  linkError: {
-    color: colors.red,
-    fontSize: fontSize.caption,
-    marginTop: spacing.xs,
-  },
-  linkIcon: {
-    alignItems: "center",
-    backgroundColor: colors.tint,
-    borderRadius: radius.full,
-    height: 44,
-    justifyContent: "center",
-    width: 44,
-  },
-  linkRow: {
-    alignItems: "center",
-    flexDirection: "row",
+  row: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
     gap: spacing.md,
     paddingVertical: spacing.sm,
   },
-  linkSub: {
+  rowTitle: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
+    color: colors.ink,
+  },
+  rowBody: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
     color: colors.muted,
-    fontSize: fontSize.caption,
     marginTop: 2,
+    lineHeight: 18,
   },
-  linkText: {
-    flex: 1,
-  },
-  linkTitle: {
-    color: colors.text,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-  },
-  modeRow: {
-    alignItems: "center",
-    flexDirection: "row",
+  queueRow: {
+    flexDirection: "row" as const,
+    alignItems: "center" as const,
     gap: spacing.sm,
+    paddingTop: spacing.sm,
   },
-  modeText: {
-    color: colors.text,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-  },
-  monogram: {
-    alignItems: "center",
-    backgroundColor: colors.green,
-    borderRadius: radius.lg,
-    height: 58,
-    justifyContent: "center",
-    width: 58,
-  },
-  monogramText: {
-    color: colors.white,
-    fontSize: fontSize.subheading,
-    fontWeight: fontWeight.bold,
-  },
-  motto: {
-    color: colors.greenDark,
-    fontSize: fontSize.body,
-    fontStyle: "italic",
-    fontWeight: fontWeight.semibold,
-    marginTop: spacing.sm,
-  },
-  pressed: {
-    opacity: 0.85,
-  },
-  root: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  saved: {
-    color: colors.green,
-    flex: 1,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-    marginLeft: spacing.xs,
-  },
-  savedBox: {
-    alignItems: "center",
-    backgroundColor: colors.emeraldSoft,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    marginTop: spacing.sm,
-    padding: spacing.sm,
-  },
-  topMargin: {
-    marginTop: spacing.md,
-  },
-  university: {
+  queueText: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
     color: colors.muted,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-    marginTop: 2,
+    lineHeight: 18,
   },
-});
+};

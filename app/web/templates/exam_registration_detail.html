@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}{{ row.registration_number }} · Registrations{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ row.registration_number }} <span class="badge {{ {'active': 'entry', 'cancelled': 'queued', 'revoked': 'bad'}[row.status] }}">{{ row.status }}</span></h1>
+<p class="page-sub">{{ row.student_name }} · roll {{ row.roll_number }} · {{ row.university_email }}</p>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+{% if saved %}<p class="notice ok">Saved. The change was recorded in the audit history below.</p>{% endif %}
+<div class="grid two">
+  <div class="card">
+    <h2>Official record</h2>
+    <table>
+      <tr><th>Field</th><th>Value</th></tr>
+      <tr><td>Registration number</td><td>{{ row.registration_number }}</td></tr>
+      <tr><td>Roll number</td><td>{{ row.roll_number }}</td></tr>
+      <tr><td>Student name</td><td>{{ row.student_name }}</td></tr>
+      <tr><td>Department</td><td>{{ row.department or '—' }}</td></tr>
+      <tr><td>University email</td><td>{{ row.university_email }}</td></tr>
+      <tr><td>Created</td><td>{{ row.created_at }}</td></tr>
+      <tr><td>Updated</td><td>{{ row.updated_at }}</td></tr>
+      <tr><td>Import batch</td><td>{% if row.import_batch_id %}<a href="{{ url_for('exam.import_review', batch_id=row.import_batch_id) }}">#{{ row.import_batch_id }}</a>{% else %}—{% endif %}</td></tr>
+    </table>
+  </div>
+  <div class="card">
+    <h2>Correct values</h2>
+    <form method="post" action="{{ url_for('exam.registration_correct', reg_id=row.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+      <label>Student name</label>
+      <input type="text" name="student_name" maxlength="120" value="{{ form.get('student_name', row.student_name) if form else row.student_name }}">
+      <label>Department</label>
+      <input type="text" name="department" maxlength="120" value="{{ form.get('department', row.department) if form else row.department }}">
+      <label>University email</label>
+      <input type="text" name="university_email" maxlength="254" value="{{ form.get('university_email', row.university_email) if form else row.university_email }}">
+      <label>Roll number</label>
+      <input type="text" name="roll_number" maxlength="32" value="{{ form.get('roll_number', row.roll_number) if form else row.roll_number }}">
+      <p class="page-sub">The registration number cannot be changed. Corrections are audited with before/after values.</p>
+      <div class="btn-row">
+        <button class="btn" type="submit">Save correction</button>
+        <a class="btn ghost" href="{{ url_for('exam.registrations') }}">Back to list</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% if allowed %}
+<div class="card">
+  <h2>Status actions</h2>
+  <div class="btn-row">
+    {% for action, label in allowed %}
+    <a class="btn ghost" href="{{ url_for('exam.registration_status', reg_id=row.id, action=action) }}">{{ label }}…</a>
+    {% endfor %}
+  </div>
+  <p class="page-sub">Cancelling can be undone by reinstating. Revoking is permanent — identifiers stay reserved.</p>
+</div>
+{% endif %}
+<div class="card">
+  <h2>Audit history</h2>
+  <table>
+    <tr><th>When</th><th>Actor</th><th>Action</th><th>Changes</th></tr>
+    {% for t in trail %}
+    <tr>
+      <td>{{ t.created_at }}</td>
+      <td>{{ t.actor }}</td>
+      <td>{{ t.action }}</td>
+      <td>{% if t.changes %}{% for field, old, new in t.changes %}<div>{{ field }}: {{ old }} → {{ new }}</div>{% endfor %}{% else %}—{% endif %}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">No audit entries yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endblock %}

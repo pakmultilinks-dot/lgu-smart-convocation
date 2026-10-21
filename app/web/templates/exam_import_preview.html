@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+{% block title %}Import preview · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Import Preview</h1>
+<p class="page-sub">Batch #{{ batch.id }} · {{ batch.filename }} · uploaded by {{ batch.created_by }} at {{ batch.created_at }} ·
+  <span class="badge {{ 'entry' if batch.status == 'committed' else ('bad' if batch.status == 'failed' else 'queued') }}">{{ batch.status }}</span></p>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+{% if committed and not error %}<p class="notice ok">Import committed. Official registration records were updated.</p>{% endif %}
+{% if batch.status == 'preview' and not error %}<p class="notice info">Preview only — no official records have been changed yet.</p>{% endif %}
+{% if batch.status == 'failed' %}<p class="notice warn">This import failed and was rolled back — no registrations were changed.</p>{% endif %}
+{% if batch.notes %}<p class="notice warn">{{ batch.notes }}</p>{% endif %}
+<div class="grid kpi">
+  <div class="kpi-tile"><div class="num">{{ batch.total_rows }}</div><div class="lbl">Data rows</div></div>
+  <div class="kpi-tile green"><div class="num">{{ batch.valid_rows }}</div><div class="lbl">Valid</div></div>
+  <div class="kpi-tile"><div class="num">{{ batch.invalid_rows }}</div><div class="lbl">Invalid</div></div>
+  <div class="kpi-tile"><div class="num">{{ batch.duplicate_rows }}</div><div class="lbl">Duplicates in file</div></div>
+  <div class="kpi-tile"><div class="num">{{ batch.conflict_rows }}</div><div class="lbl">Already registered</div></div>
+  <div class="kpi-tile"><div class="num">{{ batch.blank_rows }}</div><div class="lbl">Blank rows skipped</div></div>
+</div>
+{% if result %}
+<div class="card">
+  <h2>Commit result ({{ result.mode }} mode)</h2>
+  <table>
+    <tr><th>Inserted</th><th>Updated</th><th>Unchanged</th><th>Skipped (conflict)</th><th>Skipped (invalid)</th><th>Skipped (duplicate)</th></tr>
+    <tr><td>{{ result.inserted }}</td><td>{{ result.updated }}</td><td>{{ result.unchanged }}</td><td>{{ result.skipped_conflict }}</td><td>{{ result.skipped_invalid }}</td><td>{{ result.skipped_duplicate }}</td></tr>
+  </table>
+</div>
+{% elif batch.status == 'preview' %}
+<div class="card">
+  <h2>2. Confirm import</h2>
+  {% set applicable = batch.valid_rows + batch.conflict_rows %}
+  {% if applicable %}
+  <p class="page-sub">{{ applicable }} rows will be processed ({{ batch.valid_rows }} new, {{ batch.conflict_rows }} matching an existing registration — updated only in Replace mode). Registrations missing from this file are never deleted or altered.</p>
+  <form method="post" action="{{ url_for('exam.import_commit', batch_id=batch.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label><input type="radio" name="mode" value="insert" checked> Insert only (recommended) — add registrations that do not exist yet; existing records are never modified.</label>
+    <label><input type="radio" name="mode" value="replace"> Replace — also update the fields of registrations whose registration number already exists (audited with before/after values; statuses untouched).</label>
+    <div class="btn-row">
+      <button class="btn green" type="submit">Confirm import ({{ applicable }} rows)</button>
+      <a class="btn ghost" href="{{ url_for('exam.registrations') }}">Cancel</a>
+    </div>
+  </form>
+  {% else %}
+  <p class="notice warn">No valid or conflicting rows to import — fix the problems below and re-upload.</p>
+  {% endif %}
+</div>
+{% endif %}
+{% if problems %}
+<div class="card">
+  <h2>Rows needing attention ({{ problems_total }} total, showing first {{ problems|length }})</h2>
+  <table>
+    <tr><th>Row</th><th>Issue</th><th>Registration</th><th>Roll no.</th><th>Student</th><th>Details</th></tr>
+    {% for p in problems %}
+    <tr>
+      <td>{{ p.row_no }}</td>
+      <td><span class="badge {{ 'bad' if p.status == 'invalid' else 'queued' }}">{{ p.status }}</span></td>
+      <td>{{ p.registration_number or '—' }}</td>
+      <td>{{ p.roll_number or '—' }}</td>
+      <td>{{ p.student_name or '—' }}</td>
+      <td>{{ p.errors|join(' ') }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% if problems_total > problems|length %}<p class="page-sub">…and {{ problems_total - problems|length }} more rows — fix them and re-upload.</p>{% endif %}
+</div>
+{% endif %}
+{% if sample %}
+<div class="card">
+  <h2>First {{ sample|length }} valid rows (all {{ batch.valid_rows }} will import)</h2>
+  <table>
+    <tr><th>Row</th><th>Registration</th><th>Email</th><th>Roll no.</th><th>Student</th><th>Department</th></tr>
+    {% for s in sample %}
+    <tr><td>{{ s.row_no }}</td><td>{{ s.registration_number }}</td><td>{{ s.university_email }}</td><td>{{ s.roll_number }}</td><td>{{ s.student_name }}</td><td>{{ s.department or '—' }}</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+<div class="btn-row">
+  <a class="btn ghost" href="{{ url_for('exam.import_upload') }}">New import</a>
+  <a class="btn ghost" href="{{ url_for('exam.import_history') }}">Import history</a>
+  <a class="btn ghost" href="{{ url_for('exam.registrations') }}">Registrations list</a>
+</div>
+{% endblock %}
