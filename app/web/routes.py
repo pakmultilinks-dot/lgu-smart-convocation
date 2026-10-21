@@ -251,7 +251,12 @@ def api_sync():
 
 @bp.route("/api/demo-payload")
 def api_demo_payload():
-    """Demo helper: return the payload of a student currently outside."""
+    """Demo-only QR discovery; never reveal working passes in production."""
+    environment = os.environ.get("LGU_APP_ENV", "").strip().lower()
+    demo_enabled = os.environ.get("LGU_ENABLE_DEMO_QR", "").strip().lower()
+    # Both flags must be intentionally set in a private development environment.
+    if environment not in ("development", "test") or demo_enabled not in ("1", "true", "yes"):
+        return jsonify({"ok": False, "error": "Demo QR helper is disabled."}), 404
     st = models.first_outside_student()
     if st:
         return jsonify({"payload": ids.make_payload(st["qr_id"]),

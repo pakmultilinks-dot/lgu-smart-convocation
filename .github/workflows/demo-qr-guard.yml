@@ -1,0 +1,62 @@
+name: Demo QR access guard
+
+on:
+  pull_request:
+    paths:
+      - "app/web/routes.py"
+      - "app/web/templates/scanner.html"
+      - "app/tests/test_demo_qr_access.py"
+      - "app/tests/isolated_api_smoke_server.py"
+      - "mobile/scripts/api-test.mjs"
+      - ".github/workflows/demo-qr-guard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo-qr-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: python -m pip install -r app/requirements.txt
+      - name: Compile Python backend
+        run: python -m compileall -q app
+      - name: Verify demo QR opt-in and production deny
+        run: python -m unittest discover -s app/tests -p 'test_demo_qr_access.py' -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check Node API test syntax
+        run: node --check mobile/scripts/api-test.mjs
+      - name: Smoke test real HTTP APIs with synthetic production-mode DB
+        env:
+          LGU_APP_ENV: production
+          LGU_ENABLE_DEMO_QR: "1"
+        run: |
+          python app/tests/isolated_api_smoke_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:5055/api/gates > /dev/null; then break; fi
+            sleep 1
+          done
+          node mobile/scripts/api-test.mjs http://127.0.0.1:5055
+      - name: Smoke test full scanner and guest API workflows in demo mode
+        env:
+          LGU_APP_ENV: development
+          LGU_ENABLE_DEMO_QR: "1"
+          LGU_QA_PORT: "5056"
+        run: |
+          python app/tests/isolated_api_smoke_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:5056/api/gates > /dev/null; then break; fi
+            sleep 1
+          done
+          node mobile/scripts/api-test.mjs http://127.0.0.1:5056

@@ -244,14 +244,24 @@ async function syncQueue() {
 }
 
 async function demoFill() {
-  const resp = await fetch("{{ url_for('main.api_demo_payload') }}");
-  const r = await resp.json();
-  if (r.payload) {
-    document.getElementById("payload").value = r.payload;
-    showResult({level: "green", title: "CODE READY",
-      sub: "Demo helper loaded: " + r.hint + ". Press SCAN to record the entry."});
-  } else {
-    showResult({level: "amber", title: "NO ONE LEFT OUTSIDE", detail: r.hint});
+  try {
+    const resp = await fetch("{{ url_for('main.api_demo_payload') }}");
+    if (!resp.ok) {
+      showResult({level: "amber", title: "DEMO DISABLED",
+        detail: "The demo QR helper is unavailable. Scan a real assigned QR code instead."});
+      return;
+    }
+    const r = await resp.json();
+    if (r.payload) {
+      document.getElementById("payload").value = r.payload;
+      showResult({level: "green", title: "CODE READY",
+        sub: "Demo helper loaded: " + r.hint + ". Press SCAN to record the entry."});
+    } else {
+      showResult({level: "amber", title: "NO ONE LEFT OUTSIDE", detail: r.hint || "No demo pass is available."});
+    }
+  } catch (error) {
+    showResult({level: "amber", title: "DEMO UNAVAILABLE",
+      detail: "Could not reach the demo helper. Check the connection or scan a real assigned QR code."});
   }
 }
 

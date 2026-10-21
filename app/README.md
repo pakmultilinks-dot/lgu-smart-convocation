@@ -23,6 +23,29 @@ python run.py
 Open http://localhost:5000. The SQLite database (`app/lgu.db`) is created and
 seeded automatically on first run: 40 sample students, 7 gates, 3 sample guests.
 
+## Demo QR helper: development only
+
+The `GET /api/demo-payload` endpoint can reveal a **valid signed student QR
+pass**, so it is disabled by default and never available in production mode.
+For a controlled, private demo only, explicitly set both variables:
+
+```bash
+LGU_APP_ENV=development LGU_ENABLE_DEMO_QR=1 python run.py
+```
+
+PowerShell:
+
+```powershell
+$env:LGU_APP_ENV = "development"
+$env:LGU_ENABLE_DEMO_QR = "1"
+python run.py
+```
+
+For production, set `LGU_APP_ENV=production` and **never** enable the demo QR
+helper. A disabled helper responds with JSON HTTP 404; the scanner UI explains
+that no demo code is available. Actual scanning of an assigned QR code is
+unchanged. Keep all demo servers private and use synthetic student records.
+
 ## 5-minute VC demo script
 
 1. **Home** (`/`): show the six modules.
