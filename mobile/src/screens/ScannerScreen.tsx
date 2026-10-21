@@ -1,174 +1,434 @@
 import {
-  CameraView,
-  useCameraPermissions,
   type BarcodeScanningResult,
+  type CameraViewProps,
+  useCameraPermissions,
 } from "expo-camera";
+import { Ionicons } from "@expo/vector-icons";
 import * as Haptics from "expo-haptics";
-import { useFocusEffect } from "expo-router";
+import * as Linking from "expo-linking";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  Animated,
+  Modal,
   Platform,
-  Pressable,
-  ScrollView,
   StyleSheet,
-  Switch,
   Text,
-  TextInput,
   View,
+  useWindowDimensions,
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
 import {
   ApiError,
-  fetchDemoPayload,
   fetchGates,
+  fetchTestRecords,
+  loginScanner,
+  logoutScanner,
   postScan,
   postSync,
+  resetTestScans,
   type Gate,
+  type Occasion,
   type ScanMode,
   type ScanResult,
+  type TestRecord,
 } from "../api/client";
-import { PrimaryButton } from "../components/PrimaryButton";
-import { ResultCard } from "../components/ResultCard";
-import { SegmentedControl } from "../components/SegmentedControl";
-import { SectionCard } from "../components/SectionCard";
-import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import { CameraScannerView } from "../scanner/CameraScannerView";
+import { ScannerBottomBar } from "../scanner/ScannerBottomBar";
+import { ScannerResult } from "../scanner/ScannerResult";
+import { ScannerSheet } from "../scanner/ScannerSheet";
+import { ScannerTestPanel } from "../scanner/ScannerTestPanel";
+import { ScannerTopBar } from "../scanner/ScannerTopBar";
+import { localTimestamp, RESULT_DISMISS_MS } from "../scanner/scannerConstants";
+import { getAdminPin } from "../store/adminAccess";
+import {
+  getScannerSession,
+  clearScannerSession,
+  type ScannerSession,
+} from "../store/scannerSession";
+import {
+  classifyScanResult,
+  createScanResultController,
+  createVolunteerName,
+  isValidVolunteerName,
+  resolveGateLabel,
+  scanGateBlocked,
+  scanPayload,
+  SCAN_RESULT_MS,
+  type ScanResultController,
+} from "../scanner/scanResultLogic";
+import { useScanDedup } from "../scanner/useScanDedup";
+import { useScannerZoom } from "../scanner/useScannerZoom";
 import {
   enqueueScan,
   getQueue,
   queueCount,
   reconcileSync,
 } from "../store/offlineQueue";
+import {
+  getScanMode,
+  getScanOccasion,
+  getSelectedGate,
+  setLastScanResult,
+  setScanMode,
+  setScanOccasion,
+  setSelectedGate,
+  type OpsScanResult,
+  type SelectedGate,
+} from "../store/ops";
 import { getVolunteerName, setVolunteerName } from "../store/settings";
-import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
+import { colors, fonts, radius, spacing } from "../theme";
+import {
+  AppButton,
+  AppHeader,
+  Field,
+  LoadingState,
+  OfflineBanner,
+  Screen,
+  SectionCard,
+} from "../ui";
 
-function localTimestamp(): string {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    day: "2-digit",
-    hour: "2-digit",
-    hour12: false,
-    minute: "2-digit",
-    month: "2-digit",
-    second: "2-digit",
-    timeZone: "Asia/Karachi",
-    year: "numeric",
-  }).formatToParts(new Date());
-  const get = (type: string) => parts.find((p) => p.type === type)?.value ?? "";
-  return `${get("year")}-${get("month")}-${get("day")} ${get("hour")}:${get("minute")}:${get("second")}`;
-}
+type MountErrorHandler = NonNullable<CameraViewProps["onMountError"]>;
 
-function ViewfinderCorners() {
-  return (
-    <View style={styles.frame} pointerEvents="none">
-      <View style={[styles.corner, styles.cornerTL]} />
-      <View style={[styles.corner, styles.cornerTR]} />
-      <View style={[styles.corner, styles.cornerBL]} />
-      <View style={[styles.corner, styles.cornerBR]} />
-    </View>
-  );
-}
-
-const RESULT_DISMISS_MS = 4000;
-
+/**
+ * Scanner — the dominant operational surface (Phase 35B Order #2).
+ * Camera first: gate + Entry/Exit always obvious above it, the camera
+ * fills the top of the screen on initial render, and labeled Flash +
+ * "Find manually" sit under it (Parts A/B/I). A gate is REQUIRED (35J G8):
+ * no auto-selection — the gate-only sheet opens whenever none is chosen,
+ * and no scan reaches the backend or offline queue without one. Scan
+ * results render as three canonical states (VALID / ALREADY USED /
+ * Invalid code) — full-surface tone with the actual gate · 12h time and
+ * a large "Scan next" action (35J H/I/J); haptics per outcome. The
+ * volunteer name is asked once, persisted through the settings
+ * store, and stamped on every scan (Part C). Offline queueing, dedup,
+ * auto-zoom and the camera mount-error state are preserved (G/H).
+ */
 export function ScannerScreen() {
   const [permission, requestPermission] = useCameraPermissions();
+  const { height: windowH } = useWindowDimensions();
+
   const [gates, setGates] = useState<Gate[]>([]);
   const [gatesError, setGatesError] = useState<string | null>(null);
+  // Scanner Fix Round 1 (item 2): flips true after the first successful
+  // fetch — the gate chip must show "Choose a gate" (not "Loading
+  // gates...") from that moment whenever no gate is selected.
+  const [gatesLoaded, setGatesLoaded] = useState(false);
   const [gateId, setGateId] = useState<number | null>(null);
   const [mode, setMode] = useState<ScanMode>("entry");
-  const [volunteer, setVolunteer] = useState("");
-  const [offline, setOffline] = useState(false);
+  // Phase 29: which occasion of the annual cycle this scanner records.
+  // Default (and replay default for old queued rows) is the main
+  // convocation; rehearsal check-ins are an explicit, confirmed choice.
+  const [occasion, setOccasion] = useState<Occasion>("ceremony");
+  const [sheetVisible, setSheetVisible] = useState(false);
+  const [namePromptVisible, setNamePromptVisible] = useState(false);
+  const [nameDraft, setNameDraft] = useState("");
+  const [nameError, setNameError] = useState<string | null>(null);
+  // Phase 14: a scanner must sign in with a per-account username + PIN
+  // before any scan is sent. The server derives the volunteer identity and
+  // the permitted gate(s) from the session — never from device input.
+  const [session, setSession] = useState<ScannerSession | null>(null);
+  const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [loginVisible, setLoginVisible] = useState(false);
+  const [loginUser, setLoginUser] = useState("");
+  const [loginPin, setLoginPin] = useState("");
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [loginBusy, setLoginBusy] = useState(false);
   const [torch, setTorch] = useState(false);
-  const [queued, setQueued] = useState(0);
+  const [cameraFailed, setCameraFailed] = useState(false);
+  const [cameraKey, setCameraKey] = useState(0);
+  // Issue 6 (Release blocker): distinct camera states — "starting" runs
+  // from mount until the first frame (onCameraReady); it resets whenever
+  // the camera remounts (retry bumps cameraKey). REQUIRED and DENIED
+  // permission states are decided above this — the branch on
+  // !permission.granted renders distinct copy + recovery per state.
+  const [cameraReady, setCameraReady] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [online, setOnline] = useState<boolean | null>(null);
+  const [offline, setOffline] = useState(false);
+  const [queued, setQueued] = useState(0);
   const [syncing, setSyncing] = useState(false);
-  const [demoLoading, setDemoLoading] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState<number | null>(null);
+  const [testRecords, setTestRecords] = useState<TestRecord[]>([]);
+  const [testLoading, setTestLoading] = useState(false);
+  const [testResetLoading, setTestResetLoading] = useState(false);
+  // Issue 1 (Release blocker): the test panel requires __DEV__ AND an
+  // explicit admin unlock on this device — release builds never render it
+  // regardless, and the production server independently 404s the test
+  // endpoints. Reset additionally requires a confirmation step.
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const [resetConfirmVisible, setResetConfirmVisible] = useState(false);
+  // Issue 3 (Release blocker): Entry/Exit switch requires an explicit
+  // confirmation — "Switch mode? Scanning will stop on this device." —
+  // so the volunteer never flips direction by accident.
+  const [modeSwitchPending, setModeSwitchPending] = useState<ScanMode | null>(null);
+  // Phase 29: occasion switch gets the same explicit confirmation.
+  const [occasionSwitchPending, setOccasionSwitchPending] =
+    useState<Occasion | null>(null);
 
-  const scanningRef = useRef(false);
-  const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [scanAnim] = useState(() => new Animated.Value(0));
+  const savedGateRef = useRef<SelectedGate | null>(null);
 
-  // Web has no real camera preview in this build: show a clean animated
-  // placeholder instead of the native camera view.
+  // Issue 1: check whether this device has an unlocked admin PIN — the
+  // explicit condition beyond __DEV__ for showing test tooling.
   useEffect(() => {
-    if (Platform.OS !== "web") {
-      return;
+    let alive = true;
+    void getAdminPin().then((pin) => {
+      if (alive) setAdminUnlocked(pin !== null);
+    });
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // Request camera permission on first Scanner open (Phase 35H item 14):
+  // useCameraPermissions leaves `permission` null until it is read or
+  // requested — ask once, guarded against double-request while resolving.
+  const requestedPermissionRef = useRef(false);
+  useEffect(() => {
+    if (!permission && !requestedPermissionRef.current) {
+      requestedPermissionRef.current = true;
+      void requestPermission();
     }
-    const loop = Animated.loop(
-      Animated.sequence([
-        Animated.timing(scanAnim, {
-          duration: 1800,
-          toValue: 1,
-          useNativeDriver: true,
-        }),
-        Animated.timing(scanAnim, {
-          duration: 1800,
-          toValue: 0,
-          useNativeDriver: true,
-        }),
-      ]),
+  }, [permission, requestPermission]);
+
+  // Race-safe result timeline: ~1.2s for scan results, 4s for sync/test
+  // notices; timers are cancelled on a newer result and on unmount
+  // (no stale result overwriting a newer scan — Part E).
+  const controllerRef = useRef<ScanResultController | null>(null);
+  if (controllerRef.current === null) {
+    controllerRef.current = createScanResultController(
+      (r) => setResult(r),
+      () => setResult(null),
     );
-    loop.start();
-    return () => loop.stop();
-  }, [scanAnim]);
+  }
+  useEffect(() => () => controllerRef.current?.dispose(), []);
+
+  // Volunteer name: asked once, persisted via the settings store (Part C).
+  const volunteerRef = useRef(
+    createVolunteerName({ load: getVolunteerName, save: setVolunteerName }),
+  );
+
+  // Scanner engines: auto-zoom follow + in-frame duplicate suppression.
+  const { zoom, trackBounds, onCameraLayout } = useScannerZoom();
+  const { claim, release } = useScanDedup();
+
+  const refreshQueueCount = useCallback(async () => {
+    const n = await queueCount();
+    setQueued(n);
+  }, []);
 
   const loadGates = useCallback(async () => {
     try {
       const list = await fetchGates();
       setGates(list);
-      setGateId((prev) => prev ?? list[0]?.id ?? null);
+      setGatesLoaded(true);
       setGatesError(null);
+      setOnline(true);
+      // Restore the saved gate if it still exists on the server.
+      // 35J (G8): with NO valid stored gate the scanner stays gateless —
+      // it never silently defaults to the first gate, and the existing
+      // gate-only sheet opens so the volunteer picks one explicitly.
+      const saved = savedGateRef.current ?? (await getSelectedGate());
+      if (saved && list.some((g) => g.id === saved.id)) {
+        savedGateRef.current = saved;
+        setGateId(saved.id);
+      } else if (list.length > 0) {
+        setSheetVisible(true);
+      }
     } catch (e) {
+      // Phase 38 (MOB-003): an HTTP answer (even a 500) proves the backend
+      // is reachable — only a transport failure (status 0) reads offline.
+      if (e instanceof ApiError && e.status === 0) setOnline(false);
       setGatesError(
-        e instanceof ApiError ? e.message : "Could not load gates.",
+        e instanceof Error ? e.message : "Gates could not be loaded.",
       );
     }
   }, []);
 
-  const refreshQueueCount = useCallback(async () => {
-    setQueued(await queueCount());
-  }, []);
+  const loadTestRecords = useCallback(async () => {
+    // Issue 1 (Release blocker): the deterministic test panel requires
+    // __DEV__ AND an explicit admin unlock on this device. In release
+    // builds __DEV__ is false — the fetch never runs. On dev builds
+    // without an unlocked admin PIN the panel stays hidden. The server
+    // also independently 404s /api/test-records on a production DB.
+    if (!__DEV__ || !adminUnlocked) {
+      setTestRecords([]);
+      return;
+    }
+    try {
+      const records = await fetchTestRecords();
+      setTestRecords(records);
+    } catch {
+      setTestRecords([]);
+    }
+  }, [adminUnlocked]);
 
+  // Load stored scanner session + volunteer + mode, then gates/queue.
   useEffect(() => {
-    void loadGates();
-    void refreshQueueCount();
-    void getVolunteerName().then(setVolunteer);
-  }, [loadGates, refreshQueueCount]);
+    let cancelled = false;
+    void (async () => {
+      const [sess, , savedMode, savedOccasion] = await Promise.all([
+        getScannerSession(),
+        volunteerRef.current.load(),
+        getScanMode(),
+        getScanOccasion(),
+      ]);
+      if (cancelled) return;
+      setSession(sess);
+      setSessionLoaded(true);
+      if (!sess) setLoginVisible(true);
+      setMode(savedMode);
+      setOccasion(savedOccasion);
+      if (volunteerRef.current.needsSetup) setNamePromptVisible(true);
+      await loadGates();
+      await loadTestRecords();
+      await refreshQueueCount();
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [loadGates, loadTestRecords, refreshQueueCount]);
 
   useFocusEffect(
     useCallback(() => {
       void refreshQueueCount();
-      return () => undefined;
+      // The stored name may have been set or cleared in Settings meanwhile,
+      // and a session revoked elsewhere must re-lock this device.
+      void (async () => {
+        const [sess] = await Promise.all([
+          getScannerSession(),
+          volunteerRef.current.load(),
+        ]);
+        setSession(sess);
+        setSessionLoaded(true);
+        if (!sess) setLoginVisible(true);
+        if (volunteerRef.current.needsSetup) setNamePromptVisible(true);
+      })();
     }, [refreshQueueCount]),
   );
 
+  const persistOpsResult = useCallback((r: ScanResult) => {
+    const record: OpsScanResult = {
+      at: Date.now(),
+      level: r.level,
+      name: r.name ?? null,
+      sub: r.sub ?? null,
+      time: r.time ?? null,
+      title: r.title,
+    };
+    void setLastScanResult(record);
+  }, []);
+
+  // Scan-path results auto-return in ~1.2s (Part E); invalid / already-used
+  // outcomes hold the full-surface state for the 4s notice window (35J H/J:
+  // the operator must read "Do not admit. Use Find attendee." and reach the
+  // "Scan next" button); sync/test notices keep the 4s window as well.
+  const showScanResult = useCallback((r: ScanResult) => {
+    const kind = classifyScanResult(r).kind;
+    controllerRef.current?.show(
+      r,
+      kind === "invalid" || kind === "already-used"
+        ? RESULT_DISMISS_MS
+        : SCAN_RESULT_MS,
+    );
+  }, []);
+
   const showResult = useCallback((r: ScanResult) => {
-    if (dismissTimer.current) {
-      clearTimeout(dismissTimer.current);
-    }
-    setResult(r);
-    dismissTimer.current = setTimeout(() => setResult(null), RESULT_DISMISS_MS);
+    controllerRef.current?.show(r, RESULT_DISMISS_MS);
   }, []);
 
   const dismissResult = useCallback(() => {
-    if (dismissTimer.current) {
-      clearTimeout(dismissTimer.current);
-      dismissTimer.current = null;
-    }
-    setResult(null);
+    controllerRef.current?.clear();
   }, []);
+
+  // 35L (E): real notification haptics per outcome (success / warning /
+  // error) with a graceful no-op on platforms that don't support them —
+  // a missing haptic engine must never break a scan.
+  const haptic = useCallback(
+    async (cue: "success" | "warning" | "error") => {
+      if (Platform.OS === "web") return;
+      try {
+        await Haptics.notificationAsync(
+          cue === "success"
+            ? Haptics.NotificationFeedbackType.Success
+            : cue === "warning"
+              ? Haptics.NotificationFeedbackType.Warning
+              : Haptics.NotificationFeedbackType.Error,
+        );
+      } catch {
+        // No haptic engine — scanning continues unaffected.
+      }
+    },
+    [],
+  );
+
+  // A session revoked or expired server-side clears on the next 401 so the
+  // device re-locks instead of showing stale scan results.
+  const handleAuthFailure = useCallback(async (e: unknown) => {
+    if (e instanceof ApiError && e.status === 401) {
+      await clearScannerSession();
+      setSession(null);
+      setLoginVisible(true);
+    }
+  }, []);
+
+  // Phase 38 (MOB-002): ONE queue path shared by offline mode and a network
+  // failure mid-scan — the payload is identical either way, so replay
+  // produces the same server verdict it would have produced live.
+  const queueScan = useCallback(
+    async (stamped: ReturnType<typeof scanPayload>) => {
+      const { duplicate } = await enqueueScan({
+        ...stamped,
+        scanned_at: localTimestamp(),
+      });
+      await refreshQueueCount();
+      await haptic("warning");
+      const queuedResult: ScanResult = {
+        detail: duplicate
+          ? "This scan is already queued on this device."
+          : "Saved on this device. Press Sync now when back online.",
+        gate: gates.find((g) => g.id === gateId)?.label,
+        level: "amber",
+        status: "ok",
+        title: duplicate ? "ALREADY QUEUED" : "SCAN QUEUED",
+      };
+      showScanResult(queuedResult);
+      persistOpsResult(queuedResult);
+    },
+    [gates, gateId, haptic, persistOpsResult, refreshQueueCount, showScanResult],
+  );
 
   const handleBarcode = useCallback(
     async (scan: BarcodeScanningResult) => {
-      if (scanningRef.current || !scan.data) {
+      // Track QR bounds on every callback so auto-zoom follows the code.
+      trackBounds(scan);
+      // In-frame duplicate suppression (spec §22, 35K Part P) — one scan
+      // at a time; the cooldown key is payload + mode + gate + occasion so
+      // an Entry→Exit sequence, or a Rehearsal→Main-convocation sequence
+      // for the same pass, is never suppressed.
+      if (!scan.data || !claim(scan.data, mode, gateId, occasion)) {
         return;
       }
-      scanningRef.current = true;
+      const payload = scan.data;
+      let stamped: ReturnType<typeof scanPayload> | null = null;
       try {
-        const payload = scan.data;
-        const volunteerName = volunteer.trim() || "Volunteer";
-        if (gateId === null) {
-          showResult({
+        // 35L (F): no scan is ever stamped under an unusable identity —
+        // while the stored name is missing/invalid the setup prompt owns
+        // the screen and this read is dropped.
+        if (volunteerRef.current.needsSetup) {
+          setNamePromptVisible(true);
+          return;
+        }
+        // Phase 14: no scan leaves the device without an authenticated
+        // scanner session — the sign-in prompt owns the screen instead.
+        if (!session) {
+          setLoginVisible(true);
+          return;
+        }
+        // 35J (G8): a scan never leaves the device without a gate — no
+        // backend POST, no offline queue. The gate-only sheet opens so
+        // the volunteer picks a gate, then scanning resumes.
+        if (scanGateBlocked(gateId)) {
+          setSheetVisible(true);
+          showScanResult({
             detail: "Choose a gate before scanning.",
             level: "red",
             status: "error",
@@ -176,62 +436,91 @@ export function ScannerScreen() {
           });
           return;
         }
-        if (offline) {
-          const { duplicate } = await enqueueScan({
-            gate_id: gateId,
-            mode,
-            payload,
-            scanned_at: localTimestamp(),
-            volunteer: volunteerName,
-          });
-          await refreshQueueCount();
-          await Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Warning,
-          );
-          showResult({
-            detail: duplicate
-              ? "This scan is already queued on this device."
-              : "Saved on this device. Press Sync now when back online.",
-            level: "amber",
-            status: "ok",
-            title: duplicate ? "ALREADY QUEUED" : "SCAN QUEUED",
-          });
-          return;
-        }
-        const response = await postScan({
-          gate_id: gateId,
+        // Every scan is stamped with the persisted volunteer name and the
+        // confirmed occasion (Phase 29).
+        stamped = scanPayload({
+          volunteerName: volunteerRef.current.current,
+          gateId,
           mode,
           payload,
-          volunteer: volunteerName,
+          occasion,
         });
-        if (response.status === "ok") {
-          await Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Success,
-          );
-        } else {
-          await Haptics.notificationAsync(
-            Haptics.NotificationFeedbackType.Error,
-          );
+        if (offline) {
+          await queueScan(stamped);
+          return;
         }
-        showResult(response);
+        const response = await postScan(stamped);
+        setOnline(true);
+        // 35I (C): invalid/unknown results carry the ACTUAL gate and scan
+        // time from this device's context — never fabricated values.
+        if (
+          (response.title === "INVALID CODE" || response.title === "UNKNOWN CODE") &&
+          response.gate == null
+        ) {
+          response.gate = gates.find((g) => g.id === gateId)?.label;
+          response.time = localTimestamp();
+        }
+        // VALID → positive haptic; ALREADY USED / INVALID → error haptic.
+        const cue = classifyScanResult(response).haptic;
+        await haptic(cue);
+        showScanResult(response);
+        persistOpsResult(response);
       } catch (e) {
-        await Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-        showResult({
-          detail:
-            e instanceof ApiError
-              ? e.message
-              : "The scan could not be verified. Try again.",
-          level: "red",
-          status: "error",
-          title: "SCAN FAILED",
-        });
+        // Phase 14: a revoked/expired session re-locks the device first.
+        await handleAuthFailure(e);
+        // Phase 38 (MOB-003): offline is a NETWORK fact — status 0 means the
+        // request never reached the backend (networkError in client.ts).
+        // Busy (retryable) and any HTTP answer (401/403/500/...) all mean
+        // the server responded, so the device stays online (Phase 23 §2).
+        const network = e instanceof ApiError && e.status === 0;
+        const retryable = e instanceof ApiError && e.retryable === true;
+        if (network) {
+          setOnline(false);
+          // Phase 38 (MOB-002): a network failure queues the scan for
+          // replay on Sync instead of silently dropping the verdict.
+          if (stamped) {
+            await queueScan(stamped);
+            return;
+          }
+        }
+        await haptic(retryable ? "warning" : "error");
+        // A retryable answer carries the backend's own amber body, so the
+        // volunteer reads "TEMPORARILY BUSY" with retry guidance instead of
+        // a red SCAN FAILED they would read as a broken scan.
+        const failedResult: ScanResult =
+          e instanceof ApiError && e.result !== undefined
+            ? e.result
+            : {
+                detail:
+                  e instanceof ApiError
+                    ? e.message
+                    : "The scan could not be verified. Try again.",
+                level: "red",
+                status: "error",
+                title: "SCAN FAILED",
+              };
+        showScanResult(failedResult);
+        persistOpsResult(failedResult);
       } finally {
-        setTimeout(() => {
-          scanningRef.current = false;
-        }, 1200);
+        release();
       }
     },
-    [gateId, mode, offline, refreshQueueCount, showResult, volunteer],
+    [
+      claim,
+      gates,
+      gateId,
+      handleAuthFailure,
+      haptic,
+      mode,
+      occasion,
+      offline,
+      persistOpsResult,
+      queueScan,
+      release,
+      session,
+      showScanResult,
+      trackBounds,
+    ],
   );
 
   const handleSync = useCallback(async () => {
@@ -242,13 +531,13 @@ export function ScannerScreen() {
     setSyncing(true);
     try {
       const response = await postSync(items);
+      setOnline(true);
       const { remaining, accepted, rejected } = await reconcileSync(
         response.results,
       );
       setQueued(remaining.length);
-      await Haptics.notificationAsync(
-        Haptics.NotificationFeedbackType.Success,
-      );
+      setLastSyncAt(Date.now());
+      await haptic("success");
       const lines = [`${accepted} scan(s) counted.`];
       if (rejected.length > 0) {
         lines.push(
@@ -267,6 +556,11 @@ export function ScannerScreen() {
         title: "SYNC COMPLETE",
       });
     } catch (e) {
+      // Phase 14: a revoked/expired session re-locks the device too.
+      await handleAuthFailure(e);
+      // Phase 38 (MOB-003): only a network failure (status 0) is offline —
+      // an HTTP answer (busy/500/401) means the server is reachable.
+      if (e instanceof ApiError && e.status === 0) setOnline(false);
       showResult({
         detail:
           e instanceof ApiError
@@ -279,455 +573,702 @@ export function ScannerScreen() {
     } finally {
       setSyncing(false);
     }
-  }, [showResult]);
+  }, [handleAuthFailure, haptic, showResult]);
 
-  const handleDemoScan = useCallback(async () => {
-    setDemoLoading(true);
-    try {
-      const demo = await fetchDemoPayload();
-      if (!demo.payload) {
-        showResult({
-          detail: demo.hint,
-          level: "amber",
-          status: "error",
-          title: "NO DEMO AVAILABLE",
-        });
-        return;
+  /** TEST FUNCTIONALITY — deterministic backend records through the real
+      /api/scan path (same handleBarcode as the camera). */
+  const handleTestScan = useCallback(
+    async (record: TestRecord) => {
+      if (testLoading) return;
+      setTestLoading(true);
+      try {
+        await handleBarcode({ data: record.payload } as BarcodeScanningResult);
+      } finally {
+        setTestLoading(false);
       }
-      await handleBarcode({ data: demo.payload } as BarcodeScanningResult);
+    },
+    [handleBarcode, testLoading],
+  );
+
+  // Issue 1 (Release blocker): reset is destructive — it never executes
+  // on a single tap. The button opens a confirmation modal; the actual
+  // reset only runs after explicit confirmation, and the server
+  // independently requires the admin PIN + rejects on a production DB.
+  const requestTestReset = useCallback(() => {
+    if (testResetLoading) return;
+    setResetConfirmVisible(true);
+  }, [testResetLoading]);
+
+  const handleTestReset = useCallback(async () => {
+    if (testResetLoading) return;
+    setResetConfirmVisible(false);
+    setTestResetLoading(true);
+    try {
+      const removed = await resetTestScans();
+      await refreshQueueCount();
+      await haptic("success");
+      showResult({
+        detail:
+          removed > 0
+            ? `${removed} test scan(s) cleared. Run a Test Scan again to record a fresh entry.`
+            : "No test scans to clear. Run a Test Scan first.",
+        level: "green",
+        status: "ok",
+        title: "TEST SCANS RESET",
+      });
     } catch (e) {
       showResult({
-        detail: e instanceof ApiError ? e.message : "Demo scan failed.",
+        detail:
+          e instanceof ApiError
+            ? e.message
+            : "Could not reset test scans. Try again.",
         level: "red",
         status: "error",
-        title: "DEMO FAILED",
+        title: "RESET FAILED",
       });
     } finally {
-      setDemoLoading(false);
+      setTestResetLoading(false);
     }
-  }, [handleBarcode, showResult]);
+  }, [haptic, refreshQueueCount, showResult, testResetLoading]);
 
-  const saveVolunteer = useCallback((name: string) => {
-    void setVolunteerName(name);
+  // First-use volunteer name: stored once on this device, never asked
+  // again while it stays stored (Part C).
+  const saveName = useCallback(async () => {
+    // 35L (F): the identity stamped on every scan must be at least
+    // two letters — empty/1-char/whitespace values are rejected.
+    if (!isValidVolunteerName(nameDraft)) {
+      setNameError("Enter a real name of at least 2 letters.");
+      return;
+    }
+    try {
+      await volunteerRef.current.ensure(nameDraft);
+      setNameDraft("");
+      setNameError(null);
+      setNamePromptVisible(false);
+      await haptic("success");
+    } catch {
+      setNameError("Could not save on this device. Try again.");
+    }
+  }, [haptic, nameDraft]);
+
+  // Phase 14: sign in with a per-account username + PIN. The server returns
+  // a short-lived session token held only on this device; it also decides the
+  // volunteer name and permitted gates, so nothing here trusts local input
+  // for identity or authorization.
+  const submitLogin = useCallback(async () => {
+    if (loginBusy) return;
+    if (!loginUser.trim() || !loginPin) {
+      setLoginError("Enter your username and PIN.");
+      return;
+    }
+    setLoginBusy(true);
+    setLoginError(null);
+    try {
+      const sess = await loginScanner(loginUser.trim(), loginPin);
+      setSession(sess);
+      setLoginVisible(false);
+      setLoginUser("");
+      setLoginPin("");
+      await haptic("success");
+    } catch (e) {
+      // 429 (rate limit) and 401 (bad credentials) both land here with a
+      // sanitized server message; network errors use the client fallback.
+      setLoginError(
+        e instanceof ApiError ? e.message : "Could not sign in. Try again.",
+      );
+    } finally {
+      setLoginBusy(false);
+    }
+  }, [haptic, loginBusy, loginPin, loginUser]);
+
+  const signOut = useCallback(async () => {
+    await logoutScanner();
+    setSession(null);
+    setLoginVisible(true);
   }, []);
 
+  // Camera mount failures surface a user-safe state; details stay dev-only.
+  const handleMountError = useCallback<MountErrorHandler>((event) => {
+    if (__DEV__) console.log("[scanner] camera mount error:", event.message);
+    setCameraFailed(true);
+  }, []);
+
+  const handleTryCamera = useCallback(() => {
+    setCameraFailed(false);
+    // Issue 6: a retry remounts the camera — the starting state begins again.
+    setCameraReady(false);
+    setCameraKey((k) => k + 1);
+  }, []);
+
+  // Issue 6: the native preview reports its first frame — STARTING ends.
+  const handleCameraReady = useCallback(() => setCameraReady(true), []);
+
+  const handleCameraBack = useCallback(() => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(volunteer)/home");
+    }
+  }, []);
+
+  const handleSelectGate = useCallback((gate: Gate) => {
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
+    setGateId(gate.id);
+    const selected = { id: gate.id, label: gate.label };
+    savedGateRef.current = selected;
+    void setSelectedGate(selected);
+  }, []);
+
+  // Issue 3 (Release blocker): the Entry/Exit switch never applies
+  // silently — tapping the other mode opens a confirmation modal.
+  const requestModeChange = useCallback(
+    (next: ScanMode) => {
+      if (next === mode) return;
+      setModeSwitchPending(next);
+    },
+    [mode],
+  );
+
+  const confirmModeChange = useCallback(() => {
+    const next = modeSwitchPending;
+    setModeSwitchPending(null);
+    if (!next || next === mode) return;
+    // Local ops-state only (persisted for convenience) — never mutates
+    // backend state; the next scan carries the mode in its payload.
+    setMode(next);
+    void setScanMode(next);
+  }, [mode, modeSwitchPending]);
+
+  // Phase 29: the occasion switch follows the same discipline as the mode
+  // switch — rehearsal check-ins and main-ceremony admission are distinct
+  // records, so the volunteer confirms before the scanner changes which
+  // one it records. Local ops-state only; every scan carries the occasion.
+  const requestOccasionChange = useCallback(
+    (next: Occasion) => {
+      if (next === occasion) return;
+      setOccasionSwitchPending(next);
+    },
+    [occasion],
+  );
+
+  const confirmOccasionChange = useCallback(() => {
+    const next = occasionSwitchPending;
+    setOccasionSwitchPending(null);
+    if (!next || next === occasion) return;
+    setOccasion(next);
+    void setScanOccasion(next);
+  }, [occasion, occasionSwitchPending]);
+
+  // Scanner Fix Round 1 (item 2): resolved by a pure helper — once gates
+  // have loaded the chip can never read "Loading gates..."; with no
+  // selection it shows "Choose a gate" (the gate sheet's own words).
+  const gateLabel = resolveGateLabel(gates, gateId, gatesError, gatesLoaded);
+  // 35L (C1): torch capability is only claimed where the platform can
+  // provide it — web has no torch and the control says so honestly.
+  const torchSupported = Platform.OS !== "web";
+  // 35L (D): scan outcomes resolve as FULL-SCREEN states over the whole
+  // screen; operational notices (queue/sync/setup) keep the compact
+  // card inside the camera area.
+  const resultKind = result ? classifyScanResult(result).kind : null;
+  const fullScreenResult =
+    result && resultKind !== null && resultKind !== "other" ? result : null;
+  // 35M targeted fix (item 7): the camera keeps a large share of the
+  // window, but the old fixed 0.62 share pushed the Flash + Find manually
+  // controls below the fold on device — worse with the offline banner or
+  // the gate notice stacked above the camera. The chrome budget reserves
+  // room for the top bar + bottom bar + banners at every window height, so
+  // the controls stay visible without blind scrolling; the Test panel
+  // below the bar stays reachable by scroll.
+  const cameraHeight = Math.max(
+    260,
+    Math.min(Math.round(windowH * 0.58), windowH - 330),
+  );
+
   if (!permission) {
-    return <LoadingState message="Checking camera permission..." />;
+    return (
+      <Screen scroll={false}>
+        <LoadingState label="Checking camera permission..." />
+      </Screen>
+    );
   }
 
   if (!permission.granted) {
+    // Issue 6 (Release blocker): REQUIRED and DENIED are distinct states
+    // with distinct copy — never one generic card. 35L (C2): the recovery
+    // path is never a dead screen — re-ask while the OS still allows it,
+    // otherwise send the operator to system settings, and "Find manually"
+    // keeps gate work moving without the camera. One title, NO icon.
+    const canAsk = permission.canAskAgain;
     return (
-      <View style={styles.permissionWrap}>
-        <EmptyState
-          icon="camera-outline"
-          title="Camera access needed"
-          message="The scanner needs the camera to read QR codes at the gate."
-        />
-        <View style={styles.permissionButton}>
-          <PrimaryButton
-            title="Grant camera permission"
-            onPress={() => void requestPermission()}
+      <Screen>
+        <AppHeader title="Scanner" />
+        <SectionCard>
+          <Text style={styles.permissionTitle}>
+            {canAsk ? "Camera access needed" : "Camera permission is off"}
+          </Text>
+          <Text style={styles.permissionBody}>
+            {canAsk
+              ? "Grant camera access to scan QR codes at your gate."
+              : "Enable the camera for this app in system settings, then come back to the scanner."}
+          </Text>
+          {canAsk ? (
+            <AppButton
+              label="Grant camera permission"
+              icon="camera-outline"
+              onPress={() => void requestPermission()}
+            />
+          ) : (
+            <AppButton
+              label="Open settings"
+              icon="settings-outline"
+              onPress={() => {
+                // Best-effort: some platforms reject — the manual path
+                // below stays available either way.
+                void Linking.openSettings().catch(() => {});
+              }}
+            />
+          )}
+          <AppButton
+            label="Find manually"
+            icon="search"
+            variant="secondary"
+            onPress={() => router.push("/(volunteer)/search")}
           />
-        </View>
-      </View>
+        </SectionCard>
+      </Screen>
     );
   }
 
   return (
-    <View style={styles.root}>
-      <ScrollView style={styles.scroll} keyboardShouldPersistTaps="handled">
-        <SectionCard title="Gate Setup" subtitle="Pick your gate before the crowd arrives">
-          {gatesError ? (
-            <ErrorState message={gatesError} onRetry={() => void loadGates()} />
-          ) : gates.length === 0 ? (
-            <Text style={styles.noGatesText}>
-              No gates found on the server. Ask the admin to add gates, then
-              pull to refresh.
+    // 33-QA (I14): bounded camera frame — the main scanner column no
+    // longer scrolls; the camera grows into its slot (flex:1 with the
+    // 35M chrome-budget formula as the minHeight floor) so the viewfinder
+    // owns the space between the top bar and the bottom bar at every
+    // height, and Flash + Find manually are guaranteed visible without
+    // any scroll. (Dev-only test panel may clip on very short windows.)
+    <Screen scroll={false}>
+      <View style={styles.scannerBody}>
+      {/* Top area: gate + Entry/Exit + connection. Own zone — never
+          overlaps the camera (Part A). */}
+      <ScannerTopBar
+        gateLabel={gateLabel}
+        mode={mode}
+        occasion={occasion}
+        online={online}
+        onModeChange={requestModeChange}
+        onOccasionChange={requestOccasionChange}
+        onOpenSheet={() => setSheetVisible(true)}
+      />
+
+      {/* Issue 3 (Release blocker): mode-switch confirmation — the
+          volunteer explicitly confirms before the direction changes. */}
+      <Modal
+        visible={modeSwitchPending !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setModeSwitchPending(null)}
+      >
+        <View style={styles.promptBackdrop}>
+          <View style={styles.promptCard}>
+            <Text style={styles.promptTitle}>
+              {`Switch to ${modeSwitchPending === "exit" ? "Exit" : "Entry"}?`}
             </Text>
-          ) : (
-            <ScrollView
-              horizontal
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={styles.gateRow}
-            >
-              {gates.map((gate) => {
-                const active = gate.id === gateId;
-                return (
-                  <Pressable
-                    key={gate.id}
-                    onPress={() => {
-                      void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      setGateId(gate.id);
-                    }}
-                    style={({ pressed }) => [
-                      styles.gateChip,
-                      active && styles.gateChipActive,
-                      pressed && styles.pressed,
-                    ]}
-                  >
-                    <Text
-                      style={[
-                        styles.gateChipText,
-                        active && styles.gateChipTextActive,
-                      ]}
-                    >
-                      {gate.label}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </ScrollView>
-          )}
-
-          <View style={styles.row}>
-            <View style={styles.segmentWrap}>
-              <SegmentedControl<ScanMode>
-                options={[
-                  { label: "Entry", value: "entry" },
-                  { label: "Exit", value: "exit" },
-                ]}
-                value={mode}
-                onChange={setMode}
+            <Text style={styles.promptBody}>
+              Scans will be recorded as{" "}
+              {modeSwitchPending === "exit" ? "exits" : "entries"}.
+            </Text>
+            <View style={styles.resetActions}>
+              <AppButton
+                label="Cancel"
+                variant="secondary"
+                onPress={() => setModeSwitchPending(null)}
+              />
+              <AppButton
+                label="Switch"
+                variant="primary"
+                onPress={confirmModeChange}
               />
             </View>
-            <Pressable
-              onPress={() => setTorch((t) => !t)}
-              style={[styles.iconButton, torch && styles.iconButtonActive]}
-            >
-              <Ionicons
-                name={torch ? "flash" : "flash-outline"}
-                size={22}
-                color={torch ? colors.white : colors.greenDark}
-              />
-            </Pressable>
           </View>
+        </View>
+      </Modal>
 
-          <TextInput
-            style={styles.input}
-            placeholder="Volunteer name"
-            placeholderTextColor={colors.muted}
-            value={volunteer}
-            onChangeText={setVolunteer}
-            onEndEditing={(e) => saveVolunteer(e.nativeEvent.text)}
-            autoCapitalize="words"
-            returnKeyType="done"
-          />
-
-          <View style={styles.offlineRow}>
-            <View style={styles.offlineLeft}>
-              <Ionicons name="cloud-offline-outline" size={18} color={colors.muted} />
-              <Text style={styles.offlineLabel}>Offline mode</Text>
-              {queued > 0 && (
-                <View style={styles.queueBadge}>
-                  <Text style={styles.queueBadgeText}>{queued} queued</Text>
-                </View>
-              )}
+      {/* Phase 29: occasion-switch confirmation — a rehearsal check-in and
+          a main-ceremony admission are distinct records, so the volunteer
+          confirms before the scanner changes which one it records. */}
+      <Modal
+        visible={occasionSwitchPending !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setOccasionSwitchPending(null)}
+      >
+        <View style={styles.promptBackdrop}>
+          <View style={styles.promptCard}>
+            <Text style={styles.promptTitle}>
+              {`Switch to ${occasionSwitchPending === "rehearsal" ? "Rehearsal" : "Main convocation"}?`}
+            </Text>
+            <Text style={styles.promptBody}>
+              Scans will be recorded as{" "}
+              {occasionSwitchPending === "rehearsal"
+                ? "rehearsal check-ins"
+                : "main convocation admissions"}
+              .
+            </Text>
+            <View style={styles.resetActions}>
+              <AppButton
+                label="Cancel"
+                variant="secondary"
+                onPress={() => setOccasionSwitchPending(null)}
+              />
+              <AppButton
+                label="Switch"
+                variant="primary"
+                onPress={confirmOccasionChange}
+              />
             </View>
-            <Switch
-              value={offline}
-              onValueChange={setOffline}
-              trackColor={{ false: colors.border, true: colors.emerald }}
-              thumbColor={offline ? colors.white : colors.white}
+          </View>
+        </View>
+      </Modal>
+
+      {online === false || queued > 0 ? (
+        <OfflineBanner
+          title={
+            queued > 0
+              ? `${online === false ? "Offline" : "Waiting to sync"}. ${queued} scan${queued === 1 ? "" : "s"} waiting.`
+              : online === false
+                ? "Offline"
+                : "Waiting to sync"
+          }
+          lastSyncedAt={lastSyncAt}
+          onRetry={() => void loadGates()}
+        />
+      ) : null}
+
+      {/* Issue 2 (Release blocker): the camera is refused until a gate is
+          chosen — no viewfinder, no scan, no ambiguity. The gate sheet
+          opens automatically so the volunteer picks one explicitly. */}
+      {gateId === null ? (
+        <View style={[styles.cameraArea, { minHeight: cameraHeight }]}>
+          <View style={styles.gateRequired}>
+            <Ionicons name="location-outline" size={48} color={colors.muted} />
+            <Text style={styles.gateRequiredTitle}>Choose a gate</Text>
+            <Text style={styles.gateRequiredBody}>
+              The scanner needs a gate before it can read QR codes. Select
+              the gate you are staffing, then scanning starts.
+            </Text>
+            <AppButton
+              label="Choose a gate"
+              icon="location-outline"
+              onPress={() => setSheetVisible(true)}
             />
           </View>
-
-          {queued > 0 && (
-            <View style={styles.syncWrap}>
-              <PrimaryButton
-                title={syncing ? "Syncing..." : `Sync now (${queued})`}
-                onPress={() => void handleSync()}
-                loading={syncing}
-                variant="accent"
-              />
-            </View>
-          )}
-        </SectionCard>
-
-        <View style={styles.cameraCard}>
-          {Platform.OS === "web" ? (
-            <View style={styles.webViewfinder}>
-              <ViewfinderCorners />
-              <Animated.View
-                style={[
-                  styles.webScanLine,
-                  {
-                    transform: [
-                      {
-                        translateY: scanAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [-(FRAME / 2) + 16, FRAME / 2 - 16],
-                        }),
-                      },
-                    ],
-                  },
-                ]}
-              />
-              <View style={styles.cameraHintPill}>
-                <Text style={styles.cameraHint}>
-                  Point the camera at a student QR card
-                </Text>
-              </View>
-            </View>
-          ) : (
-            <View style={styles.cameraWrap}>
-              <CameraView
-                style={styles.camera}
-                facing="back"
-                enableTorch={torch}
-                barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
-                onBarcodeScanned={handleBarcode}
-              />
-              <ViewfinderCorners />
-              <View style={styles.scanLine} />
-              <View style={styles.cameraHintPill}>
-                <Text style={styles.cameraHint}>
-                  Point the camera at a student QR card
-                </Text>
-              </View>
-            </View>
-          )}
         </View>
-
-        <View style={styles.footer}>
-          <PrimaryButton
-            title="Demo scan (no camera)"
-            onPress={() => void handleDemoScan()}
-            loading={demoLoading}
-            variant="outline"
+      ) : (
+        <View style={[styles.cameraArea, { minHeight: cameraHeight }]}>
+          <CameraScannerView
+            cameraKey={cameraKey}
+            zoom={zoom}
+            torch={torch}
+            torchSupported={torchSupported}
+            paused={sheetVisible}
+            onBarcodeScanned={handleBarcode}
+            onCameraLayout={onCameraLayout}
+            onMountError={handleMountError}
+            failed={cameraFailed}
+            onTryAgain={handleTryCamera}
+            onBack={handleCameraBack}
+            onFindManual={() => router.push("/(volunteer)/search")}
+            ready={cameraReady}
+            onCameraReady={handleCameraReady}
+            mode={mode}
+            result={fullScreenResult ? null : result}
+            onDismissResult={dismissResult}
           />
         </View>
-        <View style={styles.bottomPad} />
-      </ScrollView>
+      )}
 
-      {result && <ResultCard result={result} onDismiss={dismissResult} />}
-    </View>
+      {/* Flash (labeled) + Find manually + offline queue — under camera. */}
+      <ScannerBottomBar
+        torch={torch}
+        torchSupported={torchSupported}
+        onTorchToggle={() => setTorch((t) => !t)}
+        onFindManual={() => router.push("/(volunteer)/search")}
+        online={online}
+        offline={offline}
+        onOfflineChange={setOffline}
+        queued={queued}
+        syncing={syncing}
+        onSync={() => void handleSync()}
+        gatesError={gatesError}
+        onRetryGates={loadGates}
+      />
+
+      {/* Test scan — real backend records through the same code path.
+          Issue 1 (Release blocker): renders only in __DEV__ AND when
+          this device has an unlocked admin PIN. Release builds never
+          render it (the server additionally 404s the test endpoints
+          when the configured database is the production file). */}
+      {__DEV__ && adminUnlocked ? (
+        <ScannerTestPanel
+          records={testRecords}
+          testLoading={testLoading}
+          testResetLoading={testResetLoading}
+          onTestScan={(record) => void handleTestScan(record)}
+          onTestReset={requestTestReset}
+        />
+      ) : null}
+
+      {/* Issue 1 (Release blocker): reset-test confirmation — destructive
+          actions never execute on a single tap. */}
+      <Modal
+        visible={resetConfirmVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setResetConfirmVisible(false)}
+      >
+        <View style={styles.promptBackdrop}>
+          <View style={styles.promptCard}>
+            <Text style={styles.promptTitle}>Reset test scans?</Text>
+            <Text style={styles.promptBody}>
+              This clears the test scan records on the server so you can run
+              fresh test scans. Real guest and student data is not affected.
+            </Text>
+            <View style={styles.resetActions}>
+              <AppButton
+                label="Cancel"
+                variant="secondary"
+                onPress={() => setResetConfirmVisible(false)}
+              />
+              <AppButton
+                label="Reset test scans"
+                variant="danger"
+                loading={testResetLoading}
+                onPress={() => void handleTestReset()}
+              />
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Gate sheet — gate selection only (35I Q: direction lives in the
+          top bar SegmentedControl, the ONE authoritative control). */}
+      <ScannerSheet
+        visible={sheetVisible}
+        gates={gates}
+        gatesError={gatesError}
+        gateId={gateId}
+        onSelectGate={handleSelectGate}
+        onClose={() => setSheetVisible(false)}
+      />
+
+      {/* Scanner sign-in (Phase 14): required before any scan is sent.
+          The server decides the volunteer identity and permitted gates. */}
+      <Modal
+        visible={sessionLoaded && loginVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => {
+          if (session) setLoginVisible(false);
+        }}
+      >
+        <View style={styles.promptBackdrop}>
+          <View style={styles.promptCard}>
+            <Text style={styles.promptTitle}>Sign in to scan</Text>
+            <Text style={styles.promptBody}>
+              Use the scanner username and PIN issued by the administrator for
+              your gate. Scanning is locked until you sign in.
+            </Text>
+            <Field
+              label="Username"
+              placeholder="e.g. gateA-ana"
+              value={loginUser}
+              onChangeText={(t) => {
+                setLoginUser(t);
+                setLoginError(null);
+              }}
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="next"
+            />
+            <Field
+              label="PIN"
+              placeholder="Your scanner PIN"
+              value={loginPin}
+              onChangeText={(t) => {
+                setLoginPin(t);
+                setLoginError(null);
+              }}
+              secureTextEntry
+              autoCapitalize="none"
+              autoCorrect={false}
+              returnKeyType="done"
+            />
+            {loginError ? <Text style={styles.promptError}>{loginError}</Text> : null}
+            <AppButton
+              label={loginBusy ? "Signing in…" : "Sign in"}
+              icon="log-in"
+              onPress={() => void submitLogin()}
+              disabled={loginBusy}
+            />
+            {session ? (
+              <AppButton
+                label="Sign out"
+                variant="secondary"
+                onPress={() => void signOut()}
+              />
+            ) : null}
+          </View>
+        </View>
+      </Modal>
+
+      {/* Volunteer name — first use only; stored on this device. */}
+      <Modal
+        visible={namePromptVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setNamePromptVisible(false)}
+      >
+        <View style={styles.promptBackdrop}>
+          <View style={styles.promptCard}>
+            <Text style={styles.promptTitle}>Volunteer name</Text>
+            <Text style={styles.promptBody}>
+              Every scan at this gate is stamped with your name. It is stored
+              once on this device — you will not be asked again.
+            </Text>
+            <Field
+              label="Your name"
+              placeholder="e.g. Bilal Ahmad"
+              value={nameDraft}
+              onChangeText={(t) => {
+                setNameDraft(t);
+                setNameError(null);
+              }}
+              autoCapitalize="words"
+              returnKeyType="done"
+            />
+            {nameError ? <Text style={styles.promptError}>{nameError}</Text> : null}
+            <AppButton
+              label="Save name"
+              icon="checkmark"
+              onPress={() => void saveName()}
+            />
+            <AppButton
+              label="Not now"
+              variant="secondary"
+              onPress={() => setNamePromptVisible(false)}
+            />
+          </View>
+        </View>
+      </Modal>
+
+      {/* 35L (D): valid / guest / already-used / invalid resolve into a
+          full-screen state over the whole screen — the operator cannot
+          miss the verdict. Timing preserved (SCAN_RESULT_MS / 4s). */}
+      {fullScreenResult ? (
+        <View style={styles.fullResultLayer} pointerEvents="box-none">
+          <ScannerResult
+            result={fullScreenResult}
+            mode={mode}
+            onDismiss={dismissResult}
+          />
+        </View>
+      ) : null}
+      </View>
+    </Screen>
   );
 }
 
-const CORNER = 40;
-const FRAME = 250;
-
-const styles = StyleSheet.create({
-  bottomPad: {
-    height: spacing.md,
-  },
-  camera: {
-    ...StyleSheet.absoluteFill,
-  },
-  cameraCard: {
-    borderRadius: radius.lg,
-    elevation: 4,
-    marginHorizontal: spacing.md,
-    marginTop: spacing.md,
-    overflow: "hidden",
-    shadowColor: colors.greenDark,
-    shadowOffset: { height: 3, width: 0 },
-    shadowOpacity: 0.2,
-    shadowRadius: 10,
-  },
-  cameraHint: {
-    color: colors.white,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.medium,
-  },
-  cameraHintPill: {
-    alignSelf: "center",
-    backgroundColor: "rgba(8, 74, 39, 0.75)",
-    borderRadius: radius.full,
-    bottom: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    position: "absolute",
-  },
-  cameraWrap: {
-    backgroundColor: colors.greenDark,
-    height: 340,
-    overflow: "hidden",
-    position: "relative",
-  },
-  corner: {
-    borderColor: colors.emerald,
-    height: CORNER,
-    position: "absolute",
-    width: CORNER,
-  },
-  cornerBL: {
-    borderBottomWidth: 4,
-    borderLeftWidth: 4,
-    bottom: 0,
-    left: 0,
-  },
-  cornerBR: {
-    borderBottomWidth: 4,
-    borderRightWidth: 4,
-    bottom: 0,
-    right: 0,
-  },
-  cornerTL: {
-    borderLeftWidth: 4,
-    borderTopWidth: 4,
-    left: 0,
-    top: 0,
-  },
-  cornerTR: {
-    borderRightWidth: 4,
-    borderTopWidth: 4,
-    right: 0,
-    top: 0,
-  },
-  footer: {
-    padding: spacing.md,
-  },
-  frame: {
-    alignSelf: "center",
-    height: FRAME,
-    marginTop: -FRAME / 2,
-    position: "absolute",
-    top: "50%",
-    width: FRAME,
-  },
-  gateChip: {
-    backgroundColor: colors.tint,
-    borderColor: colors.border,
-    borderRadius: radius.full,
-    borderWidth: 1,
-    marginRight: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
-  },
-  gateChipActive: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
-    elevation: 2,
-    shadowColor: colors.greenDark,
-    shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-  },
-  gateChipText: {
-    color: colors.text,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.semibold,
-  },
-  gateChipTextActive: {
-    color: colors.white,
-  },
-  gateRow: {
-    paddingBottom: spacing.sm,
-  },
-  iconButton: {
-    alignItems: "center",
-    backgroundColor: colors.tint,
-    borderColor: colors.border,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    height: 52,
-    justifyContent: "center",
-    width: 52,
-  },
-  iconButtonActive: {
-    backgroundColor: colors.green,
-    borderColor: colors.green,
-  },
-  input: {
-    backgroundColor: colors.inputBg,
-    borderColor: colors.border,
+const styles = {
+  cameraArea: {
+    // 33-QA (I14): the camera fills its slot in the bounded column
+    // (flex: 1); the 35M chrome-budget formula stays the minHeight
+    // floor so the bottom bar is never pushed off-screen.
+    flex: 1,
     borderRadius: radius.md,
-    borderWidth: 1,
-    color: colors.text,
-    fontSize: fontSize.body,
-    marginTop: spacing.sm,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    overflow: "hidden" as const,
   },
-  noGatesText: {
+  scannerBody: {
+    // 33-QA (I14): one tight column — top bar → camera → bottom bar;
+    // the camera grows into the leftover height.
+    flex: 1,
+    gap: spacing.sm,
+  },
+  // Issue 2: gate-required state replaces the camera until a gate is set.
+  gateRequired: {
+    flex: 1,
+    alignItems: "center" as const,
+    justifyContent: "center" as const,
+    gap: spacing.md,
+    paddingHorizontal: spacing.lg,
+    backgroundColor: colors.track,
+    borderRadius: radius.md,
+  },
+  gateRequiredTitle: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    letterSpacing: -0.4,
+    color: colors.ink,
+  },
+  gateRequiredBody: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
     color: colors.muted,
-    fontSize: fontSize.body,
-    paddingVertical: spacing.sm,
+    lineHeight: 21,
+    textAlign: "center" as const,
   },
-  offlineLabel: {
-    color: colors.text,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    marginLeft: spacing.xs,
+  fullResultLayer: {
+    ...StyleSheet.absoluteFill,
+    // Above camera + bars; the name prompt Modal stays above everything.
+    zIndex: 10,
   },
-  offlineLeft: {
-    alignItems: "center",
-    flexDirection: "row",
+  permissionTitle: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    letterSpacing: -0.4,
+    color: colors.ink,
   },
-  offlineRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: spacing.md,
+  permissionBody: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    color: colors.muted,
+    lineHeight: 18,
   },
-  permissionButton: {
-    padding: spacing.md,
-    width: "100%",
-  },
-  permissionWrap: {
-    backgroundColor: colors.background,
+  promptBackdrop: {
     flex: 1,
+    backgroundColor: colors.overlay,
+    justifyContent: "center" as const,
+    padding: spacing.screen,
   },
-  pressed: {
-    opacity: 0.85,
+  promptCard: {
+    backgroundColor: colors.paper,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: colors.track,
+    padding: spacing.lg,
+    gap: spacing.sm,
   },
-  queueBadge: {
-    backgroundColor: colors.gold,
-    borderRadius: radius.full,
-    marginLeft: spacing.sm,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+  promptTitle: {
+    fontFamily: fonts.display,
+    fontSize: 24,
+    letterSpacing: -0.4,
+    color: colors.ink,
   },
-  queueBadgeText: {
-    color: colors.greenDark,
-    fontSize: fontSize.small,
-    fontWeight: fontWeight.bold,
+  promptBody: {
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
+    color: colors.muted,
+    lineHeight: 21,
   },
-  root: {
-    backgroundColor: colors.background,
-    flex: 1,
+  promptError: {
+    // 35M item 18: the validation sentence is normal label text — sans,
+    // not DM Mono (mono is reserved for status chips + gate identifiers).
+    fontFamily: fonts.displayMedium,
+    fontSize: 11,
+    color: colors.invalid,
   },
-  row: {
-    alignItems: "center",
-    flexDirection: "row",
+  resetActions: {
+    flexDirection: "row" as const,
     gap: spacing.sm,
     marginTop: spacing.sm,
   },
-  scanLine: {
-    alignSelf: "center",
-    backgroundColor: "rgba(22, 163, 74, 0.9)",
-    borderRadius: 2,
-    height: 3,
-    marginTop: -1.5,
-    position: "absolute",
-    top: "50%",
-    width: "86%",
-  },
-  scroll: {
-    flex: 1,
-  },
-  segmentWrap: {
-    flex: 1,
-  },
-  syncWrap: {
-    marginTop: spacing.sm,
-  },
-  webScanLine: {
-    alignSelf: "center",
-    backgroundColor: colors.emerald,
-    borderRadius: 2,
-    height: 3,
-    position: "absolute",
-    top: "50%",
-    width: "86%",
-  },
-  webViewfinder: {
-    alignItems: "center",
-    backgroundColor: "#22332B",
-    height: 340,
-    justifyContent: "center",
-    overflow: "hidden",
-    position: "relative",
-  },
-});
+};

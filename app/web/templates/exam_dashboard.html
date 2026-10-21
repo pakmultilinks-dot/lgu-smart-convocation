@@ -1,0 +1,263 @@
+{% extends "base.html" %}
+{% block title %}Examination Admin{% endblock %}
+{% block content %}
+<h1 class="page-title">Examination Admin</h1>
+<p class="page-sub">Signed in as {{ staff.display_name }} ({{ staff.username }}){% if metrics.conv %} · {{ metrics.conv.name }} ({{ metrics.conv.year }}){% endif %}.</p>
+
+{% if metrics.totals %}
+<div class="grid kpi">
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.totals.total }}</div>
+    <div class="lbl">Total registrations</div>
+    <div class="sub">in the active convocation</div>
+  </div>
+  <div class="kpi-tile green">
+    <div class="num">{{ metrics.totals.active }}</div>
+    <div class="lbl">Active</div>
+    <div class="sub">claimable by students</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.totals.cancelled }}</div>
+    <div class="lbl">Cancelled</div>
+    <div class="sub">can be reinstated</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.totals.revoked }}</div>
+    <div class="lbl">Revoked</div>
+    <div class="sub">permanent</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.claimed }}</div>
+    <div class="lbl">Claimed by students</div>
+    <div class="sub">linked to a student account</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.unclaimed }}</div>
+    <div class="lbl">Not yet claimed</div>
+    <div class="sub">no account linked</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.incomplete_profiles }}</div>
+    <div class="lbl">Profiles missing a photo</div>
+    <div class="sub">claimed but not yet complete</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.ceremony_admitted }}</div>
+    <div class="lbl">Admitted — main convocation</div>
+    <div class="sub">convocation ledger</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.rehearsal_admitted }}</div>
+    <div class="lbl">Admitted — rehearsal</div>
+    <div class="sub">counted separately from the ceremony</div>
+  </div>
+  {% if metrics.medalists %}
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.medalists.total }}</div>
+    <div class="lbl">Medalist records</div>
+    <div class="sub">Phase 6 board ({{ metrics.medalists.published }} published)</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.medalists.draft }}</div>
+    <div class="lbl">Medalists unpublished</div>
+    <div class="sub">hidden until published</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.medalists.missing_photo }}</div>
+    <div class="lbl">Medalists without a picture</div>
+    <div class="sub">cannot be published yet</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.medalists.coverage_missing }}</div>
+    <div class="lbl">Award coverage gaps</div>
+    <div class="sub">department/category slots to add</div>
+  </div>
+  {% endif %}
+  {% if metrics.event %}
+  {# Phase 7: event + announcement tiles. Derived from real records only —
+     the date tile always names its state (expected never reads as confirmed)
+     and the milestone tile counts days only when a real future date exists. #}
+  <div class="kpi-tile">
+    <div class="num" style="font-size:18px;line-height:1.4">
+      {%- if metrics.event.state == 'confirmed' -%}
+        {{ metrics.conv.confirmed_date[:10] }}
+      {%- elif metrics.event.state == 'expected' -%}
+        {{ metrics.conv.expected_date[:10] }}
+      {%- else -%}None{% endif -%}
+    </div>
+    <div class="lbl">Convocation date</div>
+    <div class="sub">{{ metrics.event.label }}</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.event.announcements.published }}</div>
+    <div class="lbl">Announcements published</div>
+    <div class="sub">visible in the student app</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.event.announcements.draft }}</div>
+    <div class="lbl">Announcement drafts</div>
+    <div class="sub">not visible to students</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ 1 if metrics.event.published else 0 }}</div>
+    <div class="lbl">Event info published</div>
+    <div class="sub">{% if metrics.event.published %}students see the official page{% else %}students see no date yet{% endif %}</div>
+  </div>
+  {% endif %}
+  {% if metrics.support %}
+  {# Phase 9: student-support tiles. Every number is a real COUNT from
+     support_requests.metrics and every tile links to the queue that
+     resolves it. Nothing here mutates a registration — a resulting
+     correction goes through the existing registration workflow. #}
+  <div class="kpi-tile">
+    <div class="num"><a href="{{ url_for('exam.support_queue', status='open') }}">{{ metrics.support.open }}</a></div>
+    <div class="lbl">Support requests awaiting review</div>
+    <div class="sub">of {{ metrics.support.total }} total · open the queue</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num"><a href="{{ url_for('exam.support_queue', status='info_required') }}">{{ metrics.support.info_required }}</a></div>
+    <div class="lbl">Awaiting student information</div>
+    <div class="sub">waiting on the student to reply</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num"><a href="{{ url_for('exam.support_queue') }}">{{ metrics.support.new_today }}</a></div>
+    <div class="lbl">New requests today</div>
+    <div class="sub">opened in the last 24 hours</div>
+  </div>
+  <div class="kpi-tile green">
+    <div class="num"><a href="{{ url_for('exam.support_queue', status='resolved') }}">{{ metrics.support.resolved_recent }}</a></div>
+    <div class="lbl">Resolved this week</div>
+    <div class="sub">decisions in the last {{ 7 }} days</div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.support.avg_age_days }}<span style="font-size:14px">d</span></div>
+    <div class="lbl">Average age of open requests</div>
+    <div class="sub"><a href="{{ url_for('exam.support_queue', status='stale') }}">{{ metrics.support.stale }} older than {{ 7 }} days</a></div>
+  </div>
+  <div class="kpi-tile">
+    <div class="num">{{ metrics.support.oldest_age_days }}<span style="font-size:14px">d</span></div>
+    <div class="lbl">Oldest unresolved request</div>
+    <div class="sub">age of the longest-waiting request</div>
+  </div>
+  <div class="kpi-tile">
+    {% set cats = metrics.support.by_category.items() | selectattr(1) | list %}
+    <div class="num" style="font-size:15px;line-height:1.4">
+      {%- if cats -%}
+        {%- for c, n in cats -%}{{ c.replace('_', ' ') }}: {{ n }}{% if not loop.last %} · {% endif %}{%- endfor -%}
+      {%- else -%}None{%- endif -%}
+    </div>
+    <div class="lbl">Requests by category</div>
+    <div class="sub">missing reg · correction · cancellation · account · general</div>
+  </div>
+  {% endif %}
+</div>
+
+{% if metrics.latest_import %}
+{% set batch = metrics.latest_import %}
+<div class="card">
+  <h2>Latest import outcome</h2>
+  <p class="page-sub">
+    <span class="badge {{ 'entry' if batch.status == 'committed' else 'bad' if batch.status == 'failed' else 'queued' }}">{{ batch.status }}</span>
+    {{ batch.filename }}
+    · uploaded {{ batch.created_at }}{% if batch.committed_at %} · committed {{ batch.committed_at }}{% endif %}
+  </p>
+  {% if batch.result %}
+  <p class="page-sub">{{ batch.result.inserted }} inserted · {{ batch.result.updated }} updated · {{ batch.result.unchanged }} unchanged ·
+    {{ (batch.result.skipped_invalid or 0) + (batch.result.skipped_duplicate or 0) + (batch.result.skipped_conflict or 0) }} skipped ({{ batch.result.mode }})</p>
+  <a class="btn" href="{{ url_for('exam.import_review', batch_id=batch.id) }}">Open batch {{ batch.id }}</a>
+  {% else %}
+  <p class="page-sub">{{ batch.valid_rows }} valid · {{ batch.invalid_rows }} invalid · {{ batch.duplicate_rows }} duplicate · {{ batch.conflict_rows }} conflict — not committed yet.</p>
+  <a class="btn" href="{{ url_for('exam.import_review', batch_id=batch.id) }}">Review batch {{ batch.id }}</a>
+  {% endif %}
+  <a class="btn ghost" href="{{ url_for('exam.import_history') }}">Import history</a>
+</div>
+{% endif %}
+{% endif %}
+
+<div class="card">
+  <h2>Data issues</h2>
+  {% if metrics.issues %}
+  {% for issue in metrics.issues %}
+  <div class="notice {{ issue.level }}">
+    <p>{{ issue.text }}</p>
+    <p><a href="{{ issue.href }}">{{ issue.label }} &rarr;</a></p>
+  </div>
+  {% endfor %}
+  {% else %}
+  <div class="notice ok">
+    <p>No outstanding data issues. Every import is committed and the registration records are consistent.</p>
+  </div>
+  {% endif %}
+</div>
+
+<div class="grid two">
+  <div class="card">
+    <h2>Registration imports</h2>
+    <p class="page-sub">Upload the official Excel list, preview it, then confirm. Manage registrations and their audit history.</p>
+    <a class="btn" href="{{ url_for('exam.registrations') }}">Open registrations</a>
+    <a class="btn ghost" href="{{ url_for('exam.import_upload') }}">Upload a new file</a>
+  </div>
+  <div class="card">
+    <h2>Medalists</h2>
+    {% if metrics.medalists %}
+    <p class="page-sub">{{ metrics.medalists.total }} record{{ 's' if metrics.medalists.total != 1 }} · {{ metrics.medalists.published }} published · {{ metrics.medalists.missing_photo }} without a picture. The student board only shows published records with approved pictures.</p>
+    <a class="btn" href="{{ url_for('medalists.list_view') }}">Manage medalists</a>
+    <a class="btn ghost" href="{{ url_for('medalists.create') }}">Add a record</a>
+    <a class="btn ghost" href="{{ url_for('medalists.import_view') }}">Import Excel</a>
+    {% else %}
+    <p class="page-sub">Not yet available — configure an active convocation to manage medalists.</p>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Event publishing</h2>
+    {% if metrics.event %}
+      <p class="page-sub">
+        <span class="badge {{ 'entry' if metrics.event.state == 'confirmed' else 'queued' if metrics.event.state == 'expected' else 'bad' }}">{{ metrics.event.label }}</span>
+        {% if metrics.event.published %}
+          {% if metrics.event.dirty %}Published snapshot with unpublished changes{% else %}Published{% endif %}
+          · {{ metrics.event.announcements.published }} announcement{{ 's' if metrics.event.announcements.published != 1 else '' }} live
+        {% else %}
+          Event details not published yet — students see no official date
+          · {{ metrics.event.announcements.published }} announcement{{ 's' if metrics.event.announcements.published != 1 else '' }} live
+        {% endif %}
+      </p>
+      <a class="btn" href="{{ url_for('exam.event_page') }}">Manage event details</a>
+      <a class="btn ghost" href="{{ url_for('exam.announcements_page') }}">Announcements</a>
+      <a class="btn ghost" href="{{ url_for('exam.support_queue') }}">Support requests</a>
+      <a class="btn ghost" href="{{ url_for('exam.scanners') }}">Scanner accounts</a>
+    {% else %}
+      <p class="page-sub">No active convocation record. Create and publish event details on the event page.</p>
+      <a class="btn" href="{{ url_for('exam.event_page') }}">Open event page</a>
+      <a class="btn ghost" href="{{ url_for('exam.support_queue') }}">Support requests</a>
+      <a class="btn ghost" href="{{ url_for('exam.scanners') }}">Scanner accounts</a>
+    {% endif %}
+  </div>
+  <div class="card">
+    <h2>Digital invitation passes</h2>
+    {% if metrics.invitations %}
+      <p class="page-sub">
+        {{ metrics.invitations.claimed }} of {{ metrics.invitations.active }} active registration{{ 's' if metrics.invitations.active != 1 }} claimed by a student account and can open an invitation.
+        {% if metrics.invitations.pending_review %}{{ metrics.invitations.pending_review }} account{{ 's' if metrics.invitations.pending_review != 1 }} under unresolved review {{ 'is' if metrics.invitations.pending_review == 1 else 'are' }} held back from a final pass.{% endif %}
+        Event details {{ 'published' if metrics.invitations.event_published else 'not published yet — students see no official date' }}.
+      </p>
+      <p class="page-sub">
+        <span class="badge {{ 'entry' if metrics.invitations.qr_active else 'bad' }}">{{ 'Convocation QR entry active' if metrics.invitations.qr_active else 'Convocation QR entry not yet issued' }}</span>
+        {{ metrics.invitations.passes_issued_active }} live entry pass{{ 'es' if metrics.invitations.passes_issued_active != 1 }} issued; {{ metrics.invitations.admitted }} attendee{{ 's' if metrics.invitations.admitted != 1 }} admitted so far.
+      </p>
+      {% if not metrics.invitations.qr_prerequisite.satisfied %}
+      <p class="page-sub">
+        Legacy operational-QR prerequisite not satisfied: registrations are still not linked to the check-in roster ({% if metrics.invitations.qr_prerequisite.roster_overlap %}{{ metrics.invitations.qr_prerequisite.roster_overlap }} roll number{{ 's' if metrics.invitations.qr_prerequisite.roster_overlap != 1 }} overlap the roster, but no approved sync exists{% else %}no approved roster sync exists{% endif %}). Convocation entry uses the separately issued QR verified against the registration ledger instead.
+      </p>
+      {% endif %}
+      <a class="btn ghost" href="{{ url_for('exam.registrations') }}">Manage registrations</a>
+    {% else %}
+      <p class="page-sub">No active convocation record. Invitation passes follow a confirmed registration and published event details.</p>
+    {% endif %}
+  </div>
+</div>
+
+<form method="post" action="{{ url_for('exam.logout') }}" style="margin-top: 16px;">
+  <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+  <button class="btn ghost" type="submit">Sign out</button>
+</form>
+{% endblock %}

@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Medalists · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Medalist Board Management</h1>
+<p class="page-sub">{% if conv %}{{ conv.name }} · {{ conv.year }} · {% endif %}{{ totals.get('total', 0) }} records · {{ totals.get('published', 0) }} published · {{ totals.get('draft', 0) }} drafts{% if totals.get('missing_photo') %} · {{ totals.missing_photo }} without a picture{% endif %}</p>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+<div class="btn-row">
+  <a class="btn green" href="{{ url_for('medalists.create') }}">Add medalist</a>
+  <a class="btn ghost" href="{{ url_for('medalists.import_view') }}">Import Excel</a>
+  <a class="btn ghost" href="{{ url_for('medalists.import_template') }}">Download template</a>
+  <a class="btn ghost" href="{{ url_for('exam.dashboard') }}">Dashboard</a>
+</div>
+{% if coverage and coverage[2] %}
+<div class="notice warn">
+  <p>Incomplete award coverage: {% for m in coverage[2] %}{{ m.department }} is missing {{ m.missing|join(', ') }}{% if not loop.last %}; {% endif %}{% endfor %}.</p>
+  <p><a href="{{ url_for('medalists.create') }}">Add the missing records &rarr;</a></p>
+</div>
+{% endif %}
+<div class="card">
+  <form method="get">
+    <label for="q">Search medalists</label>
+    <input id="q" type="text" name="q" value="{{ q }}" maxlength="80" placeholder="Student name or reference number">
+    <label for="department">Department</label>
+    <select id="department" name="department">
+      <option value="" {% if not department %}selected{% endif %}>All departments</option>
+      {% for d in departments %}<option value="{{ d }}" {% if d == department %}selected{% endif %}>{{ d }}</option>{% endfor %}
+    </select>
+    <label for="category">Award category</label>
+    <select id="category" name="category">
+      <option value="" {% if not category %}selected{% endif %}>All categories</option>
+      {% for c in categories %}<option value="{{ c }}" {% if c == category %}selected{% endif %}>{{ c }}</option>{% endfor %}
+    </select>
+    <label for="publication">Publication</label>
+    <select id="publication" name="publication">
+      <option value="" {% if not publication %}selected{% endif %}>All records</option>
+      <option value="published" {% if publication == 'published' %}selected{% endif %}>Published</option>
+      <option value="draft" {% if publication == 'draft' %}selected{% endif %}>Drafts (unpublished)</option>
+    </select>
+    <div class="btn-row"><button class="btn" type="submit">Search</button></div>
+  </form>
+</div>
+<table>
+  <tr><th>Student</th><th>Department</th><th>Award</th><th>Position</th><th>Reference</th><th>Picture</th><th>Publication</th></tr>
+  {% for r in rows %}
+  <tr>
+    <td><a href="{{ url_for('medalists.detail', medalist_id=r.id) }}">{{ r.student_name }}</a></td>
+    <td>{{ r.department }}</td>
+    <td><span class="badge {{ 'entry' if r.award_category == 'gold' else 'exit' if r.award_category == 'silver' else 'queued' if r.award_category == 'bronze' }}">{{ r.award_category }}</span></td>
+    <td>{{ r.position or '—' }}</td>
+    <td>{{ r.reference_number or '—' }}</td>
+    <td>{% if r.photo_file %}Yes{% else %}<span class="badge bad">missing</span>{% endif %}</td>
+    <td><span class="badge {{ 'entry' if r.publication == 'published' else 'queued' }}">{{ r.publication }}</span></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">{% if q or department or category or publication or missing_photo or unmatched_ref %}No medalists match this search.{% else %}No medalists yet. Add records one by one or import the Excel list.{% endif %}</td></tr>
+  {% endfor %}
+</table>
+{% if page > 1 or has_next %}
+<div class="btn-row">
+  {% if page > 1 %}<a class="btn ghost" href="{{ url_for('medalists.list_view', q=q, department=department, category=category, publication=publication, page=page - 1) }}">Previous</a>{% endif %}
+  {% if has_next %}<a class="btn ghost" href="{{ url_for('medalists.list_view', q=q, department=department, category=category, publication=publication, page=page + 1) }}">Next</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Create scanner account{% endblock %}
+{% block content %}
+<h1 class="page-title">Create scanner account</h1>
+<p class="page-sub">Signed in as {{ staff.display_name }} ({{ staff.username }}).
+The account is recorded as <code>via=portal</code> with your session identity —
+no submitted name is trusted. There is no default or shared PIN: a new account
+starts with no usable credential until a PIN is established below.</p>
+
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+<div class="card">
+  <form method="post" action="{{ url_for('exam.scanner_new') }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+
+    <label for="username">Username (used to sign in on the scanner device)</label>
+    <input id="username" name="username" value="{{ form.get('username', '') }}"
+           required maxlength="64" autocomplete="off">
+
+    <label for="display_name">Volunteer display name</label>
+    <input id="display_name" name="display_name" value="{{ form.get('display_name', '') }}"
+           required maxlength="120" autocomplete="off">
+
+    <label for="pin">Initial PIN (optional)</label>
+    <input id="pin" name="pin" maxlength="256" autocomplete="off"
+           inputmode="numeric" pattern="[0-9]*"
+           placeholder="Leave blank for a generated one-time PIN">
+    <label>
+      <input type="checkbox" name="pending" value="1">
+      Create with no usable credential yet (set the PIN when the volunteer arrives)
+    </label>
+    <p class="page-sub">Leave the PIN blank and one is generated and shown once on
+    the next screen. Tick the box to create the account now and establish a PIN
+    later — it cannot sign in until then, and no default PIN exists anywhere. Type
+    a PIN yourself only if you will pass it to the volunteer out of band. The
+    value is stored solely as a scrypt hash either way and is never written to
+    the audit trail or any log.</p>
+
+    <fieldset>
+      <legend>Gates this scanner may admit through</legend>
+      <p class="page-sub">The server intersects every scan with this list — a
+      device cannot choose a gate the account is not authorized for. Select none
+      to leave the account unable to admit until you assign gates.</p>
+      {% for g in gates %}
+      <label>
+        <input type="checkbox" name="gate_id" value="{{ g.id }}">
+        Gate {{ g.id }} — {{ g.code }} · {{ g.label }}
+      </label>
+      {% endfor %}
+    </fieldset>
+
+    <div class="btn-row">
+      <button class="btn green" type="submit">Create account</button>
+      <a class="btn ghost" href="{{ url_for('exam.scanners') }}">Cancel</a>
+    </div>
+  </form>
+</div>
+
+<form method="post" action="{{ url_for('exam.logout') }}" style="margin-top: 16px;">
+  <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+  <button class="btn ghost" type="submit">Sign out</button>
+</form>
+{% endblock %}

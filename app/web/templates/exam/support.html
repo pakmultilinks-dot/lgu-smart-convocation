@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}Support requests · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Student Support Requests</h1>
+<p class="page-sub">
+  {% if conv %}{{ conv.name }} ({{ conv.year }}) · {% endif %}
+  {% if counts %}
+    {{ counts.submitted + counts.under_review }} awaiting review ·
+    {{ counts.info_required }} need information ·
+    {{ counts.resolved }} resolved · {{ counts.rejected }} rejected
+  {% endif %}
+</p>
+<p class="page-sub">Students open a request here when a registration number is
+missing or does not match, when official details need correcting, or when a
+cancellation or account-claim issue needs review. A request never changes an
+official record on its own — use the linked registration screen to apply a
+correction.</p>
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+<div class="card">
+  <form method="get">
+    <label for="q">Search requests</label>
+    <input id="q" type="text" name="q" value="{{ q }}" maxlength="80"
+           placeholder="Reference, subject, detail or student email">
+    <label for="status">Status</label>
+    <select id="status" name="status">
+      <option value="" {% if not status %}selected{% endif %}>All statuses</option>
+      <option value="open" {% if status == 'open' %}selected{% endif %}>Awaiting review (all open)</option>
+      {% for s in ('submitted', 'under_review', 'info_required', 'resolved', 'rejected') %}
+      <option value="{{ s }}" {% if status == s %}selected{% endif %}>{{ status_labels[s] }}</option>
+      {% endfor %}
+    </select>
+    <label for="category">Category</label>
+    <select id="category" name="category">
+      <option value="" {% if not category %}selected{% endif %}>All categories</option>
+      {% for c in categories %}
+      <option value="{{ c }}" {% if category == c %}selected{% endif %}>{{ category_labels[c] }}</option>
+      {% endfor %}
+    </select>
+    <div class="btn-row">
+      <button class="btn" type="submit">Search</button>
+      <a class="btn ghost" href="{{ url_for('exam.support_queue') }}">Clear</a>
+      <a class="btn ghost" href="{{ url_for('exam.dashboard') }}">Dashboard</a>
+    </div>
+  </form>
+</div>
+
+{% if filter_label %}
+<div class="notice warn"><p>Filtered to: <strong>{{ filter_label }}</strong>.</p></div>
+{% endif %}
+
+<table>
+  <tr><th>Reference</th><th>Category</th><th>Subject</th><th>Student</th>
+      <th>Status</th><th>Updated</th><th></th></tr>
+  {% for r in rows[:page_size] %}
+  <tr>
+    <td><a href="{{ url_for('exam.support_detail', request_id=r.id) }}">{{ r.reference }}</a></td>
+    <td>{{ category_labels.get(r.category, r.category) }}</td>
+    <td>{{ r.subject }}</td>
+    <td>{{ r.account_email or '—' }}</td>
+    <td><span class="badge {{ {'resolved': 'entry', 'rejected': 'bad', 'info_required': 'queued'}.get(r.status, 'queued') }}">{{ status_labels.get(r.status, r.status) }}</span></td>
+    <td>{{ r.updated_at[:16] }}</td>
+    <td><a class="btn ghost" href="{{ url_for('exam.support_detail', request_id=r.id) }}">Open</a></td>
+  </tr>
+  {% else %}
+  <tr><td colspan="7">
+    {% if q or status or category %}No requests match this search.
+    {% elif conv %}No support requests yet for this convocation.
+    {% else %}No active convocation is configured.{% endif %}
+  </td></tr>
+  {% endfor %}
+</table>
+{% endblock %}

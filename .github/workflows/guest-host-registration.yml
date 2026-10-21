@@ -1,0 +1,30 @@
+name: Guest host single-registration
+
+on:
+  pull_request:
+    paths:
+      - "app/models.py"
+      - "app/tests/test_guest_host_single_registration.py"
+      - ".github/workflows/guest-host-registration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guest-host-unique:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: python -m pip install -r app/requirements.txt
+      - name: Compile backend
+        run: python -m compileall -q app
+      - name: Run model, API, concurrent registration tests
+        run: python -m unittest discover -s app/tests -p 'test_guest_host_single_registration.py' -v

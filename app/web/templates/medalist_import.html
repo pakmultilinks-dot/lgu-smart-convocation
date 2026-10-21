@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}Medalist import · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Import Medalists (Excel)</h1>
+<p class="page-sub">{% if conv %}{{ conv.name }} · {{ conv.year }} · {% endif %}Insert-only: existing awards are never overwritten. Every imported record starts as a draft until its picture is uploaded and the record is published.</p>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+{% if committed %}
+<p class="notice ok">Batch #{{ batch.id }} committed: {{ result.inserted }} medalist record{{ 's' if result.inserted != 1 }} created{% if result.skipped_invalid %}, {{ result.skipped_invalid }} invalid skipped{% endif %}{% if result.skipped_duplicate %}, {{ result.skipped_duplicate }} duplicate skipped{% endif %}{% if result.skipped_conflict %}, {{ result.skipped_conflict }} conflicting skipped{% endif %}. Upload a picture for each record before publishing.</p>
+{% endif %}
+<div class="btn-row">
+  <a class="btn ghost" href="{{ url_for('medalists.import_template') }}">Download template</a>
+  <a class="btn ghost" href="{{ url_for('medalists.list_view') }}">Medalist list</a>
+</div>
+<div class="card">
+  <h2>Upload the official medalist list</h2>
+  <form method="post" action="{{ url_for('medalists.import_upload') }}" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="file">Excel file (.xlsx · max 5 MB · up to 1000 rows)</label>
+    <input id="file" type="file" name="file" accept=".xlsx" required>
+    <p class="page-sub">Required columns: department, student_name, award_category. Optional: position, reference_number. Column order does not matter; known header aliases are matched. Pictures are not spreadsheet columns — upload each picture on the record page after the commit.</p>
+    <div class="btn-row"><button class="btn green" type="submit">Upload and check</button></div>
+  </form>
+</div>
+{% if batch %}
+<div class="card">
+  <h2>Batch #{{ batch.id }} — {{ batch.file_name }}</h2>
+  <p class="page-sub">{{ batch.status }} · uploaded {{ batch.created_at }} by {{ batch.actor }} · {{ batch.data_rows }} data rows ·
+    {{ batch.valid_rows }} valid · {{ batch.invalid_rows }} invalid · {{ batch.duplicate_rows }} duplicates · {{ batch.conflict_rows }} conflicts</p>
+  {% if result %}
+  <p class="page-sub">Result: {{ result.inserted }} inserted{% if result.skipped_invalid %} · {{ result.skipped_invalid }} invalid skipped{% endif %}{% if result.skipped_duplicate %} · {{ result.skipped_duplicate }} duplicates skipped{% endif %}{% if result.skipped_conflict %} · {{ result.skipped_conflict }} conflicts skipped{% endif %} (mode: {{ result.mode }}).</p>
+  {% endif %}
+  {% if batch.status == 'parsed' %}
+  <div class="btn-row">
+    <form method="post" action="{{ url_for('medalists.import_commit', batch_id=batch.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+      <button class="btn green" type="submit">Create {{ batch.valid_rows }} draft record{{ 's' if batch.valid_rows != 1 }}</button>
+    </form>
+  </div>
+  {% endif %}
+</div>
+{% if problems %}
+<div class="card">
+  <h2>Problems ({{ problems_total }})</h2>
+  <table>
+    <tr><th>Row</th><th>Problem(s)</th><th>Department</th><th>Student</th><th>Award</th><th>Position</th><th>Reference</th></tr>
+    {% for p in problems %}
+    <tr>
+      <td>{{ p.row_number }}</td>
+      <td><span class="badge bad">{{ p.status }}</span> {{ p.errors|join('; ') }}</td>
+      <td>{{ p.department }}</td><td>{{ p.student_name }}</td>
+      <td>{{ p.award_category }}</td><td>{{ p.position or '—' }}</td><td>{{ p.reference_number or '—' }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+<div class="card">
+  <h2>Valid rows ({{ batch.valid_rows }} — first {{ sample|length }})</h2>
+  <table>
+    <tr><th>Row</th><th>Department</th><th>Student</th><th>Award</th><th>Position</th><th>Reference</th></tr>
+    {% for s in sample %}
+    <tr><td>{{ s.row_number }}</td><td>{{ s.department }}</td><td>{{ s.student_name }}</td>
+        <td>{{ s.award_category }}</td><td>{{ s.position or '—' }}</td><td>{{ s.reference_number or '—' }}</td></tr>
+    {% else %}
+    <tr><td colspan="6">No valid rows in this batch.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% if batches %}
+<div class="card">
+  <h2>Recent medalist import batches</h2>
+  <table>
+    <tr><th>Batch</th><th>File</th><th>Status</th><th>Rows</th><th>Uploaded</th><th></th></tr>
+    {% for b in batches %}
+    <tr>
+      <td>{{ b.id }}</td><td>{{ b.file_name }}</td>
+      <td><span class="badge {{ 'entry' if b.status == 'committed' else 'bad' if b.status == 'failed' else 'queued' }}">{{ b.status }}</span></td>
+      <td>{{ b.data_rows }} ({{ b.valid_rows }} valid)</td>
+      <td>{{ b.created_at }} by {{ b.actor }}</td>
+      <td><a href="{{ url_for('medalists.import_review', batch_id=b.id) }}">Review</a></td>
+    </tr>
+    {% endfor %}
+  </table>
+</div>
+{% endif %}
+{% endblock %}

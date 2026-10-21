@@ -1,3 +1,10 @@
 flask>=3.0
 qrcode[pil]>=7.4
 pillow>=10.0
+# Excel import (Phase 4): reads/writes .xlsx for the Exam Department
+# registration template and uploads. Pure Python, no system deps.
+openpyxl>=3.1
+# Required on Windows: database._now() uses ZoneInfo("Asia/Karachi"), and the
+# standard library ships no IANA time-zone data. Without this the backend
+# crashes at startup with ZoneNotFoundError.
+tzdata==2026.4

@@ -2,7 +2,7 @@
 {% block title %}Live Dashboard | {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1 class="page-title">Live Dashboard</h1>
-<p class="page-sub">Vice Chancellor view &middot; updates every 5 seconds &middot; <span id="gen"></span></p>
+<p class="page-sub">Vice Chancellor view &middot; <span id="cadence">updating every 5s</span> &middot; <span id="gen"></span></p>
 
 <div class="grid kpi">
   <div class="kpi-tile"><div class="num" id="k-inside">0</div><div class="lbl">Students inside now</div></div>
@@ -11,13 +11,18 @@
     <div class="lbl">Male / Female inside</div>
   </div>
   <div class="kpi-tile"><div class="num" id="k-guests">0</div><div class="lbl">Guests inside</div></div>
+  <div class="kpi-tile"><div class="num" id="k-ceremony">0</div><div class="lbl">Admitted — main convocation</div></div>
+  <div class="kpi-tile"><div class="num" id="k-rehearsal">0</div><div class="lbl">Admitted — rehearsal</div></div>
   <div class="kpi-tile"><div class="num" id="k-busy" style="font-size:20px;line-height:1.4">-</div><div class="lbl">Busiest gate today</div></div>
+  <div class="kpi-tile"><div class="num" id="k-remaining">&mdash;</div><div class="lbl">Attendees remaining</div></div>
+  <div class="kpi-tile"><div class="num" id="k-rejected">0</div><div class="lbl">Refused scans today</div></div>
+  <div class="kpi-tile"><div class="num" id="k-duplicate">0</div><div class="lbl">of which duplicates</div></div>
 </div>
 
 <div class="grid two" style="margin-top:16px">
   <div class="card">
     <h2>Per-gate throughput</h2>
-    <p class="page-sub">Entries in the last 15 minutes</p>
+    <p class="page-sub">Entries in the last {{ window_minutes }} minutes</p>
     <div id="bars"></div>
   </div>
   <div class="card">
@@ -47,16 +52,36 @@ function ago(ts) {
   if (d < 3600) return Math.floor(d / 60) + "m ago";
   return Math.floor(d / 3600) + "h ago";
 }
+// Phase 38: server-suggested cadence (config LGU_DASHBOARD_POLL_MS),
+// clamped to [2s, 30s]. The next fetch is scheduled only after the current
+// one settles, so two requests can never overlap on this page.
+let pollMs = 5000;
+function schedule() {
+  const ms = Math.min(30000, Math.max(2000, pollMs > 0 ? pollMs : 5000));
+  document.getElementById("cadence").textContent = "updating every " + ms / 1000 + "s";
+  setTimeout(refresh, ms);
+}
 async function refresh() {
   try {
     const r = await fetch("{{ url_for('main.api_dashboard') }}");
     const d = await r.json();
+    if (d.poll_interval_ms) pollMs = d.poll_interval_ms;
     document.getElementById("k-inside").textContent = d.inside_total;
     document.getElementById("k-male").textContent = d.male;
     document.getElementById("k-female").textContent = d.female;
     document.getElementById("k-guests").textContent = d.guests_inside;
+    document.getElementById("k-ceremony").textContent = d.ceremony_admitted;
+    document.getElementById("k-rehearsal").textContent = d.rehearsal_admitted;
     document.getElementById("k-busy").textContent = d.busiest_gate;
-    document.getElementById("gen").textContent = "generated " + d.generated_at;
+    // Phase 38 shared analytics: honest states — an unset target shows an
+    // em dash (remaining is null server-side), never a fabricated 0.
+    document.getElementById("k-remaining").textContent =
+      d.attendance_set && d.remaining_attendance !== null
+        ? d.remaining_attendance
+        : "\u2014";
+    document.getElementById("k-rejected").textContent = d.rejected_count;
+    document.getElementById("k-duplicate").textContent = d.duplicate_count;
+    document.getElementById("gen").textContent = "generated " + d.generated_at + " PKT";
 
     const max = Math.max(1, ...d.throughput.map(t => t.count));
     document.getElementById("bars").innerHTML = d.throughput.map(t => {
@@ -67,21 +92,21 @@ async function refresh() {
     }).join("");
 
     document.getElementById("sync").innerHTML = d.sync.map(s => {
-      const cls = !s.last ? "dead" : ((Date.now() - new Date(s.last.replace(" ", "T"))) > 15 * 60000 ? "stale" : "");
+      const cls = !s.last ? "dead" : ((Date.now() - new Date(s.last.replace(" ", "T"))) > {{ window_minutes }} * 60000 ? "stale" : "");
       return `<div class="feed-item"><span class="sync-dot ${cls}"></span>` +
         `<span class="g">${escapeHtml(s.gate.label)}</span><span class="t">${ago(s.last)}</span>` +
         `<span style="color:var(--muted);font-size:13px">${s.count} scans total</span></div>`;
     }).join("");
 
     document.getElementById("feed").innerHTML = d.feed.length ? d.feed.map(f =>
-      `<div class="feed-item"><span class="t">${escapeHtml(f.scanned_at.slice(11))}</span>` +
+      `<div class="feed-item"><span class="t">${escapeHtml(f.scanned_at.slice(11))} PKT</span>` +
       `<span class="g">${escapeHtml(f.gate_label)}</span>` +
       `<span class="badge ${escapeHtml(f.mode)}">${escapeHtml(f.mode.toUpperCase())}</span>` +
       `<span><strong>${escapeHtml(f.person_name)}</strong> <span style="color:var(--muted)">(${escapeHtml(f.person_type)}${f.source === "queued" ? ", queued offline" : ""})</span></span></div>`
     ).join("") : '<p class="page-sub">No scans yet. Open the Gate Scanner to record the first entry.</p>';
   } catch (e) { /* keep last good state on transient errors */ }
+  schedule();
 }
 refresh();
-setInterval(refresh, 5000);
 </script>
 {% endblock %}

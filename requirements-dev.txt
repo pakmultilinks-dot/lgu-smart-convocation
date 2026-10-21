@@ -1,0 +1,3 @@
+-r app/requirements.txt
+# Browser tests use synthetic accounts and disposable SQLite databases.
+playwright>=1.52,<2

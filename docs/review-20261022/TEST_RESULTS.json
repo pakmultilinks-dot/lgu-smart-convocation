@@ -1,0 +1,654 @@
+{
+  "environment": {
+    "python": "3.13.7",
+    "node": "24.14.0",
+    "os": "Windows",
+    "database": "disposable SQLite only"
+  },
+  "suites": {
+    "backend": [
+      {
+        "test": "test_convocation_migration",
+        "exit_code": 0,
+        "seconds": 6.8,
+        "status": "PASS"
+      },
+      {
+        "test": "test_event_announcements",
+        "exit_code": 0,
+        "seconds": 12.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_exam_auth",
+        "exit_code": 0,
+        "seconds": 25.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_exam_dashboard",
+        "exit_code": 0,
+        "seconds": 12.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_exam_registration",
+        "exit_code": 0,
+        "seconds": 21.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_medalist_management",
+        "exit_code": 0,
+        "seconds": 9.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase11_pass_history",
+        "exit_code": 0,
+        "seconds": 16.3,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase12_qr_scanner",
+        "exit_code": 0,
+        "seconds": 23.5,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase13_e2e_acceptance",
+        "exit_code": 0,
+        "seconds": 30.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase14_scanner_access",
+        "exit_code": 0,
+        "seconds": 40.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase18_residual_closure",
+        "exit_code": 0,
+        "seconds": 21.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase10_readiness",
+        "exit_code": 0,
+        "seconds": 18.8,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase20_authz_matrix",
+        "exit_code": 0,
+        "seconds": 10.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase19_scanner_management",
+        "exit_code": 0,
+        "seconds": 58.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase20_config_audit",
+        "exit_code": 0,
+        "seconds": 26.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase20_migration_rehearsal",
+        "exit_code": 0,
+        "seconds": 11.2,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase17_cross_role_acceptance",
+        "exit_code": 0,
+        "seconds": 73.7,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase21_migration_v6_to_v11",
+        "exit_code": 0,
+        "seconds": 14.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase21_security_guardrails",
+        "exit_code": 0,
+        "seconds": 16.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase21_sqlite_limits",
+        "exit_code": 0,
+        "seconds": 6.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase22_contention",
+        "exit_code": 0,
+        "seconds": 33.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase23_busy_contract",
+        "exit_code": 0,
+        "seconds": 16.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase24b_states",
+        "exit_code": 0,
+        "seconds": 2.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase24d_replay",
+        "exit_code": 0,
+        "seconds": 9.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase24e_guest_dashboard",
+        "exit_code": 0,
+        "seconds": 8.5,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase24f_broadcast_authz",
+        "exit_code": 0,
+        "seconds": 12.8,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase26a_lifecycle",
+        "exit_code": 0,
+        "seconds": 16.3,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase26b_support_queue",
+        "exit_code": 0,
+        "seconds": 2.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase26c_guest_list_security",
+        "exit_code": 0,
+        "seconds": 7.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase27_convocation_lifecycle",
+        "exit_code": 0,
+        "seconds": 0.8,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase27_guest_pass_authorization",
+        "exit_code": 0,
+        "seconds": 8.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase28_authorization_closure",
+        "exit_code": 0,
+        "seconds": 8.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase29_annual_event_and_student",
+        "exit_code": 0,
+        "seconds": 26.2,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase34_scanner_guest_attendance",
+        "exit_code": 0,
+        "seconds": 8.8,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase37_broadcast_rate_limit",
+        "exit_code": 0,
+        "seconds": 8.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase37_migration_rehearsal",
+        "exit_code": 0,
+        "seconds": 0.5,
+        "status": "SKIPPED"
+      },
+      {
+        "test": "test_phase22_journal_mode",
+        "exit_code": 0,
+        "seconds": 172.3,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase37_security_posture",
+        "exit_code": 0,
+        "seconds": 10.3,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase38_db_reliability",
+        "exit_code": 0,
+        "seconds": 0.8,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase37_startup_secrets",
+        "exit_code": 0,
+        "seconds": 30.1,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase39_db",
+        "exit_code": 0,
+        "seconds": 17.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase39_security",
+        "exit_code": 0,
+        "seconds": 18.2,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase39_load",
+        "exit_code": 0,
+        "seconds": 36.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase39_e2e_web",
+        "exit_code": 0,
+        "seconds": 55.3,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase8_integration",
+        "exit_code": 0,
+        "seconds": 15.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase8_acceptance",
+        "exit_code": 0,
+        "seconds": 34.7,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase9_support",
+        "exit_code": 0,
+        "seconds": 20.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_student_accounts",
+        "exit_code": 0,
+        "seconds": 27.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase21_load_resilience",
+        "exit_code": 124,
+        "seconds": 240.5,
+        "status": "TIMEOUT"
+      },
+      {
+        "test": "test_phase21_prod_db_boundary",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "SKIPPED"
+      },
+      {
+        "test": "test_phase20_backup_restore",
+        "exit_code": 0,
+        "seconds": 2.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase38_analytics",
+        "exit_code": 0,
+        "seconds": 10.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase38_guest_rate_limit",
+        "exit_code": 0,
+        "seconds": 9.5,
+        "status": "PASS"
+      },
+      {
+        "test": "test_phase16_lifecycle",
+        "exit_code": 0,
+        "seconds": 26.4,
+        "status": "PASS"
+      }
+    ],
+    "mobile": [
+      {
+        "test": "typescript",
+        "exit_code": 0,
+        "seconds": 24.8,
+        "status": "PASS"
+      },
+      {
+        "test": "lint",
+        "exit_code": 0,
+        "seconds": 91.0,
+        "status": "PASS"
+      },
+      {
+        "test": "admin-lockout-test",
+        "exit_code": 0,
+        "seconds": 4.8,
+        "status": "PASS"
+      },
+      {
+        "test": "camera-states-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "cycle4-fixes-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "data-truth-test",
+        "exit_code": 0,
+        "seconds": 26.0,
+        "status": "PASS"
+      },
+      {
+        "test": "display-admin-auth-test",
+        "exit_code": 0,
+        "seconds": 12.3,
+        "status": "PASS"
+      },
+      {
+        "test": "event-announcements-test",
+        "exit_code": 0,
+        "seconds": 0.1,
+        "status": "PASS"
+      },
+      {
+        "test": "gate-integrity-test",
+        "exit_code": 0,
+        "seconds": 5.8,
+        "status": "PASS"
+      },
+      {
+        "test": "layout-p5-source-test",
+        "exit_code": 0,
+        "seconds": 1.1,
+        "status": "PASS"
+      },
+      {
+        "test": "layout-p6-source-test",
+        "exit_code": 0,
+        "seconds": 0.5,
+        "status": "PASS"
+      },
+      {
+        "test": "layout-p7-source-test",
+        "exit_code": 0,
+        "seconds": 0.7,
+        "status": "PASS"
+      },
+      {
+        "test": "layout-p8-source-test",
+        "exit_code": 0,
+        "seconds": 0.5,
+        "status": "PASS"
+      },
+      {
+        "test": "medalist-board-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "navigation-broadcast-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "pass-history-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase16-account-states-test",
+        "exit_code": 0,
+        "seconds": 0.1,
+        "status": "PASS"
+      },
+      {
+        "test": "phase27-mode-switch-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase28-authorization-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase29-annual-event-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase31-student-nav-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase32-student-profile-test",
+        "exit_code": 0,
+        "seconds": 0.3,
+        "status": "PASS"
+      },
+      {
+        "test": "phase33-event-history-announcements-medalists-test",
+        "exit_code": 0,
+        "seconds": 0.3,
+        "status": "PASS"
+      },
+      {
+        "test": "phase34-scanner-guest-attendance-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase38-reliability-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "phase8-freshness-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "progress-test",
+        "exit_code": 0,
+        "seconds": 7.4,
+        "status": "PASS"
+      },
+      {
+        "test": "qr-pass-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "readiness-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "release-safety-test",
+        "exit_code": 0,
+        "seconds": 15.8,
+        "status": "PASS"
+      },
+      {
+        "test": "scanner-logic-test",
+        "exit_code": 0,
+        "seconds": 10.0,
+        "status": "PASS"
+      },
+      {
+        "test": "student-screens-test",
+        "exit_code": 0,
+        "seconds": 0.1,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35h-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35i-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35j-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35k-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35l-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35m-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "ui-35r-source-test",
+        "exit_code": 0,
+        "seconds": 0.2,
+        "status": "PASS"
+      },
+      {
+        "test": "db-isolation-test",
+        "exit_code": 0,
+        "seconds": 15.7,
+        "status": "PASS"
+      },
+      {
+        "test": "layout-p9-source-test",
+        "exit_code": 0,
+        "seconds": 0.3,
+        "status": "PASS"
+      },
+      {
+        "test": "master-audit-regression",
+        "exit_code": 0,
+        "seconds": 20.3,
+        "status": "PASS"
+      }
+    ],
+    "github": [
+      {
+        "test": "test_admin_json_validation",
+        "exit_code": 0,
+        "seconds": 22.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_atomic_scan_admission",
+        "exit_code": 0,
+        "seconds": 23.3,
+        "status": "PASS"
+      },
+      {
+        "test": "test_demo_qr_access",
+        "exit_code": 0,
+        "seconds": 9.9,
+        "status": "PASS"
+      },
+      {
+        "test": "test_guest_host_single_registration",
+        "exit_code": 0,
+        "seconds": 22.7,
+        "status": "PASS"
+      },
+      {
+        "test": "test_production_secrets",
+        "exit_code": 0,
+        "seconds": 8.0,
+        "status": "PASS"
+      },
+      {
+        "test": "test_scan_request_validation",
+        "exit_code": 0,
+        "seconds": 30.4,
+        "status": "PASS"
+      },
+      {
+        "test": "test_upload_boundary",
+        "exit_code": 0,
+        "seconds": 15.6,
+        "status": "PASS"
+      },
+      {
+        "test": "test_browser_ui",
+        "exit_code": 0,
+        "seconds": 26.0,
+        "status": "PASS"
+      }
+    ]
+  },
+  "github_individual_tests": 58,
+  "phase39_browser": {
+    "checks_passed": 60,
+    "checks_failed": 0,
+    "route_matrix_passed": 52,
+    "route_matrix_not_tested": 49
+  },
+  "phase39_http_load": {
+    "checks_passed": 13,
+    "checks_failed": 0
+  },
+  "gitleaks_staged": "PASS: no leaks found",
+  "original_source_status": "UNCHANGED",
+  "original_database_and_backup_sha256": "UNCHANGED"
+}

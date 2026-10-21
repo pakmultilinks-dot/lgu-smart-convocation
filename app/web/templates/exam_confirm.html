@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}{{ title }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ title }}</h1>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+<div class="card">
+  <p><strong>{{ question }}</strong></p>
+  {% for line in lines %}{% if line %}<p class="page-sub">{{ line }}</p>{% endif %}{% endfor %}
+  <form method="post" action="{{ post_url }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <input type="hidden" name="action" value="{{ action }}">
+    <div class="btn-row">
+      {% if not error %}<button class="btn green" type="submit">{{ submit_label }}</button>{% endif %}
+      <a class="btn ghost" href="{{ back_url }}">Back</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

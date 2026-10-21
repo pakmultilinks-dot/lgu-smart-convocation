@@ -1,310 +1,404 @@
-import QRCode from "react-native-qrcode-svg";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
-import { ScrollView, StyleSheet, Text, View } from "react-native";
-import { Defs, LinearGradient, Rect, Stop, Svg } from "react-native-svg";
-import {
-  ApiError,
-  fetchGuestPass,
-  type GuestPass,
-} from "../api/client";
-import { EmptyState, ErrorState, LoadingState } from "../components/States";
+import { router, useLocalSearchParams } from "expo-router";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform, ScrollView, Share, Text, View } from "react-native";
+import QRCode from "react-native-qrcode-svg";
+import ViewShot, { type ViewShotRef } from "react-native-view-shot";
+import { fetchAppConfig, fetchGuestPass, type AppConfig, type GuestPass } from "../api/client";
 import { UNIVERSITY_NAME } from "../config";
-import { colors, fontSize, fontWeight, radius, spacing } from "../theme";
+import { colors, fonts, radius, spacing } from "../theme";
+import { maskPhone } from "../utils/phone";
+import {
+  AppButton,
+  AppHeader,
+  ErrorState,
+  LoadingState,
+  Screen,
+  SectionCard,
+  StatusPill,
+} from "../ui";
 
-function DetailRow({ icon, label, value }: { icon: keyof typeof Ionicons.glyphMap; label: string; value: string }) {
-  return (
-    <View style={styles.detailRow}>
-      <View style={styles.detailIcon}>
-        <Ionicons name={icon} size={18} color={colors.green} />
-      </View>
-      <View style={styles.detailText}>
-        <Text style={styles.detailLabel}>{label}</Text>
-        <Text style={styles.detailValue}>{value}</Text>
-      </View>
-    </View>
-  );
-}
-
+/**
+ * Guest Pass — full-screen QR presentation for one guest. Phase 35C: the
+ * pass is an ink ticket on paper (the screen's single raised element) —
+ * no green panel, no gradient. The artwork stays unmistakable and the QR
+ * stays high-contrast for the gate scanners.
+ */
 export function GuestPassScreen() {
-  const { gid } = useLocalSearchParams<{ gid?: string }>();
-  const [pass, setPass] = useState<GuestPass | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const params = useLocalSearchParams<{ gid?: string }>();
+  const gid = typeof params.gid === "string" ? params.gid : "";
+  const gidNum = Number(gid);
+  const gidValid = !!gid && Number.isInteger(gidNum);
 
-  const load = useCallback(async () => {
-    const id = Number(gid);
-    if (!gid || Number.isNaN(id)) {
-      setError("No guest selected.");
-      setLoading(false);
-      return;
-    }
-    setLoading(true);
+  const [pass, setPass] = useState<GuestPass | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  // Phase 35K (F): the institution name on the pass artwork is a saved
+  // setting, not a hard-coded constant — the local constant remains as the
+  // offline fallback only.
+  const [cfg, setCfg] = useState<AppConfig | null>(null);
+  // 35L (A): share + save-as-image feedback (honest notes, no fake
+  // success — a failed share/save always explains itself).
+  const [actionNote, setActionNote] = useState<string | null>(null);
+  const [savingImage, setSavingImage] = useState(false);
+  const shotRef = useRef<ViewShotRef>(null);
+
+  // State updates only after await — keeps the effect below lint-safe.
+  const refresh = useCallback(async () => {
     try {
-      setPass(await fetchGuestPass(id));
+      setPass(await fetchGuestPass(gidNum));
       setError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : "Could not load the pass.");
-    } finally {
-      setLoading(false);
+      setPass(null);
+      setError(
+        e instanceof Error
+          ? e.message
+          : "The pass could not be loaded. Check the connection and retry.",
+      );
     }
-  }, [gid]);
+  }, [gidNum]);
+
+  const retry = () => {
+    setError(null);
+    void refresh();
+  };
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (!gidValid) return;
+    void (async () => {
+      await refresh();
+    })();
+  }, [gidValid, refresh]);
 
-  if (loading) {
-    return <LoadingState message="Loading guest pass..." />;
-  }
+  // Phase 35K (F): best-effort config load — the pass still renders from
+  // the fallback constant if the server is unreachable.
+  useEffect(() => {
+    void fetchAppConfig()
+      .then(setCfg)
+      .catch(() => setCfg(null));
+  }, []);
 
-  if (error) {
-    return <ErrorState message={error} onRetry={() => void load()} />;
-  }
+  // 35L (A1): share the pass through the device share sheet (WhatsApp is
+  // available there — no custom WhatsApp UI). The message carries the
+  // pass information: identity, host (masked phone — 35M R2 item 4) and
+  // the QR payload. No pass ID line (35M R2 item 5) — the QR itself is
+  // the gate's identity check.
+  const sharePass = useCallback(async () => {
+    if (!pass) return;
+    const message = [
+      "LGU Convocation — Guest Pass",
+      `Name: ${pass.name}`,
+      `Host: ${pass.host_roll_no} · ${pass.phone ? maskPhone(pass.phone) : "No phone"}`,
+      `QR code payload: ${pass.payload}`,
+      "Show this pass at the gate — it is single-use.",
+    ].join("\n");
+    try {
+      await Share.share({ message });
+      setActionNote(null);
+    } catch {
+      // Web without a share sheet, or the sheet was dismissed — say so.
+      setActionNote("Sharing is not available here — show the pass on this screen instead.");
+    }
+  }, [pass]);
 
-  if (!pass) {
-    return (
-      <EmptyState
-        icon="ticket-outline"
-        title="Pass not found"
-        message="This guest pass could not be loaded."
-      />
-    );
-  }
+  // 35L (A2): save the pass as an image (ticket artwork + QR + white
+  // quiet zone) to the device photo library. Android-first; web gets an
+  // honest note instead of a broken flow.
+  const saveAsImage = useCallback(async () => {
+    if (!pass) return;
+    if (Platform.OS === "web") {
+      setActionNote("Saving an image is available in the phone app.");
+      return;
+    }
+    // 35M (I): expo-media-library is native-only. A static import evaluates
+    // its module graph on web/SSR too, where requireNativeModule has no
+    // "ExpoMediaLibraryNext" — `class Query extends undefined` crashes every
+    // web route at load (dev SSR "Server Error"). Require it lazily here so
+    // only the native path — the one that actually uses it — loads it.
+    const MediaLibrary = await import("expo-media-library");
+    if (!shotRef.current) return;
+    setSavingImage(true);
+    try {
+      const perm = await MediaLibrary.requestPermissionsAsync();
+      if (!perm.granted) {
+        setActionNote("Photo library permission is needed to save the pass image.");
+        return;
+      }
+      const uri = await shotRef.current.capture?.();
+      if (!uri) {
+        setActionNote("The pass image could not be captured. Try again.");
+        return;
+      }
+      await MediaLibrary.saveToLibraryAsync(uri);
+      setActionNote("Pass image saved to your photos.");
+    } catch {
+      setActionNote("The pass image could not be saved. Try again.");
+    } finally {
+      setSavingImage(false);
+    }
+  }, [pass]);
+
+  // QA fix cycle 3 (Issue 2): the header no longer repeats the host
+  // sentence — the host lives once, in the passMeta rows on the artwork.
+
+  // QA fix cycle 2 (guest pass): "Valid for {date}" from the server's
+  // configured convocation datetime — never a hard-coded date.
+  const validDate = (() => {
+    const iso = cfg?.event.datetime;
+    if (!iso) return null;
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return null;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    return `${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+  })();
 
   return (
-    <ScrollView style={styles.root} contentContainerStyle={styles.content}>
-      <View style={styles.pass}>
-        <View style={styles.passHeader}>
-          <Svg style={StyleSheet.absoluteFill} width="100%" height="100%" viewBox="0 0 100 100" preserveAspectRatio="none">
-            <Defs>
-              <LinearGradient id="passHead" x1="0" y1="0" x2="1" y2="0">
-                <Stop offset="0" stopColor={colors.greenDeep} />
-                <Stop offset="1" stopColor={colors.green} />
-              </LinearGradient>
-            </Defs>
-            <Rect x="0" y="0" width="100" height="100" fill="url(#passHead)" />
-          </Svg>
-          <View style={styles.passHeaderRow}>
-            <View style={styles.monogram}>
-              <Text style={styles.monogramText}>LGU</Text>
-            </View>
-            <View style={styles.passHeaderText}>
-              <Text style={styles.passUni}>{UNIVERSITY_NAME}</Text>
-              <Text style={styles.passKind}>GUEST ENTRY PASS</Text>
-            </View>
-          </View>
-          <View
-            style={[
-              styles.statusBadge,
-              pass.used ? styles.statusUsed : styles.statusActive,
-            ]}
-          >
-            <Ionicons
-              name={pass.used ? "close-circle" : "checkmark-circle"}
-              size={14}
-              color={pass.used ? colors.muted : colors.green}
+    // 35M R2 (item 6): cream/light body with dark status icons — the ink
+    // native header is gone (headerShown: false in the route config), so
+    // the single "Guest Pass" title lives in the in-screen AppHeader.
+    // 35M item 14 → 33-QA (I11): fixed frame — a bounded scroll area
+    // holds the pass artwork + rules; Share + Save sit side by side in
+    // the bottom action area, all visible without any scrolling at
+    // 360×800. QA fix cycle 2: the pinned "Back to guests" button is
+    // gone — the header back arrow is the single way back. 35M item 14:
+    // the name renders ONCE — on the ticket panel; the header subtitle
+    // carries the host reference only.
+    <Screen scroll={false}>
+      <AppHeader
+        onBack={() =>
+          router.canGoBack() ? router.back() : router.replace("/mode-picker")
+        }
+        title="Guest Pass"
+        right={
+          pass ? (
+            <StatusPill
+              state={
+                pass.status === "revoked"
+                  ? "duplicate"
+                  : pass.used
+                    ? "nodata"
+                    : "accept"
+              }
+              label={
+                pass.status === "revoked" ? "Revoked" : pass.used ? "Used" : "Ready"
+              }
+              size="sm"
             />
-            <Text
-              style={[
-                styles.statusText,
-                pass.used ? styles.statusTextUsed : styles.statusTextActive,
-              ]}
+          ) : undefined
+        }
+      />
+
+      {!gidValid ? (
+        <SectionCard>
+          <ErrorState
+            title="Pass unavailable"
+            body="This pass link is incomplete. Ask the host to share it again."
+          />
+        </SectionCard>
+      ) : error ? (
+        <SectionCard>
+          <ErrorState title="Pass unavailable" body={error} onRetry={retry} />
+        </SectionCard>
+      ) : !pass ? (
+        <SectionCard>
+          <LoadingState label="Loading pass…" />
+        </SectionCard>
+      ) : (
+        <>
+          {/* 35M item 14: bounded scroll area (artwork + rules only).
+              33-QA (I11): "Back to guests" is no longer buried under the
+              scroll content — it is pinned in the bottom action area. */}
+          <ScrollView
+            style={styles.bodyScroll}
+            contentContainerStyle={styles.bodyScrollContent}
+            showsVerticalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+          >
+            {/* Ink ticket panel — the pass reads as official on paper.
+                35L (A2): ViewShot wraps the artwork for save-as-image. */}
+            <ViewShot
+              ref={shotRef}
+              options={{ format: "png", quality: 1 }}
+              style={styles.shotWrap}
             >
-              {pass.used ? "ALREADY USED" : "VALID FOR ONE ENTRY"}
-            </Text>
+              <View style={styles.passPanel}>
+                <Text style={styles.passEyebrow}>
+                  {(cfg?.university || UNIVERSITY_NAME).toUpperCase()}
+                </Text>
+                <Text style={styles.passTitle}>Convocation Guest Pass</Text>
+                <Text style={styles.passName} numberOfLines={2}>
+                  {pass.name}
+                </Text>
+                {/* 35L (B1): the QR renders on PURE WHITE with a wide
+                    quiet zone — never cream/tinted — so any gate scanner
+                    reads it at full contrast. */}
+                <View style={styles.qrPlate}>
+                  <QRCode
+                    value={pass.payload}
+                    size={200}
+                    backgroundColor="#FFFFFF"
+                    color={colors.ink}
+                  />
+                </View>
+                {/* QA fix cycle 3 (Issue 3): stacked sans rows — Host /
+                    ID / Phone / Valid — each a single line (never a
+                    wrapped row), left-aligned across the panel width. */}
+                <View style={styles.passMeta}>
+                  {pass.host_name ? (
+                    <Text style={styles.passMetaText} numberOfLines={1}>
+                      {`Host: ${pass.host_name}`}
+                    </Text>
+                  ) : null}
+                  <Text style={styles.passMetaText} numberOfLines={1}>
+                    {`ID: ${pass.host_roll_no}`}
+                  </Text>
+                  <Text style={styles.passMetaText} numberOfLines={1}>
+                    {`Phone: ${pass.phone ? maskPhone(pass.phone) : "No phone"}`}
+                  </Text>
+                  {validDate ? (
+                    <Text style={styles.passMetaText} numberOfLines={1}>
+                      {`Valid: ${validDate}`}
+                    </Text>
+                  ) : null}
+                </View>
+              </View>
+            </ViewShot>
+            <View style={styles.rulesRow}>
+              <Ionicons name="information-circle" size={18} color={colors.ink} />
+              {/* 35M R2 (item 7): exact mandated copy. */}
+              <Text style={styles.rulesText}>
+                Single-use. Shows as used after the first scan.
+              </Text>
+            </View>
+          </ScrollView>
+          {/* 35M item 14 → 33-QA (I11) → QA fix cycle 2: bottom action
+              area — Share + Save side by side only. The pinned "Back to
+              guests" button is gone; the header back arrow is the
+              navigation path (one clear way back). */}
+          <View style={styles.bottomActions}>
+            {/* 35L (A): share through the OS sheet + save as image. */}
+            <View style={styles.actionRow}>
+              <AppButton
+                label="Share pass"
+                icon="share-outline"
+                onPress={() => void sharePass()}
+                style={styles.actionBtn}
+              />
+              <AppButton
+                label={savingImage ? "Saving..." : "Save as image"}
+                icon="image-outline"
+                variant="secondary"
+                loading={savingImage}
+                onPress={() => void saveAsImage()}
+                style={styles.actionBtn}
+              />
+            </View>
+            {actionNote ? <Text style={styles.actionNote}>{actionNote}</Text> : null}
           </View>
-        </View>
-
-        <View style={styles.perforation}>
-          {Array.from({ length: 24 }).map((_, i) => (
-            <View key={i} style={styles.perfDash} />
-          ))}
-        </View>
-
-        <View style={styles.passBody}>
-          <View style={styles.qrWrap}>
-            <QRCode value={pass.payload} size={220} />
-          </View>
-          <Text style={styles.name}>{pass.name}</Text>
-          <DetailRow icon="person-outline" label="Guest name" value={pass.name} />
-          <DetailRow icon="call-outline" label="Phone" value={pass.phone} />
-          <DetailRow icon="id-card-outline" label="Host roll number" value={pass.host_roll_no} />
-          <View style={styles.noteBox}>
-            <Ionicons name="information-circle-outline" size={18} color={colors.green} />
-            <Text style={styles.note}>
-              Show this code at any gate. It becomes invalid after the first entry scan.
-            </Text>
-          </View>
-        </View>
-      </View>
-    </ScrollView>
+        </>
+      )}
+    </Screen>
   );
 }
 
-const styles = StyleSheet.create({
-  content: {
-    flexGrow: 1,
-    justifyContent: "center",
+const styles = {
+  shotWrap: {
+    borderRadius: radius.button,
+  },
+  passPanel: {
+    backgroundColor: colors.ink,
+    borderRadius: radius.button,
     padding: spacing.lg,
+    alignItems: "center" as const,
+    gap: spacing.xs,
   },
-  detailIcon: {
-    alignItems: "center",
-    backgroundColor: colors.tint,
-    borderRadius: radius.full,
-    height: 38,
-    justifyContent: "center",
-    width: 38,
+  bodyScroll: {
+    flex: 1,
   },
-  detailLabel: {
-    color: colors.muted,
-    fontSize: fontSize.small,
-    textTransform: "uppercase",
+  bodyScrollContent: {
+    gap: spacing.lg,
+    paddingBottom: spacing.md,
   },
-  detailRow: {
-    alignItems: "center",
-    flexDirection: "row",
+  bottomActions: {
+    // 35M item 14: pinned above the safe-area inset (the Screen adds
+    // its bottom padding); share + save stay visible without scrolling.
+    // 33-QA (I11): Share/Save share one row; Back is pinned below.
     gap: spacing.sm,
-    marginTop: spacing.sm,
-    width: "100%",
+    paddingTop: spacing.sm,
   },
-  detailText: {
+  actionRow: {
+    // 33-QA (I11): Share + Save share one row at narrow widths.
+    flexDirection: "row" as const,
+    gap: spacing.sm,
+  },
+  actionBtn: {
     flex: 1,
   },
-  detailValue: {
-    color: colors.text,
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    marginTop: 1,
+  passEyebrow: {
+    // 35M items 15/18: the university line is a plain sans label —
+    // not wide mono lettering.
+    fontFamily: fonts.displayMedium,
+    color: "rgba(246,241,228,0.72)",
+    fontSize: 11,
+    letterSpacing: 0.4,
   },
-  monogram: {
-    alignItems: "center",
-    backgroundColor: colors.white,
-    borderRadius: radius.md,
-    height: 46,
-    justifyContent: "center",
-    width: 46,
+  passTitle: {
+    // 35M item 2: slightly smaller so "Convocation Guest Pass" wraps
+    // balanced at 360px — never a one-word orphan line.
+    fontFamily: fonts.display,
+    color: colors.paper,
+    fontSize: 21,
+    letterSpacing: -0.4,
+    marginBottom: spacing.md,
+    textAlign: "center" as const,
   },
-  monogramText: {
-    color: colors.greenDark,
-    fontSize: fontSize.subheading,
-    fontWeight: fontWeight.bold,
+  qrPlate: {
+    // 35L (B1): PURE white plate + wide quiet zone around the modules.
+    backgroundColor: "#FFFFFF",
+    padding: spacing.lg,
+    borderRadius: radius.sm,
+    marginBottom: spacing.md,
   },
-  name: {
-    color: colors.greenDark,
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    marginBottom: spacing.sm,
-    marginTop: spacing.md,
-    textAlign: "center",
+  passName: {
+    // QA fix cycle 2 (guest pass): the guest's name is the ticket's
+    // focal line — prominent sans, at the TOP of the artwork (above the
+    // QR), centered on the ink panel.
+    fontFamily: fonts.display,
+    color: colors.paper,
+    fontSize: 24,
+    letterSpacing: -0.4,
+    textAlign: "center" as const,
+    marginBottom: spacing.md,
   },
-  note: {
+  passMeta: {
+    // QA fix cycle 3 (Issue 3): stacked column of full-width single-line
+    // rows — sans (operational reading), never narrow mono columns.
+    alignSelf: "stretch" as const,
+    gap: 2,
+  },
+  passMetaText: {
+    fontFamily: fonts.displayMedium,
+    color: colors.paper,
+    fontSize: 13,
+  },
+  rulesRow: {
+    flexDirection: "row" as const,
+    gap: spacing.sm,
+    // 35M item 14: spacing now comes from the scroll content gap.
+  },
+  rulesText: {
+    flex: 1,
+    // 33-QA (I7): the icon + text row must not inflate past the
+    // header column at narrow widths (Yoga automatic minimum sizing).
+    minWidth: 0,
+    fontFamily: fonts.displayMedium,
+    fontSize: 15,
     color: colors.muted,
-    flex: 1,
-    fontSize: fontSize.caption,
-    lineHeight: 18,
-    marginLeft: spacing.sm,
+    lineHeight: 21,
   },
-  noteBox: {
-    alignItems: "flex-start",
-    backgroundColor: colors.tint,
-    borderRadius: radius.md,
-    flexDirection: "row",
-    marginTop: spacing.md,
-    padding: spacing.md,
-    width: "100%",
-  },
-  pass: {
-    backgroundColor: colors.card,
-    borderRadius: radius.lg,
-    elevation: 5,
-    overflow: "hidden",
-    shadowColor: colors.greenDark,
-    shadowOffset: { height: 4, width: 0 },
-    shadowOpacity: 0.18,
-    shadowRadius: 14,
-  },
-  passBody: {
-    alignItems: "center",
-    padding: spacing.lg,
-  },
-  passHeader: {
-    overflow: "hidden",
-    padding: spacing.lg,
-  },
-  passHeaderRow: {
-    alignItems: "center",
-    flexDirection: "row",
-    gap: spacing.md,
-  },
-  passHeaderText: {
-    flex: 1,
-  },
-  passKind: {
-    color: colors.gold,
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
-    letterSpacing: 2,
-    marginTop: 2,
-  },
-  passUni: {
-    color: colors.white,
-    fontSize: fontSize.subheading,
-    fontWeight: fontWeight.bold,
-  },
-  perfDash: {
-    backgroundColor: colors.border,
-    height: 2,
-    width: 8,
-  },
-  perforation: {
-    flexDirection: "row",
-    gap: 6,
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
-  },
-  qrWrap: {
-    backgroundColor: colors.white,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    borderWidth: 1,
-    elevation: 2,
-    padding: spacing.md,
-    shadowColor: colors.greenDark,
-    shadowOffset: { height: 1, width: 0 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-  },
-  root: {
-    backgroundColor: colors.background,
-    flex: 1,
-  },
-  statusActive: {
-    backgroundColor: colors.white,
-  },
-  statusBadge: {
-    alignItems: "center",
-    alignSelf: "flex-start",
-    borderRadius: radius.full,
-    flexDirection: "row",
-    gap: 6,
-    marginTop: spacing.md,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  statusText: {
-    fontSize: fontSize.caption,
-    fontWeight: fontWeight.bold,
-  },
-  statusTextActive: {
-    color: colors.green,
-  },
-  statusTextUsed: {
+  actionNote: {
+    // 35M item 18: helper sentence — sans, not DM Mono.
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
     color: colors.muted,
   },
-  statusUsed: {
-    backgroundColor: colors.border,
-  },
-});
+};

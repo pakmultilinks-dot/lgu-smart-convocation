@@ -1,0 +1,38 @@
+{% extends "base.html" %}
+{% block title %}Import registrations · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Import Registrations from Excel</h1>
+<p class="page-sub">Upload an .xlsx file. A preview runs first — nothing is saved until you confirm it.</p>
+{% if error %}<p class="notice bad">{{ error }}</p>{% endif %}
+<div class="card">
+  <h2>1. Upload file</h2>
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="file">Excel file (.xlsx only · up to 5 MB · up to 6,500 data rows)</label>
+    <input id="file" type="file" name="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+    <div class="btn-row">
+      <button class="btn green" type="submit">Upload and validate</button>
+      <a class="btn ghost" href="{{ url_for('exam.import_template') }}">Download standard template</a>
+      <a class="btn ghost" href="{{ url_for('exam.registrations') }}">Back to registrations</a>
+    </div>
+  </form>
+</div>
+<div class="card">
+  <h2>Expected columns</h2>
+  <p class="page-sub">Canonical headers in row 1 of the first sheet (the downloadable template already has them):</p>
+  <table>
+    <tr><th>Column</th><th>Required</th><th>Notes</th></tr>
+    <tr><td><code>registration_number</code></td><td>Yes</td><td>Unique per convocation. Stored as text so leading zeros survive.</td></tr>
+    <tr><td><code>university_email</code></td><td>Yes</td><td>Unique per convocation. Stored lowercase.</td></tr>
+    <tr><td><code>roll_number</code></td><td>Yes</td><td>Unique per convocation. Text, e.g. <code>04550</code>.</td></tr>
+    <tr><td><code>student_name</code></td><td>Yes</td><td>Full name as it should appear in reports.</td></tr>
+    <tr><td><code>department</code></td><td>No</td><td>Optional. Extra columns are ignored and listed in the preview.</td></tr>
+  </table>
+  <p class="page-sub" style="margin-top:12px">Assumptions: no official Examination Department spreadsheet
+  format has been published yet, so this template defines the canonical columns — if the issued sheet uses
+  different header names, map them to these five first. Header matching tolerates case, spaces and hyphens.
+  Blank rows are counted and skipped. Rows with missing, malformed or duplicate values are reported with
+  row-specific errors in the preview. Preview never changes official records; committing never deletes
+  existing registrations.</p>
+</div>
+{% endblock %}

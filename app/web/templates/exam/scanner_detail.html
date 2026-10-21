@@ -1,0 +1,147 @@
+{% extends "base.html" %}
+{% block title %}Scanner · {{ scanner.username }}{% endblock %}
+{% block content %}
+<h1 class="page-title">{{ scanner.display_name }}</h1>
+<p class="page-sub">Signed in as {{ staff.display_name }} ({{ staff.username }}).
+Account <strong>{{ scanner.username }}</strong> · id {{ scanner.id }}.
+Every action on this page is recorded as <code>via=portal</code> with your
+session identity.</p>
+
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+{% if one_time %}
+<div class="notice warn">
+  <p>One-time PIN for <strong>{{ one_time.username }}</strong>:
+     <strong>{{ one_time.pin }}</strong></p>
+  <p>Shown once and only in this page. It is stored solely as a scrypt hash, so
+     it cannot be retrieved again — not from this screen, not from a refresh,
+     not from the database. Give it to the volunteer now. If it is lost, use
+     <strong>Replace PIN</strong> below to issue a new one; this value stops
+     working the moment it is replaced.</p>
+</div>
+{% endif %}
+
+<div class="card">
+  <h2>Account</h2>
+  <p class="page-sub">
+    <span class="badge {{ 'entry' if scanner.is_active else 'bad' }}">{{ 'Active' if scanner.is_active else 'Disabled' }}</span>
+    <span class="badge {{ 'queued' if scanner.credential_established else 'exit' }}">{{ 'Credential established' if scanner.credential_established else 'Credential not yet established' }}</span>
+    {% if scanner.locked_until %}<span class="badge bad">Locked until {{ scanner.locked_until[:16] }}</span>{% endif %}
+  </p>
+  <table>
+    <tr><th>Gates authorized</th><th>Live sessions</th><th>Failed attempts</th>
+        <th>Last sign-in</th><th>Created</th><th>Updated</th></tr>
+    <tr>
+      <td>{{ scanner.gates | join(', ') or '— none —' }}</td>
+      <td>{{ scanner.sessions | length }}</td>
+      <td>{{ scanner.failed_attempts }}</td>
+      <td>{{ scanner.last_login_at[:16] if scanner.last_login_at else '—' }}</td>
+      <td>{{ scanner.created_at[:16] }}</td>
+      <td>{{ scanner.updated_at[:16] }}</td>
+    </tr>
+  </table>
+  {% if not scanner.credential_established %}
+  <div class="notice warn">
+    <p>This account has <strong>no usable credential</strong>. The scanner app
+    cannot sign in with it and will be refused until a PIN is established
+    below. No default PIN exists anywhere in the system.</p>
+  </div>
+  {% endif %}
+  {% if scanner.sessions %}
+  <h3>Active sessions</h3>
+  <table>
+    <tr><th>Session</th><th>Signed in</th><th>Expires</th></tr>
+    {% for s in scanner.sessions %}
+    <tr><td>#{{ s.id }}</td><td>{{ s.created_at[:16] }}</td><td>{{ s.expires_at[:16] }}</td></tr>
+    {% endfor %}
+  </table>
+  <p class="page-sub">Session tokens are held only as sha256 hashes on the
+  server and are never displayed here.</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h2>Gate access</h2>
+  <form method="post" action="{{ url_for('exam.scanner_detail', scanner_id=scanner.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <input type="hidden" name="action" value="gates">
+    <p class="page-sub">A scan through a gate outside this list is refused by the
+    server, whatever the device sends. Submitting with nothing checked removes
+    all gate access — it never silently keeps the previous set.</p>
+    {% for g in gates %}
+    <label>
+      <input type="checkbox" name="gate_id" value="{{ g.id }}"
+             {% if g.id in scanner.gates %}checked{% endif %}>
+      Gate {{ g.id }} — {{ g.code }} · {{ g.label }}
+    </label>
+    {% endfor %}
+    <div class="btn-row"><button class="btn" type="submit">Save gate access</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Credential</h2>
+  <form method="post" action="{{ url_for('exam.scanner_detail', scanner_id=scanner.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <input type="hidden" name="action" value="pin">
+    <label for="pin">New PIN (optional)</label>
+    <input id="pin" name="pin" maxlength="256" autocomplete="off"
+           inputmode="numeric" pattern="[0-9]*"
+           placeholder="Leave blank for a generated one-time PIN">
+    <p class="page-sub">Replacing the PIN invalidates the previous one
+    immediately — the next sign-in can only succeed against the new value.
+    Live sessions are <strong>not</strong> revoked by this action; use
+    <em>Revoke live sessions</em> if a device must be signed out. The value is
+    stored only as a scrypt hash and is never written to the audit trail.</p>
+    <div class="btn-row"><button class="btn" type="submit">
+      {{ 'Establish PIN' if not scanner.credential_established else 'Replace PIN' }}</button></div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Sessions and account state</h2>
+  <div class="btn-row">
+    <form method="post" action="{{ url_for('exam.scanner_detail', scanner_id=scanner.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+      <input type="hidden" name="action" value="sessions">
+      <button class="btn" type="submit">Revoke live sessions</button>
+    </form>
+    <form method="post" action="{{ url_for('exam.scanner_detail', scanner_id=scanner.id) }}">
+      <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+      <input type="hidden" name="action" value="{{ 'revoke' if scanner.is_active else 'activate' }}">
+      <button class="btn {{ 'ghost' if scanner.is_active else 'green' }}" type="submit">
+        {{ 'Disable account' if scanner.is_active else 'Re-enable account' }}</button>
+    </form>
+    <a class="btn ghost" href="{{ url_for('exam.scanners') }}">Back to all scanners</a>
+  </div>
+  <p class="page-sub">Revoking sessions signs the device out but the account can
+  sign in again. Disabling the account blocks sign-in entirely and revokes every
+  session; the previous PIN then cannot be used to get back in — re-enable it
+  here first.</p>
+</div>
+
+<div class="card">
+  <h2>History for this account</h2>
+  {% if history %}
+  <table>
+    <tr><th>When</th><th>Actor</th><th>Action</th><th>Detail</th></tr>
+    {% for h in history %}
+    <tr>
+      <td>{{ h.created_at[:16] }}</td>
+      <td>{{ h.actor }}</td>
+      <td><span class="badge exit">{{ h.action }}</span></td>
+      <td>{{ h.detail }}</td>
+    </tr>
+    {% endfor %}
+  </table>
+  {% else %}
+  <p class="page-sub">No management actions recorded for this account.</p>
+  {% endif %}
+</div>
+
+<form method="post" action="{{ url_for('exam.logout') }}" style="margin-top: 16px;">
+  <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+  <button class="btn ghost" type="submit">Sign out</button>
+</form>
+{% endblock %}

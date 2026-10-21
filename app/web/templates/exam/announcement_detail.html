@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}{{ item.title }} · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Announcement</h1>
+<p class="page-sub">
+  <span class="badge {{ 'entry' if item.status == 'published' else 'bad' if item.status == 'archived' else 'queued' }}">{{ item.status }}</span>
+  created {{ item.created_at }} by {{ item.created_by }} ·
+  updated {{ item.updated_at }} by {{ item.updated_by }}
+  {% if item.published_at %} · published {{ item.published_at }} by {{ item.published_by }}{% endif %}
+  {% if item.archived_at %} · archived {{ item.archived_at }}{% endif %}
+</p>
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+<div class="card">
+  <h2>Edit</h2>
+  <form method="post" action="{{ url_for('exam.announcement_save', ann_id=item.id) }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="title">Title</label>
+    <input id="title" name="title" value="{{ form.title if form else item.title }}" required maxlength="140">
+    <label for="body">Body</label>
+    <textarea id="body" name="body" rows="6" required maxlength="4000">{{ form.body if form else item.body }}</textarea>
+    <label for="audience">Audience</label>
+    <select id="audience" name="audience">
+      <option value="students" {{ 'selected' if (form.audience if form else item.audience) == 'students' }}>Students</option>
+      <option value="staff" {{ 'selected' if (form.audience if form else item.audience) == 'staff' }}>Staff only</option>
+    </select>
+    <p class="page-sub"><label><input type="checkbox" name="is_important"
+      {{ 'checked' if (form.is_important if form else item.is_important) }}> Mark as important</label></p>
+    <div class="btn-row">
+      <button class="btn" type="submit">Save changes</button>
+      {% if item.status != 'published' %}
+      <button class="btn green" type="submit" formaction="{{ url_for('exam.announcement_action', ann_id=item.id, action='publish') }}">Publish</button>
+      {% else %}
+      <button class="btn" type="submit" formaction="{{ url_for('exam.announcement_action', ann_id=item.id, action='unpublish') }}">Withdraw to draft</button>
+      {% endif %}
+      {% if item.status != 'archived' %}
+      <button class="btn ghost" type="submit" formaction="{{ url_for('exam.announcement_action', ann_id=item.id, action='archive') }}">Archive</button>
+      {% else %}
+      <button class="btn ghost" type="submit" formaction="{{ url_for('exam.announcement_action', ann_id=item.id, action='restore') }}">Restore to draft</button>
+      {% endif %}
+      <a class="btn ghost" href="{{ url_for('exam.announcements_page') }}">All announcements</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>Audit history</h2>
+  {% for a in trail %}
+  <p class="page-sub">{{ a.created_at }} · <strong>{{ a.actor }}</strong> {{ a.action }}</p>
+  {% else %}
+  <p class="page-sub">No recorded actions.</p>
+  {% endfor %}
+</div>
+{% endblock %}

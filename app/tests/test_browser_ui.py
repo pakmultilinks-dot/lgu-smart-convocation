@@ -20,6 +20,8 @@ from werkzeug.serving import make_server
 APP_DIR = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(APP_DIR))
 
+import review_test_support as review_support  # noqa: E402
+
 import config  # noqa: E402
 import database  # noqa: E402
 from web.routes import create_app  # noqa: E402
@@ -39,6 +41,8 @@ class BrowserUiTests(unittest.TestCase):
         config.DB_PATH = os.path.join(cls.sandbox.name, "qa.sqlite")
         database.init_db()
         database.seed()
+        cls.fixture_client = create_app().test_client()
+        cls.scanner_token = review_support.authenticate(cls.fixture_client)
         cls.httpd = make_server("127.0.0.1", 0, create_app())
         cls.base_url = "http://127.0.0.1:%s" % cls.httpd.server_port
         cls.server_thread = threading.Thread(
@@ -66,6 +70,12 @@ class BrowserUiTests(unittest.TestCase):
 
     def setUp(self):
         self.page = self.browser.new_page()
+        self.page.context.set_extra_http_headers({"X-Scanner-Token": self.scanner_token})
+        self.page.add_init_script("sessionStorage.setItem('lgu_scanner_token', "
+                                  + json.dumps(self.scanner_token) + ");"
+                                  "sessionStorage.setItem('lgu_scanner_gates', '[1,2,3,4,5,6,7]');")
+        serializer = self.fixture_client.application.session_interface.get_signing_serializer(self.fixture_client.application)
+        self.page.context.add_cookies([{"name": "session", "value": serializer.dumps({"lgu_admin": True}), "url": self.base_url}])
         self.page_errors = []
         self.page.on("pageerror", lambda error: self.page_errors.append(error))
 
@@ -188,8 +198,8 @@ class BrowserUiTests(unittest.TestCase):
         page = self.page
         page.goto(self.base_url + "/broadcast")
         page.locator("#message").fill("QA browser test announcement")
-        page.get_by_role("button", name="Send broadcast").click()
-        self.assertIn("Broadcast logged", page.locator(".notice").inner_text())
+        page.get_by_role("button", name="Send announcement").click()
+        self.assertIn("Broadcast logged", page.locator(".notice").filter(has_text="Broadcast logged").inner_text())
         self.assertIn("QA browser test announcement", page.locator("main").inner_text())
 
 

@@ -17,8 +17,41 @@ web-build/
 
 # Secrets
 .env
+.env.*
+!.env.example
+!.env.*.example
 *.pem
 *.key
+
+# Runtime records, uploads, backups and captured evidence are local only.
+*.sqlite
+*.sqlite3
+*.db-*
+*.sqlite-*
+*.sqlite3-*
+*.db.*
+app/data/
+app/backups/
+backups/
+screenshots/
+docs/evidence/
+*.csv
+*.xlsx
+*.xls
+*.pptx
+*.zip
+*.bak
+*.dump
+*.apk
+*.aab
+.ruff_cache/
+.pytest_cache/
+_faildump.txt
+_regress*.txt
+_mregress*.txt
+_release_safety_isolated.txt
+regression_pass_*.txt
+expo-gen.err
 
 # OS
 .DS_Store

@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+{% block title %}Announcements · {{ APP_NAME }}{% endblock %}
+{% block content %}
+<h1 class="page-title">Announcements</h1>
+<p class="page-sub">Draft → published → archived. Only published announcements for the
+<strong>students</strong> audience appear in the student app; drafts and archived items never leave this portal.</p>
+{% if done %}<div class="notice ok"><p>{{ done }}</p></div>{% endif %}
+{% if error %}<div class="notice bad"><p>{{ error }}</p></div>{% endif %}
+
+{% if conv %}
+<div class="card">
+  <h2>Create an announcement</h2>
+  <form method="post" action="{{ url_for('exam.announcement_create') }}">
+    <input type="hidden" name="csrf_token" value="{{ exam_csrf_token() }}">
+    <label for="title">Title</label>
+    <input id="title" name="title" value="{{ form.title if form else '' }}" required maxlength="140">
+    <label for="body">Body</label>
+    <textarea id="body" name="body" rows="5" required maxlength="4000">{{ form.body if form else '' }}</textarea>
+    <label for="audience">Audience</label>
+    <select id="audience" name="audience">
+      <option value="students" {{ 'selected' if not form or form.audience == 'students' }}>Students</option>
+      <option value="staff" {{ 'selected' if form and form.audience == 'staff' }}>Staff only</option>
+    </select>
+    <p class="page-sub"><label><input type="checkbox" name="is_important"
+      {{ 'checked' if form and form.is_important }}> Mark as important</label></p>
+    <div class="btn-row">
+      <button class="btn" type="submit">Save as draft</button>
+      <a class="btn ghost" href="{{ url_for('exam.dashboard') }}">Back to dashboard</a>
+    </div>
+  </form>
+</div>
+
+<div class="card">
+  <h2>{{ conv.name }} ({{ conv.year }})</h2>
+  <p class="page-sub">
+    {% if counts %}{{ counts.published }} published · {{ counts.draft }} draft · {{ counts.archived }} archived{% endif %}
+  </p>
+  <table>
+    <tr><th>Title</th><th>Status</th><th>Updated</th><th></th></tr>
+    {% for a in items %}
+    <tr>
+      <td>{{ a.title }}{% if a.is_important %} <span class="badge queued">IMPORTANT</span>{% endif %}
+          {% if a.audience == 'staff' %}<span class="badge bad">STAFF ONLY</span>{% endif %}</td>
+      <td><span class="badge {{ 'entry' if a.status == 'published' else 'bad' if a.status == 'archived' else 'queued' }}">{{ a.status }}</span></td>
+      <td>{{ a.updated_at }}</td>
+      <td><a class="btn ghost" href="{{ url_for('exam.announcement_detail', ann_id=a.id) }}">Open</a></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="4">No announcements yet.</td></tr>
+    {% endfor %}
+  </table>
+</div>
+{% else %}
+<div class="notice warn"><p>No active convocation — create one on the event page first.</p></div>
+{% endif %}
+{% endblock %}

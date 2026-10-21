@@ -1,0 +1,64 @@
+name: Latest application review
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  phase-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        script:
+          - test_phase37_broadcast_rate_limit.py
+          - test_phase37_startup_secrets.py
+          - test_phase37_security_posture.py
+          - test_phase38_analytics.py
+          - test_phase38_db_reliability.py
+          - test_phase38_guest_rate_limit.py
+          - test_phase39_db.py
+          - test_phase39_security.py
+          - test_phase39_e2e_web.py
+          - test_phase39_load.py
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r requirements-dev.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python -m compileall -q app
+      - name: Run isolated regression
+        working-directory: app
+        env:
+          PYTHONUTF8: "1"
+          LGU_TESTING: "1"
+          LGU_ALLOW_DEMO_SECRETS: "1"
+          LGU_APP_ENV: test
+          LGU_ENABLE_DEMO_QR: "1"
+        run: python scripts/${{ matrix.script }}
+
+  mobile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run tsc
+        working-directory: mobile
+      - run: npm run lint
+        working-directory: mobile
+      - name: Phase 38 mobile regression
+        working-directory: mobile
+        run: node scripts/phase38-reliability-test.mjs

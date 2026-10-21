@@ -10,6 +10,8 @@ from unittest.mock import patch
 # Make app/ importable when invoked from the repository root or directly.
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+import review_test_support as review_support  # noqa: E402
+
 from web import routes  # noqa: E402
 
 
@@ -18,6 +20,7 @@ class UploadBoundaryTests(unittest.TestCase):
         self.app = routes.create_app()
         self.app.config.update(TESTING=True)
         self.client = self.app.test_client()
+        review_support.authenticate(self.client, scanner=False)
 
     def test_api_oversized_body_returns_json_413(self):
         self.app.config["MAX_CONTENT_LENGTH"] = 1024
