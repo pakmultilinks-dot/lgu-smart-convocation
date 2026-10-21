@@ -151,11 +151,22 @@ def restore(backup_path, dest_path):
     location that an operator inspects before adopting.
     """
     dest = os.path.abspath(dest_path)
-    if config.is_production_db(dest):
+
+    # The active production DB may live on a volume rather than app/lgu.db.
+    # Protect BOTH locations and their symlink/relative-path aliases. The
+    # restore operator must choose a separate destination for inspection.
+    def canonical(path):
+        return os.path.normcase(os.path.realpath(os.path.abspath(path)))
+
+    protected = {
+        canonical(config.PRODUCTION_DB_PATH),
+        canonical(config.DB_PATH),
+    }
+    if config.is_production_db(dest) or canonical(dest) in protected:
         raise ValueError(
-            "refusing to restore over the production database (%s). Restore"
-            " into a separate location, inspect it, then adopt it deliberately."
-            % dest)
+            "refusing to restore over the production or configured active"
+            " database (%s). Restore into a separate location, inspect it,"
+            " then adopt it deliberately." % dest)
     manifest = validate(backup_path)  # raises before any write happens
     if os.path.dirname(dest) and not os.path.isdir(os.path.dirname(dest)):
         os.makedirs(os.path.dirname(dest))
