@@ -135,27 +135,52 @@ def add_students(rows):
 
 
 def register_guest(name, phone, host_roll_no, generate):
-    import ids as ids_mod
+    """Give a student one guest pass, even under concurrent requests.
+
+    BEGIN IMMEDIATE obtains a write reservation before checking for an
+    existing guest. The check and insert cannot race with another request
+    using this registration function. Existing records are never removed.
+    """
+    host_roll_no = host_roll_no.strip()
     db = get_db()
-    host = db.execute("SELECT * FROM students WHERE roll_no = ?",
-                      (host_roll_no.strip(),)).fetchone()
-    if not host:
-        db.close()
-        return None, "No student found with roll number %s." % host_roll_no
-    used = {r["qr_id"] for r in db.execute("SELECT qr_id FROM students").fetchall()}
-    used |= {r["qr_id"] for r in db.execute("SELECT qr_id FROM guests").fetchall()}
-    qr_id = generate()
-    while qr_id in used:
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        host = db.execute(
+            "SELECT 1 FROM students WHERE roll_no = ?", (host_roll_no,)
+        ).fetchone()
+        if not host:
+            db.rollback()
+            return None, "No student found with roll number %s." % host_roll_no
+
+        already_registered = db.execute(
+            "SELECT 1 FROM guests WHERE host_roll_no = ? LIMIT 1",
+            (host_roll_no,),
+        ).fetchone()
+        if already_registered:
+            db.rollback()
+            return None, "A guest is already registered for student %s." % host_roll_no
+
+        used = {r["qr_id"] for r in db.execute(
+            "SELECT qr_id FROM students WHERE qr_id IS NOT NULL"
+        ).fetchall()}
+        used.update(r["qr_id"] for r in db.execute(
+            "SELECT qr_id FROM guests"
+        ).fetchall())
         qr_id = generate()
-    cur = db.execute(
-        "INSERT INTO guests (name, phone, host_roll_no, qr_id, created_at)"
-        " VALUES (?, ?, ?, ?, ?)",
-        (name.strip(), phone.strip(), host_roll_no.strip(), qr_id, now_str()),
-    )
-    gid = cur.lastrowid
-    db.commit()
-    db.close()
-    return gid, None
+        while qr_id in used:
+            qr_id = generate()
+        cur = db.execute(
+            "INSERT INTO guests (name, phone, host_roll_no, qr_id, created_at)"
+            " VALUES (?, ?, ?, ?, ?)",
+            (name.strip(), phone.strip(), host_roll_no, qr_id, now_str()),
+        )
+        db.commit()
+        return cur.lastrowid, None
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def guest_by_id(gid):
