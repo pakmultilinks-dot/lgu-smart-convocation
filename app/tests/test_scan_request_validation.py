@@ -173,5 +173,10 @@ class ScanSyncRequestValidationTests(unittest.TestCase):
         self.assertEqual(self._scan_count(), 0)
 
 
+# The scanner API CI job also exercises guest registration because both
+# endpoints record attendance-related identities in the same SQLite store.
+from test_guest_quota import GuestQuotaTests  # noqa: E402,F401
+
+
 if __name__ == "__main__":
     unittest.main()
