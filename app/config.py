@@ -143,12 +143,15 @@ APP_NAME = "LGU Smart Convocation"
 UNIVERSITY = "Lahore Garrison University"
 MOTTO = "Nurturing the Future of Pakistan in an Excellent Environment"
 
+# Import-time numeric settings should never raise from a typo, or permit
+# zero/negative values to disable rate limits, TTLs or bounds. Use the
+# existing positive_int helper consistently (including email and scanner).
 # --- Phase 35K: shared operational configuration ---------------------------
 # One server-side source for values shared between backend queries and the
 # mobile UI (exposed through GET /api/config). Backend queries and UI
 # labels both consume these — no duplicated client constants.
-GATE_ACTIVITY_WINDOW_MINUTES = int(os.environ.get("LGU_GATE_WINDOW_MINUTES", "15"))
-MESSAGE_CHAR_LIMIT = int(os.environ.get("LGU_MESSAGE_LIMIT", "160"))
+GATE_ACTIVITY_WINDOW_MINUTES = positive_int("LGU_GATE_WINDOW_MINUTES", 15)
+MESSAGE_CHAR_LIMIT = positive_int("LGU_MESSAGE_LIMIT", 160)
 # Broadcast delivery mode: "demo" (default — announcements are recorded
 # only) or "real". "real" is a configuration state, not an SMS gateway:
 # no delivery implementation exists, and the server never claims delivery
@@ -161,16 +164,16 @@ if BROADCAST_MODE not in ("demo", "real"):
 # Per client IP, in-process. Isolated test backends can raise these via
 # environment to avoid cross-script lockouts; production keeps the default
 # of 5 wrong attempts per 60 seconds (→ HTTP 429).
-PIN_RATE_WINDOW_SECONDS = int(os.environ.get("LGU_PIN_WINDOW", "60") or "60")
-PIN_RATE_MAX_FAILS = int(os.environ.get("LGU_PIN_MAX_FAILS", "5") or "5")
+PIN_RATE_WINDOW_SECONDS = positive_int("LGU_PIN_WINDOW", 60)
+PIN_RATE_MAX_FAILS = positive_int("LGU_PIN_MAX_FAILS", 5)
 
 # --- Examination Admin login rate limiting (Phase 3.1) --------------------
 # Separate per-client-IP, in-process limiter for /exam/login so the exam
 # portal and the volunteer PIN cannot throttle each other. 5 wrong attempts
 # per 60 seconds (→ HTTP 429), on top of the per-account lockout in
 # exam_auth. Same env-var override pattern as the PIN limiter.
-EXAM_RATE_WINDOW_SECONDS = int(os.environ.get("LGU_EXAM_WINDOW", "60") or "60")
-EXAM_RATE_MAX_FAILS = int(os.environ.get("LGU_EXAM_MAX_FAILS", "5") or "5")
+EXAM_RATE_WINDOW_SECONDS = positive_int("LGU_EXAM_WINDOW", 60)
+EXAM_RATE_MAX_FAILS = positive_int("LGU_EXAM_MAX_FAILS", 5)
 
 # --- Phase 5: student accounts, email delivery, rate limits ---------------
 # Email delivery is FAIL-CLOSED: the default mode is "disabled" and no
@@ -180,7 +183,7 @@ EXAM_RATE_MAX_FAILS = int(os.environ.get("LGU_EXAM_MAX_FAILS", "5") or "5")
 # ONLY for the test suite (emailer refuses it on the production DB).
 EMAIL_MODE = (os.environ.get("LGU_EMAIL_MODE", "disabled") or "disabled").strip().lower()
 SMTP_HOST = os.environ.get("LGU_SMTP_HOST", "") or ""
-SMTP_PORT = int(os.environ.get("LGU_SMTP_PORT", "587") or "587")
+SMTP_PORT = positive_int("LGU_SMTP_PORT", 587)
 SMTP_USER = os.environ.get("LGU_SMTP_USER", "") or ""
 SMTP_PASSWORD = os.environ.get("LGU_SMTP_PASSWORD", "") or ""
 MAIL_FROM = os.environ.get("LGU_MAIL_FROM", "") or ""
@@ -188,11 +191,11 @@ MAIL_FROM = os.environ.get("LGU_MAIL_FROM", "") or ""
 # the historical behaviour), "starttls", "ssl" (implicit TLS, port 465) or
 # "none". Timeout applies to connect and to the whole session.
 SMTP_TLS = (os.environ.get("LGU_SMTP_TLS", "auto") or "auto").strip().lower()
-SMTP_TIMEOUT = int(os.environ.get("LGU_SMTP_TIMEOUT", "10") or "10")
-VERIFICATION_TTL_SECONDS = int(os.environ.get("LGU_VERIFICATION_TTL", "600") or "600")
-CODE_MAX_ATTEMPTS = int(os.environ.get("LGU_CODE_MAX_ATTEMPTS", "5") or "5")
-CODE_MAX_SENDS = int(os.environ.get("LGU_CODE_MAX_SENDS", "3") or "3")
-SESSION_HOURS = int(os.environ.get("LGU_STUDENT_SESSION_HOURS", "168") or "168")
+SMTP_TIMEOUT = positive_int("LGU_SMTP_TIMEOUT", 10)
+VERIFICATION_TTL_SECONDS = positive_int("LGU_VERIFICATION_TTL", 600)
+CODE_MAX_ATTEMPTS = positive_int("LGU_CODE_MAX_ATTEMPTS", 5)
+CODE_MAX_SENDS = positive_int("LGU_CODE_MAX_SENDS", 3)
+SESSION_HOURS = positive_int("LGU_STUDENT_SESSION_HOURS", 168)
 
 # Per-IP limits for the student JSON API (same pattern as EXAM_RATE_*).
 # Phase 18: each bucket carries its OWN documented window; the shared
@@ -212,13 +215,13 @@ STUDENT_RATE_MAX_CONFIRM = positive_int("LGU_STUDENT_MAX_CONFIRM", 20)
 # backends can relax them. SUBJECT/MESSAGE cap submitted text server-side;
 # MAX_OPEN bounds how many requests one account may hold open at once, and
 # the window/rate limiter throttles creation per client IP.
-SUPPORT_SUBJECT_MAX = int(os.environ.get("LGU_SUPPORT_SUBJECT_MAX", "160") or "160")
-SUPPORT_MESSAGE_MAX = int(os.environ.get("LGU_SUPPORT_MESSAGE_MAX", "4000") or "4000")
-SUPPORT_MAX_OPEN = int(os.environ.get("LGU_SUPPORT_MAX_OPEN", "20") or "20")
+SUPPORT_SUBJECT_MAX = positive_int("LGU_SUPPORT_SUBJECT_MAX", 160)
+SUPPORT_MESSAGE_MAX = positive_int("LGU_SUPPORT_MESSAGE_MAX", 4000)
+SUPPORT_MAX_OPEN = positive_int("LGU_SUPPORT_MAX_OPEN", 20)
 # A request open (unresolved) for longer than this is surfaced on the staff
 # dashboard as "older, may need attention". Resolved/rejected rows never count.
-SUPPORT_STALE_DAYS = int(os.environ.get("LGU_SUPPORT_STALE_DAYS", "7") or "7")
-SUPPORT_RECENT_DAYS = int(os.environ.get("LGU_SUPPORT_RECENT_DAYS", "7") or "7")
+SUPPORT_STALE_DAYS = positive_int("LGU_SUPPORT_STALE_DAYS", 7)
+SUPPORT_RECENT_DAYS = positive_int("LGU_SUPPORT_RECENT_DAYS", 7)
 SUPPORT_RATE_WINDOW_SECONDS = positive_int("LGU_SUPPORT_WINDOW", 300)
 SUPPORT_RATE_MAX_CREATE = positive_int("LGU_SUPPORT_MAX_CREATE", 10)
 
@@ -234,7 +237,7 @@ READINESS_RATE_MAX_MARK = positive_int("LGU_READINESS_MAX_MARK", 30)
 # mints a fresh token and revokes the previous one, so the TTL is a generous
 # backstop (not the primary lifecycle control). Verified against the
 # registration/account ledger at scan time — never the legacy roster.
-CONVOCATION_PASS_TTL_HOURS = int(os.environ.get("LGU_PASS_TTL_HOURS", "72") or "72")
+CONVOCATION_PASS_TTL_HOURS = positive_int("LGU_PASS_TTL_HOURS", 72)
 # Per-IP throttle on the issuance endpoint (same pattern as the other student
 # limiters) so a misbehaving client cannot mint unbounded tokens.
 PASS_ISSUE_RATE_WINDOW_SECONDS = positive_int("LGU_PASS_ISSUE_WINDOW", 60)
@@ -246,9 +249,9 @@ PASS_ISSUE_RATE_MAX = positive_int("LGU_PASS_ISSUE_MAX", 10)
 # neutralised instantly by revoking the account (all sessions die). Repeated
 # login failures are rate limited per client IP on top of the per-account
 # lockout enforced in scanner_auth. No default scanner credential exists.
-SCANNER_SESSION_HOURS = int(os.environ.get("LGU_SCANNER_SESSION_HOURS", "12") or "12")
-SCANNER_RATE_WINDOW_SECONDS = int(os.environ.get("LGU_SCANNER_WINDOW", "60") or "60")
-SCANNER_RATE_MAX_FAILS = int(os.environ.get("LGU_SCANNER_MAX_FAILS", "5") or "5")
+SCANNER_SESSION_HOURS = positive_int("LGU_SCANNER_SESSION_HOURS", 12)
+SCANNER_RATE_WINDOW_SECONDS = positive_int("LGU_SCANNER_WINDOW", 60)
+SCANNER_RATE_MAX_FAILS = positive_int("LGU_SCANNER_MAX_FAILS", 5)
 
 # --- Phase 38 (BE-003): guest self-registration throttling ---------------
 # Self-service guest minting hands out a bearer QR credential, so both the
