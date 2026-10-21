@@ -169,8 +169,14 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None, source="onl
         if mode == "exit":
             return {"status": "error", "level": "amber", "title": "GUEST PASS IS ENTRY ONLY",
                     "detail": "Guest passes are single-use entry passes."}
-        models.record_scan(qr_id, "guest", person["name"], gate_id, "entry",
-                           volunteer, scanned_at, source)
+        accepted = models.record_scan(
+            qr_id, "guest", person["name"], gate_id, "entry",
+            volunteer, scanned_at, source
+        )
+        if not accepted:
+            return {"status": "error", "level": "red", "title": "ALREADY USED",
+                    "detail": "%s: this guest pass was already used. One entry per guest."
+                    % person["name"]}
         return {"status": "ok", "level": "green", "title": "GUEST ENTRY RECORDED",
                 "name": person["name"], "sub": "Guest of %s (%s)" % (
                     person["host_roll_no"], person["phone"]),
@@ -188,8 +194,23 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None, source="onl
                 "detail": "%s (%s) has no active entry to close."
                 % (person["name"], person["roll_no"])}
 
-    models.record_scan(qr_id, "student", person["name"], gate_id, mode,
-                       volunteer, scanned_at, source)
+    accepted = models.record_scan(
+        qr_id, "student", person["name"], gate_id, mode,
+        volunteer, scanned_at, source
+    )
+    if not accepted:
+        # A second gate changed this student's state while our earlier
+        # read-only check was running. Return the usual rejection verdict.
+        if mode == "entry":
+            ls = models.last_scan(qr_id)
+            g = next((x for x in _gates() if ls and x["id"] == ls["gate_id"]), {})
+            return {"status": "error", "level": "red", "title": "ALREADY INSIDE",
+                    "detail": "%s (%s) already entered at %s, %s." % (
+                        person["name"], person["roll_no"], g.get("label", ""),
+                        ls["scanned_at"] if ls else "")}
+        return {"status": "error", "level": "amber", "title": "NOT INSIDE",
+                "detail": "%s (%s) has no active entry to close."
+                % (person["name"], person["roll_no"])}
     return {"status": "ok", "level": "green",
             "title": "ENTRY RECORDED" if mode == "entry" else "EXIT RECORDED",
             "name": person["name"],
