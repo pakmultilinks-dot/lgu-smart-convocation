@@ -1,0 +1,32 @@
+name: Browser UI security and controls
+
+on:
+  pull_request:
+    paths:
+      - "app/web/templates/**"
+      - "app/tests/test_browser_ui.py"
+      - ".github/workflows/browser-ui-security.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  browser-ui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend and browser testing dependencies
+        run: |
+          python -m pip install -r app/requirements.txt
+          python -m pip install "playwright>=1.52,<2"
+      - name: Install headless Chromium
+        run: python -m playwright install --with-deps chromium
+      - name: Compile Python backend
+        run: python -m compileall -q app
+      - name: Run real-browser tests with isolated database
+        run: python -m unittest discover -s app/tests -p 'test_browser_ui.py' -v
