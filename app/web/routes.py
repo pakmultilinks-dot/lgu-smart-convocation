@@ -246,17 +246,21 @@ def admin():
         elif action == "upload_roster":
             f = request.files.get("roster")
             if f and f.filename:
-                text = f.read().decode("utf-8-sig")
-                rows = [r for r in csv.reader(io.StringIO(text)) if any(r)]
-                parsed, header_error = _parse_roster(rows)
-                if header_error:
-                    msg = header_error
+                try:
+                    text = f.read().decode("utf-8-sig")
+                except UnicodeDecodeError:
+                    msg = "Roster must be a UTF-8 encoded CSV file."
                 else:
-                    added, skipped = models.add_students(parsed)
-                    missing = models.students_missing_ids()
-                    models.assign_ids(missing, ids.generate_id)
-                    msg = ("Roster loaded: %d added, %d skipped "
-                           "(duplicates or bad rows). IDs assigned." % (added, skipped))
+                    rows = [r for r in csv.reader(io.StringIO(text)) if any(r)]
+                    parsed, header_error = _parse_roster(rows)
+                    if header_error:
+                        msg = header_error
+                    else:
+                        added, skipped = models.add_students(parsed)
+                        missing = models.students_missing_ids()
+                        models.assign_ids(missing, ids.generate_id)
+                        msg = ("Roster loaded: %d added, %d skipped "
+                               "(duplicates or bad rows). IDs assigned." % (added, skipped))
             else:
                 msg = "No file selected."
     return render_template("admin.html", gates=_gates(), msg=msg,
@@ -400,7 +404,16 @@ def create_app():
     app = Flask(__name__, template_folder=os.path.join(base, "templates"),
                 static_folder=os.path.join(base, "static"))
     app.secret_key = config.SECRET_KEY
+    # Cap request bodies before Flask parses form uploads or JSON.
+    app.config["MAX_CONTENT_LENGTH"] = 8 * 1024 * 1024
     app.register_blueprint(bp)
+
+    @app.errorhandler(413)
+    def request_entity_too_large(_error):
+        message = "Request too large (maximum 8 MiB)."
+        if request.path.startswith("/api/"):
+            return jsonify({"ok": False, "error": message}), 413
+        return Response(message, status=413, mimetype="text/plain")
 
     @app.context_processor
     def inject_brand():
