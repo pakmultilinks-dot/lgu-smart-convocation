@@ -61,6 +61,12 @@
 let mode = "entry";
 const QKEY = "lgu_scan_queue";
 
+function escapeHtml(value) {
+  return String(value == null ? "" : value).replace(/[&<>"']/g, char => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;",
+    '"': "&quot;", "'": "&#39;"
+  })[char]);
+}
 function setMode(m) {
   mode = m;
   document.getElementById("m-entry").className = "btn big" + (m === "entry" ? " green" : "");
@@ -75,9 +81,9 @@ function renderQueue() {
   const q = getQueue();
   document.getElementById("qcount").textContent = q.length;
   document.getElementById("queue-list").innerHTML = q.length
-    ? q.map((it, i) => `<div class="feed-item"><span class="t">${it.scanned_at.slice(11)}</span>` +
-      `<span class="badge queued">QUEUED</span><span>${it.payload}</span>` +
-      `<span style="color:var(--muted)">${it.mode} @ gate ${it.gate_id}</span></div>`).join("")
+    ? q.map((it, i) => `<div class="feed-item"><span class="t">${escapeHtml(it.scanned_at.slice(11))}</span>` +
+      `<span class="badge queued">QUEUED</span><span>${escapeHtml(it.payload)}</span>` +
+      `<span style="color:var(--muted)">${escapeHtml(it.mode)} @ gate ${escapeHtml(it.gate_id)}</span></div>`).join("")
     : '<p class="page-sub">Queue is empty.</p>';
 }
 
