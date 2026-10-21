@@ -193,5 +193,166 @@ class BrowserUiTests(unittest.TestCase):
         self.assertIn("QA browser test announcement", page.locator("main").inner_text())
 
 
+    def _scanner_with_queue(self, payloads):
+        """Use a fresh browser context with a synthetic offline scan queue."""
+        page = self.page
+        page.goto(self.base_url + "/scan")
+        items = [
+            {
+                "payload": payload,
+                "gate_id": 1,
+                "mode": "entry",
+                "volunteer": "QA",
+                "scanned_at": "2026-10-21 12:00:00",
+            }
+            for payload in payloads
+        ]
+        page.evaluate(
+            "(items) => localStorage.setItem('lgu_scan_queue', JSON.stringify(items))",
+            items,
+        )
+        page.reload()
+        self.assertEqual(page.locator("#qcount").inner_text(), str(len(items)))
+        return page
+
+    def test_sync_transport_error_does_not_discard_pending_scans(self):
+        page = self._scanner_with_queue(["PENDING-A"])
+        page.route("**/api/sync", lambda route: route.abort("failed"))
+        page.get_by_role("button", name="Sync now").click()
+        page.wait_for_function(
+            "document.getElementById('r-title').textContent === 'SYNC FAILED'"
+        )
+        self.assertEqual(page.locator("#qcount").inner_text(), "1")
+        self.assertEqual(
+            page.evaluate("getQueue().map(item => item.payload)"), ["PENDING-A"]
+        )
+
+    def test_sync_http_error_does_not_discard_pending_scans(self):
+        page = self._scanner_with_queue(["PENDING-A"])
+        page.route(
+            "**/api/sync",
+            lambda route: route.fulfill(
+                status=503,
+                content_type="application/json",
+                body=json.dumps({"error": "Server busy"}),
+            ),
+        )
+        page.get_by_role("button", name="Sync now").click()
+        page.wait_for_function(
+            "document.getElementById('r-title').textContent === 'SYNC FAILED'"
+        )
+        self.assertEqual(page.locator("#qcount").inner_text(), "1")
+
+    def test_sync_incomplete_verdicts_are_kept_for_retry(self):
+        page = self._scanner_with_queue(["ACCEPTED", "RETRY", "NO-VERDICT"])
+        response = {
+            "synced": 1,
+            "results": [
+                {"payload": "ACCEPTED", "result": {
+                    "status": "ok", "title": "ENTRY RECORDED"}},
+                {"payload": "RETRY", "result": {
+                    "status": "error", "title": "SERVER BUSY"}},
+            ],
+        }
+        page.route(
+            "**/api/sync",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(response),
+            ),
+        )
+        page.get_by_role("button", name="Sync now").click()
+        page.wait_for_function(
+            "document.getElementById('r-title').textContent === 'SYNC PARTIAL'"
+        )
+        self.assertEqual(page.locator("#qcount").inner_text(), "2")
+        self.assertEqual(
+            page.evaluate("getQueue().map(item => item.payload)"),
+            ["RETRY", "NO-VERDICT"],
+        )
+
+    def test_sync_terminal_rejections_are_reported_and_reconciled(self):
+        page = self._scanner_with_queue(["DUPLICATE", "ACCEPTED"])
+        response = {
+            "synced": 1,
+            "results": [
+                {"payload": "DUPLICATE", "result": {
+                    "status": "error", "title": "ALREADY INSIDE"}},
+                {"payload": "ACCEPTED", "result": {
+                    "status": "ok", "title": "ENTRY RECORDED"}},
+            ],
+        }
+        page.route(
+            "**/api/sync",
+            lambda route: route.fulfill(
+                status=200,
+                content_type="application/json",
+                body=json.dumps(response),
+            ),
+        )
+        page.get_by_role("button", name="Sync now").click()
+        page.wait_for_function(
+            "document.getElementById('r-title').textContent === 'SYNC COMPLETE'"
+        )
+        self.assertEqual(page.locator("#qcount").inner_text(), "0")
+        self.assertIn("1 rejected", page.locator("#r-sub").inner_text())
+
+    def test_sync_does_not_erase_new_scan_queued_during_request(self):
+        page = self._scanner_with_queue(["BEFORE-SYNC"])
+        page.evaluate(
+            """() => {
+                const realFetch = window.fetch.bind(window);
+                window.fetch = (url, init) => {
+                    if (String(url).includes('/api/sync')) {
+                        return new Promise(resolve => { window.__finishSync = resolve; });
+                    }
+                    return realFetch(url, init);
+                };
+            }"""
+        )
+        page.get_by_role("button", name="Sync now").click()
+        page.wait_for_function("typeof window.__finishSync === 'function'")
+        page.evaluate(
+            """() => setQueue([...getQueue(), {
+                payload: 'ARRIVED-LATER', gate_id: 1, mode: 'entry',
+                volunteer: 'QA', scanned_at: '2026-10-21 12:00:02'
+            }])"""
+        )
+        page.evaluate(
+            """() => window.__finishSync({
+                ok: true,
+                json: async () => ({
+                    synced: 1,
+                    results: [{payload:'BEFORE-SYNC', result:{
+                        status:'ok',title:'ENTRY RECORDED'
+                    }}]
+                })
+            })"""
+        )
+        page.wait_for_function(
+            "document.getElementById('r-title').textContent === 'SYNC PARTIAL'"
+        )
+        self.assertEqual(
+            page.evaluate("getQueue().map(item => item.payload)"),
+            ["ARRIVED-LATER"],
+        )
+
+    def test_scan_network_error_autoqueues_for_later_confirmation(self):
+        page = self.page
+        page.goto(self.base_url + "/scan")
+        page.route("**/api/scan", lambda route: route.abort("failed"))
+        page.locator("#payload").fill("UNKNOWN-DURING-OFFLINE")
+        page.get_by_role("button", name="SCAN", exact=True).click()
+        page.wait_for_function(
+            "document.getElementById('r-title').textContent === 'QUEUED OFFLINE'"
+        )
+        self.assertEqual(page.locator("#qcount").inner_text(), "1")
+        self.assertEqual(
+            page.evaluate("getQueue()[0].payload"),
+            "UNKNOWN-DURING-OFFLINE",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()
