@@ -118,9 +118,17 @@ def _origin_allowed(origin, request_host):
 
 
 def _test_tool_guard():
-    """Test/demo tooling must never exist on a production database
-    (master audit B1-B3): in production these routes do not exist."""
-    if config.is_production_db():
+    """Expose dangerous QA endpoints only in explicitly isolated test runs.
+
+    A database stored on a cloud volume or a custom LGU_DB_PATH is not
+    automatically a *test* database. Never mint scanner sessions, disclose
+    signed test passes, or reset attendance solely based on its filename.
+    """
+    if (
+        os.environ.get("LGU_TESTING") != "1"
+        or os.environ.get("LGU_APP_ENV", "").strip().lower() == "production"
+        or config.is_production_db()
+    ):
         return jsonify({"ok": False, "error": "Not found."}), 404
     return None
 
@@ -965,9 +973,10 @@ def api_sync():
 def api_demo_payload():
     """Demo helper: return the payload of a student currently outside.
     Production databases: hidden (master audit B3)."""
-    denied = _test_tool_guard()
-    if denied:
-        return denied
+    # Demo QR has its own explicit development opt-in. It is intentionally
+    # separate from the more powerful /api/test-* QA administration routes.
+    if config.is_production_db():
+        return jsonify({"ok": False, "error": "Not found."}), 404
     environment = os.environ.get("LGU_APP_ENV", "").strip().lower()
     demo_enabled = os.environ.get("LGU_ENABLE_DEMO_QR", "").strip().lower()
     if environment not in ("development", "test") or demo_enabled not in ("1", "true", "yes"):
