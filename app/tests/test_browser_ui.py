@@ -67,7 +67,7 @@ class BrowserUiTests(unittest.TestCase):
     def setUp(self):
         self.page = self.browser.new_page()
         self.page_errors = []
-        self.page.on("pageerror", self.page_errors.append)
+        self.page.on("pageerror", lambda error: self.page_errors.append(error))
 
     def tearDown(self):
         self.page.close()
