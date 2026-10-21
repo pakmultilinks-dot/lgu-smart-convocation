@@ -1,0 +1,26 @@
+name: Phase 39 numeric configuration safety
+
+on:
+  pull_request:
+    paths:
+      - "app/config.py"
+      - "app/tests/test_config_integer_safety.py"
+      - ".github/workflows/numeric-config-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  numeric-config:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile configuration and regression test
+        run: python -m compileall -q app/config.py app/tests/test_config_integer_safety.py
+      - name: Verify numeric settings fail safe without initializing SQLite
+        run: python -m unittest discover -s app/tests -p 'test_config_integer_safety.py' -v
