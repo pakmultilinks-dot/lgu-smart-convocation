@@ -435,6 +435,7 @@ def api_send_broadcast():
 
 
 def create_app():
+    config.assert_production_secrets()
     base = os.path.dirname(os.path.abspath(__file__))
     app = Flask(__name__, template_folder=os.path.join(base, "templates"),
                 static_folder=os.path.join(base, "static"))
