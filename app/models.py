@@ -62,15 +62,46 @@ def guest_used(qr_id):
 
 def record_scan(qr_id, person_type, person_name, gate_id, mode, volunteer,
                 scanned_at=None, source="online"):
+    """Record an admission only if its pass state is still valid.
+
+    The authoritative duplicate check happens *after* BEGIN IMMEDIATE, which
+    serializes all writers on this SQLite database. Route-level checks remain
+    useful for immediate feedback, but cannot by themselves prevent races.
+    Returns True if recorded, False if another request already changed state.
+    """
     db = get_db()
-    db.execute(
-        "INSERT INTO scans (qr_id, person_type, person_name, gate_id, mode,"
-        " volunteer, scanned_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-        (qr_id, person_type, person_name, gate_id, mode, volunteer,
-         scanned_at or now_str(), source),
-    )
-    db.commit()
-    db.close()
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        if person_type == "guest":
+            already_used = db.execute(
+                "SELECT 1 FROM scans WHERE qr_id = ? LIMIT 1", (qr_id,)
+            ).fetchone()
+            if already_used or mode != "entry":
+                db.rollback()
+                return False
+        elif person_type == "student":
+            latest = db.execute(
+                "SELECT mode FROM scans WHERE qr_id = ?"
+                " ORDER BY id DESC LIMIT 1", (qr_id,)
+            ).fetchone()
+            inside = bool(latest and latest["mode"] == "entry")
+            if (mode == "entry" and inside) or (mode == "exit" and not inside):
+                db.rollback()
+                return False
+
+        db.execute(
+            "INSERT INTO scans (qr_id, person_type, person_name, gate_id, mode,"
+            " volunteer, scanned_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (qr_id, person_type, person_name, gate_id, mode, volunteer,
+             scanned_at or now_str(), source),
+        )
+        db.commit()
+        return True
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
 
 
 def students_missing_ids():
