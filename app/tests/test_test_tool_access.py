@@ -57,8 +57,8 @@ class TestToolBoundaryTests(unittest.TestCase):
                             "gates": [1],
                         },
                     ),
-                    patch.object(routes.models, "test_records") as records,
-                    patch.object(routes.models, "reset_test_scans") as reset,
+                    patch.object(routes.models, "test_records", return_value=[]) as records,
+                    patch.object(routes.models, "reset_test_scans", return_value=0) as reset,
                     patch.object(routes, "_require_admin_pin", return_value=None),
                 ):
                     for client in self.client_for(testing=testing, env="production"):
@@ -87,7 +87,7 @@ class TestToolBoundaryTests(unittest.TestCase):
                     "username": "test-only", "display_name": "Test", "gates": [1],
                 },
             ),
-            patch.object(routes.models, "test_records") as records,
+            patch.object(routes.models, "test_records", return_value=[]) as records,
         ):
             for client in self.client_for(testing=None, env="development"):
                 self.assertEqual(
