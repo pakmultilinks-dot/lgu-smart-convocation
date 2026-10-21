@@ -46,6 +46,27 @@ helper. A disabled helper responds with JSON HTTP 404; the scanner UI explains
 that no demo code is available. Actual scanning of an assigned QR code is
 unchanged. Keep all demo servers private and use synthetic student records.
 
+## Production credentials (release blocker)
+
+For a future production deployment, configure both `LGU_SECRET_KEY` and
+`LGU_HMAC_SECRET` as **different, randomly generated secrets** of at
+least 32 characters / bytes, and set `LGU_APP_ENV=production`.
+
+In production mode the application refuses to start if either value is
+missing, a demo/default value, too short, or reused for both purposes.
+`app/run.py` checks this **before** any SQLite initialization or seeding,
+and `create_app()` checks it for other WSGI entry points.
+
+Protect the values in a secret manager or restricted deployment environment.
+**Do not commit them, paste them into tickets, or print them in CI logs.**
+Changing the QR HMAC signing secret invalidates existing signed QR passes;
+choose it before printing event cards and plan rotation carefully.
+
+This startup guard is **not production authorization**. The old GitHub
+application still needs administrator and volunteer authentication, HTTPS,
+mobile camera testing, backups, and operator-reviewed database migration
+before any release. Running the server successfully is not a GO verdict.
+
 ## 5-minute VC demo script
 
 1. **Home** (`/`): show the six modules.
