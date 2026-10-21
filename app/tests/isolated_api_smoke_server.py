@@ -20,6 +20,7 @@ if __name__ == "__main__":
         config.DB_PATH = os.path.join(folder, "synthetic.sqlite")
         database.init_db()
         database.seed()
-        server = make_server("127.0.0.1", 5055, create_app())
+        port = int(os.environ.get("LGU_QA_PORT", "5055"))
+        server = make_server("127.0.0.1", port, create_app())
         print("Synthetic API smoke server ready", flush=True)
         server.serve_forever()
