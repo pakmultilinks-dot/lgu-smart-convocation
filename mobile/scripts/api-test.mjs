@@ -130,11 +130,13 @@ async function main() {
 
   console.log("Demo payload");
   let demo;
+  let demoDisabled = false;
   try {
     demo = await api.demoPayload();
   } catch (e) {
     if (e && e.status === 404) {
       // Production correctly hides signed student passes; keep testing safe routes.
+      demoDisabled = true;
       demo = { payload: null, hint: "Demo helper disabled." };
       pass("GET /api/demo-payload is disabled");
     } else {
@@ -148,7 +150,7 @@ async function main() {
     pass(`GET /api/demo-payload returned a payload (${demo.hint})`);
     check("demo hint carries a host roll number", !!hostRoll, demo.hint);
   } else {
-    skip("student scan tests", "every student is already inside");
+    skip("student scan tests", demoDisabled ? "demo QR helper disabled by design" : "every student is already inside");
   }
 
   console.log("Guest registration");
@@ -202,7 +204,7 @@ async function main() {
     const passInfo = await api.guestPass(guest.gid);
     check("GET /api/guest-pass reports the pass as used", passInfo.used === true, JSON.stringify(passInfo.used));
   } else {
-    skip("guest single-use", "guest registration failed");
+    skip("guest single-use", !hostRoll ? "requires an explicitly enabled demo QR" : "guest registration failed");
   }
 
   const forged = await api.scan({ payload: "LGU1-FORGED00", gate_id: gateId, mode: "entry", volunteer: "ApiTest" });
