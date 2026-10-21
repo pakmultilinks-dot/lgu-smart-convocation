@@ -46,3 +46,17 @@ jobs:
             sleep 1
           done
           node mobile/scripts/api-test.mjs http://127.0.0.1:5055
+      - name: Smoke test full scanner and guest API workflows in demo mode
+        env:
+          LGU_APP_ENV: development
+          LGU_ENABLE_DEMO_QR: "1"
+          LGU_QA_PORT: "5056"
+        run: |
+          python app/tests/isolated_api_smoke_server.py &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+          for attempt in $(seq 1 30); do
+            if curl --silent --fail http://127.0.0.1:5056/api/gates > /dev/null; then break; fi
+            sleep 1
+          done
+          node mobile/scripts/api-test.mjs http://127.0.0.1:5056
