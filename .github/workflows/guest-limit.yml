@@ -1,0 +1,25 @@
+name: One guest per student regression
+
+on:
+  pull_request:
+    paths:
+      - 'app/models.py'
+      - 'app/tests/test_one_guest_per_student.py'
+      - '.github/workflows/guest-limit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  guest-limit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install backend requirements
+        run: python -m pip install -r app/requirements.txt
+      - name: Run isolated guest registration tests
+        run: python -m unittest discover -s app/tests -p 'test_one_guest_per_student.py' -v
