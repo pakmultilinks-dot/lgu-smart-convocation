@@ -7,7 +7,10 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from database import init_db, seed  # noqa: E402
 from web.routes import create_app  # noqa: E402
+import config  # noqa: E402
 
+# Fail before initialization or seeding when production secrets are unsafe.
+config.assert_production_secrets()
 init_db()
 seed()
 
