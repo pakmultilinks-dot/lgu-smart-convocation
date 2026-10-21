@@ -1,0 +1,28 @@
+name: Scanner JSON input regression
+
+on:
+  pull_request:
+    paths:
+      - "app/web/routes.py"
+      - "app/tests/test_scan_request_validation.py"
+      - ".github/workflows/scanner-json-validation.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  scanner-json-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: python -m pip install -r app/requirements.txt
+      - name: Compile backend
+        run: python -m compileall -q app
+      - name: Run isolated scan/sync input tests
+        run: python -m unittest discover -s app/tests -p 'test_scan_request_validation.py' -v
