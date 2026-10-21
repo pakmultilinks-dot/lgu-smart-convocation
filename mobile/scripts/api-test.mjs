@@ -129,7 +129,19 @@ async function main() {
   const gateId = gates[0].id;
 
   console.log("Demo payload");
-  const demo = await api.demoPayload();
+  let demo;
+  try {
+    demo = await api.demoPayload();
+  } catch (e) {
+    if (e && e.status === 404) {
+      // Production correctly hides signed student passes; keep testing safe routes.
+      demo = { payload: null, hint: "Demo helper disabled." };
+      pass("GET /api/demo-payload is disabled");
+    } else {
+      fail("GET /api/demo-payload", e.message);
+      return;
+    }
+  }
   const studentPayload = demo.payload || null;
   const hostRoll = rollFromHint(demo.hint);
   if (studentPayload) {
@@ -143,15 +155,19 @@ async function main() {
   const tag = String(Date.now()).slice(-6);
   const guestName = `Test Guest ${tag}`;
   let guest;
-  try {
-    guest = await api.registerGuest({
-      name: guestName,
-      phone: `0300${tag}1`.slice(0, 11),
-      host_roll_no: hostRoll || "UNKNOWN",
-    });
-    check("POST /api/guests registers a guest", guest.ok === true && !!guest.gid && !!guest.payload, JSON.stringify(guest));
-  } catch (e) {
-    fail("POST /api/guests", e.message);
+  if (!hostRoll) {
+    skip("guest registration", "requires the explicitly enabled demo QR helper and an outside student");
+  } else {
+    try {
+      guest = await api.registerGuest({
+        name: guestName,
+        phone: `0300${tag}1`.slice(0, 11),
+        host_roll_no: hostRoll,
+      });
+      check("POST /api/guests registers a guest", guest.ok === true && !!guest.gid && !!guest.payload, JSON.stringify(guest));
+    } catch (e) {
+      fail("POST /api/guests", e.message);
+    }
   }
 
   console.log("Offline sync");
@@ -195,14 +211,22 @@ async function main() {
   console.log("Dashboard");
   const dash = await api.dashboard();
   check("inside_total is a number", typeof dash.inside_total === "number", String(dash.inside_total));
-  check("guests_inside counts the synced guest", dash.guests_inside >= 1, String(dash.guests_inside));
+  if (guest) {
+    check("guests_inside counts the synced guest", dash.guests_inside >= 1, String(dash.guests_inside));
+  } else {
+    check("guests_inside is a nonnegative number", typeof dash.guests_inside === "number" && dash.guests_inside >= 0, String(dash.guests_inside));
+  }
   check("throughput covers every gate", Array.isArray(dash.throughput) && dash.throughput.length === gates.length, String(dash.throughput.length));
   check("feed is a list", Array.isArray(dash.feed), typeof dash.feed);
   check("busiest_gate is present", typeof dash.busiest_gate === "string" && dash.busiest_gate.length > 0, String(dash.busiest_gate));
 
   console.log("Guests list");
   const guestList = await api.guests();
-  check("GET /api/guests lists the new guest", guestList.some((g) => g.name === guestName), `count=${guestList.length}`);
+  if (guest) {
+    check("GET /api/guests lists the new guest", guestList.some((g) => g.name === guestName), `count=${guestList.length}`);
+  } else {
+    check("GET /api/guests still returns a list", Array.isArray(guestList), typeof guestList);
+  }
 
   console.log("Broadcasts");
   const marker = `API test ${nowStamp()}`;
