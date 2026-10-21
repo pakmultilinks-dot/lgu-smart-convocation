@@ -46,6 +46,17 @@ class TestToolBoundaryTests(unittest.TestCase):
             with self.subTest(testing=testing):
                 with (
                     patch.object(routes.scanner_auth, "create_scanner") as scanner,
+                    patch.object(
+                        routes.scanner_auth, "create_session",
+                        return_value=("TEST-ONLY-TOKEN", "2030-01-01"),
+                    ),
+                    patch.object(
+                        routes.scanner_auth, "resolve_session",
+                        return_value={
+                            "username": "test-only", "display_name": "Test",
+                            "gates": [1],
+                        },
+                    ),
                     patch.object(routes.models, "test_records") as records,
                     patch.object(routes.models, "reset_test_scans") as reset,
                     patch.object(routes, "_require_admin_pin", return_value=None),
@@ -66,6 +77,16 @@ class TestToolBoundaryTests(unittest.TestCase):
     def test_non_testing_development_environment_hides_test_endpoints(self):
         with (
             patch.object(routes.scanner_auth, "create_scanner") as scanner,
+            patch.object(
+                routes.scanner_auth, "create_session",
+                return_value=("TEST-ONLY-TOKEN", "2030-01-01"),
+            ),
+            patch.object(
+                routes.scanner_auth, "resolve_session",
+                return_value={
+                    "username": "test-only", "display_name": "Test", "gates": [1],
+                },
+            ),
             patch.object(routes.models, "test_records") as records,
         ):
             for client in self.client_for(testing=None, env="development"):
