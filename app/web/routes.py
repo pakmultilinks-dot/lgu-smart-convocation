@@ -21,6 +21,16 @@ def _gates():
     return models.gates()
 
 
+def _json_object_or_none():
+    """Parse a JSON object, never interpreting bad JSON as an empty request."""
+    data = request.get_json(silent=True)
+    return data if isinstance(data, dict) else None
+
+
+def _invalid_json(message="Expected a valid JSON object."):
+    return jsonify({"ok": False, "error": message}), 400
+
+
 def _normalise_gender(value):
     """Accept M/F, male/female, any case; return Male/Female or the raw value."""
     v = (value or "").strip().lower()
@@ -107,12 +117,18 @@ def api_get_settings():
 
 @bp.route("/api/settings", methods=["PUT"])
 def api_put_settings():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_object_or_none()
+    if data is None:
+        return _invalid_json()
     updates = {}
     for key, value in data.items():
         if key not in database.SETTING_KEYS:
             return jsonify({"ok": False,
                             "error": "Unknown setting: %s" % key}), 400
+        if key == "convocation_year" and type(value) is int:
+            value = str(value)
+        if not isinstance(value, str):
+            return _invalid_json("%s must be text." % key)
         updates[key] = value
     if "convocation_datetime" in updates:
         try:
@@ -375,7 +391,11 @@ def api_gates():
 
 @bp.route("/api/gates/<int:gid>/rename", methods=["POST"])
 def api_rename_gate(gid):
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_object_or_none()
+    if data is None:
+        return _invalid_json()
+    if "label" in data and not isinstance(data["label"], str):
+        return _invalid_json("Label must be text.")
     label = (data.get("label") or "").strip()
     if not label:
         return jsonify({"ok": False, "error": "Label is required."}), 400
@@ -391,7 +411,12 @@ def api_guests():
 
 @bp.route("/api/guests", methods=["POST"])
 def api_register_guest():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_object_or_none()
+    if data is None:
+        return _invalid_json()
+    for field in ("name", "phone", "host_roll_no"):
+        if field in data and not isinstance(data[field], str):
+            return _invalid_json("%s must be text." % field)
     name = (data.get("name") or "").strip()
     phone = (data.get("phone") or "").strip()
     host_roll_no = (data.get("host_roll_no") or "").strip()
@@ -424,7 +449,12 @@ def api_broadcasts():
 
 @bp.route("/api/broadcasts", methods=["POST"])
 def api_send_broadcast():
-    data = request.get_json(force=True, silent=True) or {}
+    data = _json_object_or_none()
+    if data is None:
+        return _invalid_json()
+    for field in ("message", "audience", "sent_by"):
+        if field in data and not isinstance(data[field], str):
+            return _invalid_json("%s must be text." % field)
     message = (data.get("message") or "").strip()
     if not message:
         return jsonify({"ok": False, "error": "Message text is required."}), 400
