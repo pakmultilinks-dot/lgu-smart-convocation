@@ -1,0 +1,28 @@
+name: Demo QR access guard
+
+on:
+  pull_request:
+    paths:
+      - "app/web/routes.py"
+      - "app/web/templates/scanner.html"
+      - "app/tests/test_demo_qr_access.py"
+      - ".github/workflows/demo-qr-guard.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  demo-qr-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend dependencies
+        run: python -m pip install -r app/requirements.txt
+      - name: Compile Python backend
+        run: python -m compileall -q app
+      - name: Verify demo QR opt-in and production deny
+        run: python -m unittest discover -s app/tests -p 'test_demo_qr_access.py' -v
