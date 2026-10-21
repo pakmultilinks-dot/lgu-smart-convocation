@@ -36,6 +36,7 @@ class RestoreTargetSafetyTests(unittest.TestCase):
             "path": str(filename),
             "sha256": "simulated-validated-snapshot",
             "size": 25,
+            "user_version": 14,
             "tables": [],
             "row_counts": {},
         }
