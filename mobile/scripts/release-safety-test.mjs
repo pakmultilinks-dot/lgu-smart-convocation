@@ -295,19 +295,33 @@ async function main() {
       /404/.test(guardBlock[0]),
     "expected is_production_db + 404 inside _test_tool_guard",
   );
-  // All three test endpoints must call _test_tool_guard.
-  for (const [label, fn] of [
-    ["api_test_records", "api_test_records"],
-    ["api_test_reset", "api_test_reset"],
-    ["api_demo_payload", "api_demo_payload"],
-  ]) {
+  // Scanner provisioning, test-record discovery and reset are admin-like
+  // test endpoints. They must require LGU_TESTING=1, non-production DB,
+  // and a non-production environment — even with a custom database path.
+  check(
+    "R5a test-tool guard requires LGU_TESTING=1",
+    !!guardBlock && /LGU_TESTING/.test(guardBlock[0]) &&
+      /LGU_APP_ENV/.test(guardBlock[0]),
+    "test helper must not be enabled by a nonstandard DB filename alone",
+  );
+  for (const fn of ["api_test_scanner_session", "api_test_records", "api_test_reset"]) {
     const fnBlock = new RegExp(`def ${fn}\\(\\):[\\s\\S]*?(?=\\ndef |\\n@bp)`).exec(routesSrc);
     check(
-      `${label} calls _test_tool_guard`,
+      `${fn} calls _test_tool_guard`,
       !!fnBlock && /_test_tool_guard\(\)/.test(fnBlock[0]),
-      `expected _test_tool_guard() inside ${fn}`,
+      `expected explicit testing-mode protection in ${fn}`,
     );
   }
+  // The demo QR helper has a SEPARATE explicit development opt-in.
+  // Never re-enable scanner-provisioning just to provide a local demo QR.
+  const demoBlock = /def api_demo_payload\(\):[\s\S]*?(?=\ndef |\n@bp)/.exec(routesSrc);
+  check(
+    "R5b demo QR uses isolated development opt-in and DB guard",
+    !!demoBlock && /is_production_db/.test(demoBlock[0]) &&
+      /LGU_APP_ENV/.test(demoBlock[0]) &&
+      /LGU_ENABLE_DEMO_QR/.test(demoBlock[0]),
+    "expected development-only opt-in and default-db protection",
+  );
   // api_test_reset must ALSO call _require_admin_pin (Issue 1 reset auth).
   const resetBlock = /def api_test_reset\(\):[\s\S]*?(?=\ndef |\n@bp)/.exec(routesSrc);
   check(
