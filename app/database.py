@@ -1,5 +1,6 @@
 """SQLite setup: schema creation and seed data."""
 
+import os
 import re
 import sqlite3
 from contextlib import contextmanager
@@ -324,6 +325,27 @@ def seed():
         return False
     for code, label in GATE_LABELS:
         db.execute("INSERT INTO gates (code, label) VALUES (?, ?)", (code, label))
+
+    # Demo people receive genuine signed QR IDs; they must never be created
+    # implicitly on a fresh live database. Keep gates and general settings
+    # available without polluting the real student/guest registers.
+    environment = os.environ.get("LGU_APP_ENV", "").strip().lower()
+    demo_allowed = (
+        environment != "production"
+        and not config.is_production_db()
+        and (
+            os.environ.get("LGU_TESTING") == "1"
+            or (
+                environment in ("", "test", "development")
+                and os.environ.get("LGU_ALLOW_DEMO_SECRETS") == "1"
+            )
+        )
+    )
+    if not demo_allowed:
+        db.commit()
+        db.close()
+        return True
+
     used = set()
     for roll_no, name, gender, program in SEED_STUDENTS:
         qr_id = ids.generate_id()

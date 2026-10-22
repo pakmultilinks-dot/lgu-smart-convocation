@@ -1,0 +1,26 @@
+name: Production demo seed safety
+
+on:
+  pull_request:
+    paths:
+      - "app/database.py"
+      - "app/tests/test_production_seed_safety.py"
+      - ".github/workflows/production-seed-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-isolation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r app/requirements.txt
+      - run: python -m compileall -q app
+      - name: Run production seed safety against disposable SQLite only
+        run: python -m unittest discover -s app/tests -p 'test_production_seed_safety.py' -v
