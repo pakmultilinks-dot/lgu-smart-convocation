@@ -6,6 +6,7 @@ not to application startup. This module never opens a writable connection.
 """
 import os
 import sqlite3
+from contextlib import closing
 from urllib.request import pathname2url
 
 import config
@@ -32,7 +33,7 @@ def require_current_schema():
     # it must be performed on a quiescent database during deployment.
     uri = "file:" + pathname2url(path) + "?mode=ro&immutable=1"
     try:
-        with sqlite3.connect(uri, uri=True) as db:
+        with closing(sqlite3.connect(uri, uri=True)) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
     except (OSError, sqlite3.Error) as exc:
         raise RuntimeError(
