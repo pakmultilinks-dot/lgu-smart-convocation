@@ -113,9 +113,11 @@ Properties, each with an automated test in
 - **Restore refuses to overwrite the production database path.** Restore to a
   new file, verify it, then promote deliberately.
 
-The backup artefact and its manifest contain **no student data, no PINs and no
-secrets** — only digests, counts and schema metadata. The CLI prints sizes and
-row counts, never record contents.
+The database backup contains student records and credential hashes. Protect it
+with restricted access and never commit or share it publicly. Only the manifest
+contains digests, counts and schema metadata rather than record contents. The
+CLI prints sizes and row counts, never individual records. Restore requires a
+new destination and refuses existing files and the configured active database.
 
 ---
 

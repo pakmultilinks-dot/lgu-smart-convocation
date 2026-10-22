@@ -109,19 +109,19 @@ for bucket, want in EXPECT.items():
 # 300s bucket. Directly proves support no longer inherits the 60s window.
 _AGED = 100.0  # > 60s (shared), < 300s (support)
 reset_limits()
-sr._HITS["support"] = [time.time() - _AGED] * config.SUPPORT_RATE_MAX_CREATE
+sr._HITS["support"] = {"<no-request>": [time.time() - _AGED] * config.SUPPORT_RATE_MAX_CREATE}
 support_limited = sr._limited("support", config.SUPPORT_RATE_MAX_CREATE)
 check("support hits older than 60s still enforce the 300s window (not 60s)",
       support_limited is True, support_limited)
 
 reset_limits()
-sr._HITS["send"] = [time.time() - _AGED] * config.STUDENT_RATE_MAX_VERIFY
+sr._HITS["send"] = {"<no-request>": [time.time() - _AGED] * config.STUDENT_RATE_MAX_VERIFY}
 send_limited = sr._limited("send", config.STUDENT_RATE_MAX_VERIFY)
 check("the student verify bucket DOES expire at 60s (window is per bucket)",
       send_limited is False, send_limited)
 
 reset_limits()
-sr._HITS["passissue"] = [time.time() - 30.0] * config.PASS_ISSUE_RATE_MAX
+sr._HITS["passissue"] = {"<no-request>": [time.time() - 30.0] * config.PASS_ISSUE_RATE_MAX}
 check("pass-issue hits inside its own window still enforce the limit",
       sr._limited("passissue", config.PASS_ISSUE_RATE_MAX) is True)
 

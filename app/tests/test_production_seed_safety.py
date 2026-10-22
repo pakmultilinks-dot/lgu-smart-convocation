@@ -5,6 +5,7 @@ file app/lgu.db is not opened, inspected, initialized, or modified.
 """
 
 import os
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -31,7 +32,7 @@ class SeedProductionSafetyTests(unittest.TestCase):
         self.tmp.cleanup()
 
     def counts(self):
-        with sqlite3.connect(config.DB_PATH) as db:
+        with closing(sqlite3.connect(config.DB_PATH)) as db:
             return {
                 name: db.execute("SELECT COUNT(*) FROM " + name).fetchone()[0]
                 for name in ("gates", "settings", "convocations", "students", "guests")
@@ -101,7 +102,7 @@ class SeedProductionSafetyTests(unittest.TestCase):
         self.assertEqual(self.counts()["guests"], 0)
 
     def test_existing_records_survive_production_bootstrap(self):
-        with sqlite3.connect(config.DB_PATH) as db:
+        with closing(sqlite3.connect(config.DB_PATH)) as db:
             db.execute(
                 "INSERT INTO students "
                 "(roll_no,name,gender,program,qr_id,created_at) "
@@ -111,7 +112,7 @@ class SeedProductionSafetyTests(unittest.TestCase):
             )
             db.commit()
         self.seed_with(environment="production")
-        with sqlite3.connect(config.DB_PATH) as db:
+        with closing(sqlite3.connect(config.DB_PATH)) as db:
             row = db.execute(
                 "SELECT name FROM students WHERE roll_no = 'QA-EXISTING'"
             ).fetchone()
