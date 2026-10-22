@@ -34,10 +34,13 @@ from exam_registrations import EMAIL_RE
 bp = Blueprint("student_api", __name__, url_prefix="/api/student")
 
 # Per-IP, in-process limits (same pattern as the exam/PIN limiters), read
-# from config at request time so tests can tune them.
-_HITS = {"send": [], "recovery": [], "login": [], "support": [], "readiness": [],
-         "passissue": [], "confirm": []}
+# from config at request time so tests can tune them. Each bucket maps
+# client IP to its own timestamps; one student must not throttle another.
+_HITS = {"send": {}, "recovery": {}, "login": {}, "support": {}, "readiness": {},
+         "passissue": {}, "confirm": {}}
 _HITS_LOCK = threading.Lock()
+# Periodically prune inactive IPs to avoid retaining expired clients forever.
+_HITS_PRUNE_AT = {bucket: 0 for bucket in _HITS}
 
 # Phase 18: each bucket uses its OWN documented window. Previously every
 # bucket silently inherited STUDENT_RATE_WINDOW_SECONDS, so the support
@@ -71,13 +74,26 @@ def _bucket_window(bucket):
 def _limited(bucket, limit):
     now = time.time()
     window = _bucket_window(bucket)
+    # Only trust the socket peer. Untrusted X-Forwarded-For is spoofable;
+    # deployments behind a reverse proxy must configure trusted proxy IPs.
+    ip = request.remote_addr or "unknown"
     with _HITS_LOCK:
-        hits = [t for t in _HITS[bucket] if now - t < window]
+        clients = _HITS[bucket]
+        if now >= _HITS_PRUNE_AT[bucket]:
+            for address, timestamps in list(clients.items()):
+                active = [t for t in timestamps if now - t < window]
+                if active:
+                    clients[address] = active
+                else:
+                    del clients[address]
+            _HITS_PRUNE_AT[bucket] = now + window
+
+        hits = [t for t in clients.get(ip, []) if now - t < window]
         if len(hits) >= limit:
-            _HITS[bucket] = hits
+            clients[ip] = hits
             return True
         hits.append(now)
-        _HITS[bucket] = hits
+        clients[ip] = hits
         return False
 
 
