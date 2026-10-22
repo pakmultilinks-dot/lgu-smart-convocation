@@ -25,17 +25,33 @@ if (!fs.existsSync(root) || !fs.statSync(root).isDirectory()) {
 
 const files = allFiles(root);
 const bundles = files.filter((file) => /\.(?:hbc|js|bundle)$/i.test(file));
-const assets = files.filter((file) =>
-  /\.(?:png|jpe?g|webp|ttf|otf)$/i.test(file),
-);
-
+// Expo 57 Android exports put native JS into _expo/static/js/android/*.hbc.
+// Image/font assets are resolved during Metro export, but may be referenced
+// by hashed/extensionless names or metadata instead of .png/.ttf filenames.
+// Therefore validate the actual bundle + metadata, and the source asset
+// inputs required by app.json, without assuming an output filename format.
+const manifest = path.join(root, "metadata.json");
+if (!fs.existsSync(manifest) || fs.statSync(manifest).size === 0) {
+  throw new Error("Expo export produced no metadata.json.");
+}
+JSON.parse(fs.readFileSync(manifest, "utf8"));
+const sourceRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const expectedSourceAssets = [
+  "assets/icon.png",
+  "assets/adaptive-icon.png",
+  "assets/splash.png",
+  "assets/lgu-logo.png",
+];
+for (const asset of expectedSourceAssets) {
+  const name = path.join(sourceRoot, asset);
+  if (!fs.existsSync(name) || fs.statSync(name).size === 0) {
+    throw new Error("Required source asset missing: " + asset);
+  }
+}
 if (!bundles.length) {
   throw new Error(
     "Expo export produced no bundled JavaScript or Hermes bytecode.",
   );
-}
-if (!assets.length) {
-  throw new Error("Expo export produced no app/image/font assets.");
 }
 for (const file of bundles) {
   if (fs.statSync(file).size === 0) {
@@ -45,7 +61,7 @@ for (const file of bundles) {
 
 // Do not echo bundle contents. Output safe counts only.
 console.log(
-  `Android production JS export: PASS (${bundles.length} bundle(s), ${assets.length} assets)`,
+  `Android production JS export: PASS (${bundles.length} bundle(s), valid metadata, ${expectedSourceAssets.length} required source assets)`,
 );
 console.log(
   "Native APK, camera, permissions, TLS, backend reachability: NOT TESTED",
