@@ -1,6 +1,13 @@
 name: Student API per-client rate limit
 
 on:
+  push:
+    branches:
+      - 'review/student-per-client-rate-limit-20261022'
+    paths:
+      - 'app/web/student_routes.py'
+      - 'app/tests/test_student_client_rate_limit.py'
+      - '.github/workflows/student-client-rate-limit.yml'
   pull_request:
     paths:
       - 'app/web/student_routes.py'
