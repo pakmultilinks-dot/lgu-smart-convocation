@@ -118,9 +118,17 @@ def _origin_allowed(origin, request_host):
 
 
 def _test_tool_guard():
-    """Test/demo tooling must never exist on a production database
-    (master audit B1-B3): in production these routes do not exist."""
-    if config.is_production_db():
+    """Expose dangerous QA endpoints only in explicitly isolated test runs.
+
+    A database stored on a cloud volume or a custom LGU_DB_PATH is not
+    automatically a *test* database. Never mint scanner sessions, disclose
+    signed test passes, or reset attendance solely based on its filename.
+    """
+    if (
+        os.environ.get("LGU_TESTING") != "1"
+        or os.environ.get("LGU_APP_ENV", "").strip().lower() == "production"
+        or config.is_production_db()
+    ):
         return jsonify({"ok": False, "error": "Not found."}), 404
     return None
 
@@ -661,7 +669,9 @@ def api_scanner_login():
     if _scan_login_rate_limited():
         return jsonify({"ok": False, "code": "rate_limited",
                         "error": "Too many attempts. Try again later."}), 429
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return _bad_scan_request("Expected a valid JSON object.")
     username = data.get("username")
     pin = data.get("pin")
     if not isinstance(username, str) or not isinstance(pin, str):
@@ -705,7 +715,9 @@ def api_test_scanner_session():
     guard = _test_tool_guard()
     if guard is not None:
         return guard
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return _bad_scan_request("Expected a valid JSON object.")
     gate_ids = data.get("gate_ids") or [1]
     if not isinstance(gate_ids, list):
         gate_ids = [1]
@@ -965,9 +977,8 @@ def api_sync():
 def api_demo_payload():
     """Demo helper: return the payload of a student currently outside.
     Production databases: hidden (master audit B3)."""
-    denied = _test_tool_guard()
-    if denied:
-        return denied
+    if config.is_production_db():
+        return jsonify({"ok": False, "error": "Not found."}), 404
     environment = os.environ.get("LGU_APP_ENV", "").strip().lower()
     demo_enabled = os.environ.get("LGU_ENABLE_DEMO_QR", "").strip().lower()
     if environment not in ("development", "test") or demo_enabled not in ("1", "true", "yes"):
@@ -1449,7 +1460,11 @@ def api_admin_verify():
     if _pin_rate_limited():
         return jsonify({"ok": False,
                         "error": "Too many attempts. Try again in a minute."}), 429
-    data = request.get_json(force=True, silent=True) or {}
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return _bad_scan_request("Expected a valid JSON object.")
+    if "pin" in data and not isinstance(data["pin"], str):
+        return _bad_scan_request("PIN must be text.")
     pin = (data.get("pin") or "").strip()
     if pin and _pin_ok(pin):
         return jsonify({"ok": True})

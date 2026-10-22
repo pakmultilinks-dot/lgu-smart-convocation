@@ -12,7 +12,7 @@ import threading
 import time
 from datetime import datetime, timezone
 
-from flask import Blueprint, Response, jsonify, request
+from flask import Blueprint, Response, has_request_context, jsonify, request
 
 import announcements as ann
 import config
@@ -35,8 +35,8 @@ bp = Blueprint("student_api", __name__, url_prefix="/api/student")
 
 # Per-IP, in-process limits (same pattern as the exam/PIN limiters), read
 # from config at request time so tests can tune them.
-_HITS = {"send": [], "recovery": [], "login": [], "support": [], "readiness": [],
-         "passissue": [], "confirm": []}
+_HITS = {"send": {}, "recovery": {}, "login": {}, "support": {}, "readiness": {},
+         "passissue": {}, "confirm": {}}
 _HITS_LOCK = threading.Lock()
 
 # Phase 18: each bucket uses its OWN documented window. Previously every
@@ -71,18 +71,30 @@ def _bucket_window(bucket):
 def _limited(bucket, limit):
     now = time.time()
     window = _bucket_window(bucket)
+    # Do not trust arbitrary forwarded headers. A trusted reverse proxy can
+    # configure REMOTE_ADDR through middleware as a separate deployment step.
+    client = (request.remote_addr or "unknown") if has_request_context() else "<no-request>"
     with _HITS_LOCK:
-        hits = [t for t in _HITS[bucket] if now - t < window]
+        clients = _HITS[bucket]
+        # Remove expired clients so inactive addresses do not accumulate.
+        for address, timestamps in list(clients.items()):
+            current = [stamp for stamp in timestamps if now - stamp < window]
+            if current:
+                clients[address] = current
+            else:
+                del clients[address]
+        hits = clients.setdefault(client, [])
         if len(hits) >= limit:
-            _HITS[bucket] = hits
             return True
         hits.append(now)
-        _HITS[bucket] = hits
         return False
 
 
 def _json():
-    return request.get_json(silent=True) or {}
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        raise sa.StudentError(400, "invalid_json", "Expected a valid JSON object.")
+    return data
 
 
 def _int_field(payload, name):

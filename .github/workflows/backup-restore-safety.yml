@@ -1,0 +1,26 @@
+name: Backup restore destination safety
+
+on:
+  pull_request:
+    paths:
+      - "app/backup.py"
+      - "app/tests/test_backup_restore_targets.py"
+      - ".github/workflows/backup-restore-safety.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  protect-restore:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: python -m pip install -r app/requirements.txt
+      - run: python -m compileall -q app
+      - name: Verify active database restore protection on synthetic files
+        run: python -m unittest discover -s app/tests -p 'test_backup_restore_targets.py' -v

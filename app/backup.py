@@ -151,15 +151,35 @@ def restore(backup_path, dest_path):
     location that an operator inspects before adopting.
     """
     dest = os.path.abspath(dest_path)
-    if config.is_production_db(dest):
+
+    # The active production DB may live on a volume rather than app/lgu.db.
+    # Protect BOTH locations and their symlink/relative-path aliases. The
+    # restore operator must choose a separate destination for inspection.
+    def canonical(path):
+        return os.path.normcase(os.path.realpath(os.path.abspath(path)))
+
+    protected = {
+        canonical(config.PRODUCTION_DB_PATH),
+        canonical(config.DB_PATH),
+    }
+    if config.is_production_db(dest) or canonical(dest) in protected:
         raise ValueError(
-            "refusing to restore over the production database (%s). Restore"
-            " into a separate location, inspect it, then adopt it deliberately."
-            % dest)
+            "refusing to restore over the production or configured active"
+            " database (%s). Restore into a separate location, inspect it,"
+            " then adopt it deliberately." % dest)
+    if os.path.lexists(dest):
+        raise ValueError("refusing to overwrite an existing restore destination (%s). "
+                         "Choose a new location for inspection." % dest)
     manifest = validate(backup_path)  # raises before any write happens
     if os.path.dirname(dest) and not os.path.isdir(os.path.dirname(dest)):
         os.makedirs(os.path.dirname(dest))
-    shutil.copyfile(backup_path, dest)
+    # Exclusive creation also closes the check/copy race and refuses aliases
+    # (including hard links) created after the initial destination check.
+    try:
+        with open(backup_path, "rb") as source, open(dest, "xb") as target:
+            shutil.copyfileobj(source, target)
+    except FileExistsError as exc:
+        raise ValueError("refusing to overwrite an existing restore destination (%s)." % dest) from exc
     restored = validate(dest)
     return {"restored_to": restored["path"], "size": restored["size"],
             "sha256": restored["sha256"], "user_version": restored["user_version"],
