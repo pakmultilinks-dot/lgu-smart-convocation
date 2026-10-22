@@ -104,7 +104,15 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
         self.assertEqual(Path(self.path).read_bytes(), before)
 
     def test_operator_migration_rehearsal_uses_disposable_copy(self):
-        self.set_version(6)
+        # Build an actual synthetic v6 schema; PRAGMA-only empty DBs cannot
+        # validate migration SQL that alters pre-existing legacy tables.
+        legacy = [item for item in migrations.MIGRATIONS if item[0] <= 6]
+        with (
+            patch.object(config, "DB_PATH", self.path),
+            patch.object(migrations, "MIGRATIONS", legacy),
+            patch.dict(os.environ, {"LGU_APP_ENV": "development"}),
+        ):
+            database.init_db()
         original = Path(self.path).read_bytes()
         rehearsal = str(Path(self.tmp.name) / "rehearsal.sqlite")
         Path(rehearsal).write_bytes(original)
