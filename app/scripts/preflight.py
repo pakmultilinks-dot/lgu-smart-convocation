@@ -125,10 +125,14 @@ def check_cookie_cors_csrf():
     print("\n[3] Cookie, CSRF, CORS and rate limits")
     if config.COOKIE_SECURE:
         report("cookie Secure", PASS, "LGU_COOKIE_SECURE is on (TLS deployment)")
+    elif os.environ.get("LGU_APP_ENV", "").strip().lower() == "production":
+        report("cookie Secure", FAIL,
+               "off: production startup requires LGU_COOKIE_SECURE=1 "
+               "and an operator-verified HTTPS endpoint")
     else:
         report("cookie Secure", BLOCKED,
-               "off: correct for a plain-HTTP LAN, MUST be set if this "
-               "release is ever fronted by TLS")
+               "off: permitted for development/LAN rehearsals only; "
+               "production requires HTTPS and Secure cookies")
 
     try:
         from web import routes

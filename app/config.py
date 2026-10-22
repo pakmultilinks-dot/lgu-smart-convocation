@@ -377,3 +377,12 @@ def assert_production_secrets():
         raise RuntimeError(
             "LGU_SECRET_KEY and LGU_HMAC_SECRET must be different."
         )
+    # Staff session cookies authorize administrative actions. Explicit
+    # production deployments must use HTTPS and Secure cookies. This guard
+    # runs in run.py before DB bootstrap and in the Flask app factory.
+    # Development/LAN rehearsals retain their existing HTTP behavior.
+    if not COOKIE_SECURE:
+        raise RuntimeError(
+            "Production requires LGU_COOKIE_SECURE=1 and HTTPS "
+            "before staff sessions can be served."
+        )

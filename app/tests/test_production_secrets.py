@@ -57,10 +57,38 @@ class ProductionSecretValidationTests(unittest.TestCase):
             patch.dict(os.environ, {"LGU_APP_ENV": "production"}),
             patch.object(config, "SECRET_KEY", SAFE_SESSION_KEY),
             patch.object(config, "HMAC_SECRET", SAFE_HMAC_SECRET),
+            patch.object(config, "COOKIE_SECURE", True),
         ):
             app = create_app()
         self.assertIsNotNone(app)
         self.assertEqual(app.secret_key, SAFE_SESSION_KEY)
+
+    def test_production_refuses_insecure_cookies_with_strong_secrets(self):
+        # A strong session key does not make an unencrypted cookie safe.
+        # The previous factory accepted this configuration.
+        with (
+            patch.dict(os.environ, {"LGU_APP_ENV": "production"}),
+            patch.object(config, "SECRET_KEY", SAFE_SESSION_KEY),
+            patch.object(config, "HMAC_SECRET", SAFE_HMAC_SECRET),
+            patch.object(config, "COOKIE_SECURE", False),
+            patch.object(database, "init_db") as init_db,
+            patch.object(database, "seed") as seed,
+        ):
+            with self.assertRaisesRegex(RuntimeError, "LGU_COOKIE_SECURE=1"):
+                create_app()
+            init_db.assert_not_called()
+            seed.assert_not_called()
+
+    def test_development_still_allows_insecure_cookies_on_isolated_db(self):
+        # Local testing and LAN rehearsal continue to work without TLS.
+        with (
+            patch.dict(os.environ, {"LGU_APP_ENV": "development"}),
+            patch.object(config, "SECRET_KEY", SAFE_SESSION_KEY),
+            patch.object(config, "HMAC_SECRET", SAFE_HMAC_SECRET),
+            patch.object(config, "COOKIE_SECURE", False),
+        ):
+            app = create_app()
+            self.assertFalse(app.config["SESSION_COOKIE_SECURE"])
 
     def test_demo_defaults_remain_available_in_development(self):
         with (

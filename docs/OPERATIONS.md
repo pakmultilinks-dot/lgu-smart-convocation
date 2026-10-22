@@ -27,9 +27,17 @@ The service is intended for a **trusted campus LAN over plain HTTP**. The
 session cookie is therefore **not** `Secure` by default — marking it `Secure`
 would make it undiscoverable over `http://` and lock every member of staff out.
 
-If the service is ever fronted by TLS, set these before starting:
+For a live release, configure HTTPS with valid certificates and set
+`LGU_APP_ENV=production` and `LGU_COOKIE_SECURE=1`. The production startup
+guard refuses to serve staff sessions unless Secure cookies are enabled.
+This flag **does not prove** that HTTPS or the reverse proxy actually works;
+verify TLS and backend reachability from the real client devices.
+Plain HTTP is a development/LAN rehearsal option only.
+
+Set these before starting a production service:
 
 ```
+LGU_APP_ENV=production
 LGU_COOKIE_SECURE=1
 LGU_SECRET_KEY=…          # required in every environment
 LGU_HMAC_SECRET=…         # required in every environment
