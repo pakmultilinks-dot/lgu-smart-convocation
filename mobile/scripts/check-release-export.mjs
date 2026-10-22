@@ -9,6 +9,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import process from "node:process";
+import { fileURLToPath } from "node:url";
 
 const root = path.resolve(process.argv[2] || "dist-ci-android");
 
@@ -35,7 +36,7 @@ if (!fs.existsSync(manifest) || fs.statSync(manifest).size === 0) {
   throw new Error("Expo export produced no metadata.json.");
 }
 JSON.parse(fs.readFileSync(manifest, "utf8"));
-const sourceRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), "..");
+const sourceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const expectedSourceAssets = [
   "assets/icon.png",
   "assets/adaptive-icon.png",
