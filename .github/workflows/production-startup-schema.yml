@@ -4,8 +4,10 @@ on:
   pull_request:
     paths:
       - "app/run.py"
+      - "app/database.py"
       - "app/startup_schema.py"
       - "app/tests/test_startup_schema_gate.py"
+      - "app/tests/test_production_seed_safety.py"
       - "docs/RELEASE_CANDIDATE_RUNBOOK.md"
       - ".github/workflows/production-startup-schema.yml"
   workflow_dispatch:
