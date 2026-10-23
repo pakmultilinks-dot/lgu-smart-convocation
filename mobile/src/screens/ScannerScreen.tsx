@@ -274,10 +274,11 @@ export function ScannerScreen() {
       if (cancelled) return;
       setSession(sess);
       setSessionLoaded(true);
-      if (!sess) setLoginVisible(true);
+      // Show one onboarding prompt at a time: login first, name only after auth.
+      setLoginVisible(!sess);
+      setNamePromptVisible(!!sess && volunteerRef.current.needsSetup);
       setMode(savedMode);
       setOccasion(savedOccasion);
-      if (volunteerRef.current.needsSetup) setNamePromptVisible(true);
       await loadGates();
       await loadTestRecords();
       await refreshQueueCount();
@@ -299,8 +300,8 @@ export function ScannerScreen() {
         ]);
         setSession(sess);
         setSessionLoaded(true);
-        if (!sess) setLoginVisible(true);
-        if (volunteerRef.current.needsSetup) setNamePromptVisible(true);
+        setLoginVisible(!sess);
+        setNamePromptVisible(!!sess && volunteerRef.current.needsSetup);
       })();
     }, [refreshQueueCount]),
   );
@@ -413,14 +414,15 @@ export function ScannerScreen() {
         // 35L (F): no scan is ever stamped under an unusable identity —
         // while the stored name is missing/invalid the setup prompt owns
         // the screen and this read is dropped.
-        if (volunteerRef.current.needsSetup) {
-          setNamePromptVisible(true);
+        // Authentication always precedes volunteer-name setup. Never open
+        // two native modals on top of each other.
+        if (!session) {
+          setNamePromptVisible(false);
+          setLoginVisible(true);
           return;
         }
-        // Phase 14: no scan leaves the device without an authenticated
-        // scanner session — the sign-in prompt owns the screen instead.
-        if (!session) {
-          setLoginVisible(true);
+        if (volunteerRef.current.needsSetup) {
+          setNamePromptVisible(true);
           return;
         }
         // 35J (G8): a scan never leaves the device without a gate — no
@@ -665,8 +667,14 @@ export function ScannerScreen() {
     setLoginError(null);
     try {
       const sess = await loginScanner(loginUser.trim(), loginPin);
+      // Account display name comes from the authenticated backend. Avoid a
+      // second name pop-up when this is already a valid volunteer name.
+      if (volunteerRef.current.needsSetup) {
+        await volunteerRef.current.ensure(sess.displayName);
+      }
       setSession(sess);
       setLoginVisible(false);
+      setNamePromptVisible(volunteerRef.current.needsSetup);
       setLoginUser("");
       setLoginPin("");
       await haptic("success");
@@ -684,6 +692,7 @@ export function ScannerScreen() {
   const signOut = useCallback(async () => {
     await logoutScanner();
     setSession(null);
+    setNamePromptVisible(false);
     setLoginVisible(true);
   }, []);
 
@@ -1068,7 +1077,8 @@ export function ScannerScreen() {
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (session) setLoginVisible(false);
+          setLoginVisible(false);
+          router.replace("/(volunteer)/home");
         }}
       >
         <View style={styles.promptBackdrop}>
@@ -1108,13 +1118,24 @@ export function ScannerScreen() {
               label="Connect to demo server"
               icon="cloud-outline"
               variant="secondary"
-              onPress={() => router.push("/connect-server")}
+              onPress={() => {
+                setLoginVisible(false);
+                router.push("/connect-server");
+              }}
             />
             <AppButton
               label={loginBusy ? "Signing in…" : "Sign in"}
               icon="log-in"
               onPress={() => void submitLogin()}
               disabled={loginBusy}
+            />
+            <AppButton
+              label="Back to home"
+              variant="ghost"
+              onPress={() => {
+                setLoginVisible(false);
+                router.replace("/(volunteer)/home");
+              }}
             />
             {session ? (
               <AppButton
@@ -1129,7 +1150,7 @@ export function ScannerScreen() {
 
       {/* Volunteer name — first use only; stored on this device. */}
       <Modal
-        visible={namePromptVisible}
+        visible={namePromptVisible && session !== null && !loginVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setNamePromptVisible(false)}
