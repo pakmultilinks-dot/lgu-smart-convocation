@@ -277,11 +277,23 @@ BUSY_RETRY_AFTER = 2       # seconds; HTTP Retry-After paired with BUSY_STATUS
 
 
 def init_db():
+    # A direct call must not bypass the entrypoint's production migration
+    # guard. Operators migrate with a separately approved OFFLINE procedure,
+    # never by starting Flask or calling this developer bootstrap helper.
+    from startup_schema import requires_managed_schema
+    if requires_managed_schema():
+        raise RuntimeError(
+            "Refusing automatic schema initialization on an operator-managed "
+            "database. A verified backup and explicit migration approval "
+            "are required; initialize only an isolated development/test DB."
+        )
     db = get_db()
-    db.executescript(SCHEMA)
-    db.commit()
-    migrations.migrate(db)
-    db.close()
+    try:
+        db.executescript(SCHEMA)
+        db.commit()
+        migrations.migrate(db)
+    finally:
+        db.close()
 
 
 def seed_convocation(db):
