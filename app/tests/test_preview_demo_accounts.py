@@ -64,6 +64,55 @@ class PreviewDemoProvisioningTests(unittest.TestCase):
         self.assertNotIn(student_pw, env)
         self.assertNotIn(scanner_pin, env)
 
+    def test_all_three_real_http_login_routes_accept_demo_credentials(self):
+        generated = self.run_script()
+        self.assertEqual(generated.returncode, 0, generated.stderr)
+        creds = (self.dir / "TEST-LOGIN-DETAILS.txt").read_text("utf-8")
+        env_text = (self.dir / "PRIVATE-BACKEND-ENV.txt").read_text("utf-8")
+        values = {}
+        for line in creds.splitlines():
+            if ": " in line:
+                k, v = line.split(": ", 1)
+                values[k] = v
+        run_env = dict(self.env)
+        for line in env_text.splitlines():
+            if line and not line.startswith("#"):
+                key, value = line.split("=", 1)
+                run_env[key] = value
+        # Import the REAL run.py startup and route handlers only in a child
+        # process, so config never touches a process-global real database.
+        # Secrets and passwords go through stdin, never CLI args or logs.
+        code = """
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import run
+client = run.app.test_client()
+values = json.load(sys.stdin)
+def check(path, data):
+    res = client.post(path, json=data)
+    body = res.get_json(silent=True) or {}
+    if res.status_code != 200 or body.get("ok") is False:
+        raise AssertionError(path + ": " + str(res.status_code))
+    return body
+student = check("/api/student/login", {
+    "email": values["Student email"], "password": values["Student password"]})
+scanner = check("/api/scanner/login", {
+    "username": values["Scanner username"], "pin": values["Scanner PIN"]})
+admin = check("/api/admin/verify", {"pin": values["Admin PIN"]})
+assert student.get("token"), "Student token missing"
+assert scanner.get("token"), "Scanner token missing"
+assert admin.get("ok") is True, "Admin gate did not unlock"
+print("PASS: all three HTTP login routes work on synthetic v14 database")
+"""
+        completed = subprocess.run(
+            [sys.executable, "-c", code, str(ROOT / "app")],
+            env=run_env,
+            input=__import__("json").dumps(values),
+            text=True, capture_output=True,
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("PASS: all three HTTP login routes", completed.stdout)
+
     def test_refuses_existing_output_without_changes(self):
         self.dir.mkdir()
         sentinel = self.dir / "do-not-delete.txt"
