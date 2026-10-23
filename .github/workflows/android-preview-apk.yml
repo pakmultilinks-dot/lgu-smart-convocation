@@ -30,7 +30,15 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
-      - uses: android-actions/setup-android@v3
+      # GitHub-hosted ubuntu-latest already provides Android SDK.
+      # android-actions/setup-android@v3 calls obsolete "sdkmanager tools"
+      # which fails on the current command-line tools repository (Oct 2026).
+      - name: Check GitHub-hosted Android SDK
+        shell: bash
+        run: |
+          test -d "${ANDROID_HOME}/platforms"
+          test -d "${ANDROID_HOME}/build-tools"
+          echo "Using preinstalled Android SDK"
       - name: Install locked Expo packages
         working-directory: mobile
         run: npm ci
