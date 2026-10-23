@@ -13,18 +13,34 @@ import config
 import migrations
 
 
-def require_current_schema():
-    """Fail closed on missing/stale production schemas BEFORE init_db/seed.
+def requires_managed_schema():
+    """Require an operator-managed schema except in explicit isolated dev/test.
 
-    Production includes explicit LGU_APP_ENV=production and the historical
-    default database path even if the environment flag is accidentally absent.
-    Synthetic development/test databases remain bootstrap-compatible.
+    An arbitrary LGU_DB_PATH is NOT proof that a database is safe for a
+    migration. Missing/misspelled LGU_APP_ENV defaults to protected behavior.
+    Even a development flag cannot authorize changes to the default DB.
     """
-    production = (
-        os.environ.get("LGU_APP_ENV", "").strip().lower() == "production"
-        or config.is_production_db()
-    )
-    if not production:
+    db_path = os.path.realpath(os.path.abspath(config.DB_PATH))
+    production_path = os.path.realpath(os.path.abspath(config.PRODUCTION_DB_PATH))
+    if db_path == production_path:
+        return True
+    mode = os.environ.get("LGU_APP_ENV", "").strip().lower()
+    if mode == "production":
+        return True
+    if mode == "development":
+        return False
+    if os.environ.get("LGU_TESTING") == "1" and mode in ("", "test"):
+        return False
+    return True
+
+
+def require_current_schema():
+    """Fail closed on missing/stale managed schemas BEFORE any bootstrap.
+
+    Production and unclassified custom database paths are read-only checked.
+    Only explicitly isolated dev/test databases may auto-initialize.
+    """
+    if not requires_managed_schema():
         return None
 
     latest = migrations.MIGRATIONS[-1][0]

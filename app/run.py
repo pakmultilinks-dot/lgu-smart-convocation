@@ -37,9 +37,12 @@ config.assert_production_secrets()
 # Production startup is NOT a migration command. A stale/missing database
 # must be refused before init_db() can create tables or execute migrations.
 from startup_schema import require_current_schema  # noqa: E402
-require_current_schema()
-init_db()
-seed()
+schema_version = require_current_schema()
+if schema_version is None:
+    # Development/test fixtures only: production never initializes,
+    # re-seeds, or migrates through ordinary service startup.
+    init_db()
+    seed()
 
 app = create_app()
 

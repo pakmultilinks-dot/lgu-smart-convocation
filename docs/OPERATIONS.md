@@ -85,8 +85,11 @@ An empty list `[]` is the only acceptable result.
 Migrations are tracked with `PRAGMA user_version` and applied inside one
 transaction each together with the version bump, so a failure rolls back **both**
 the schema and the version. Current latest: **version 14**. Ordinary
-production startup now checks schema version **read-only** before init_db()
-and refuses missing or outdated schemas. Migration requires a separate
+production startup checks schema version **read-only** and does not call
+init_db() or seed() on an operator-managed database. Direct init_db() calls
+also refuse operator-managed targets. A custom LGU_DB_PATH without an
+explicit isolated development/test environment is protected by default.
+Missing or outdated schemas are refused without writing or creating files. Migration requires a separate
 operator-approved offline procedure, a verified private backup, and a
 successful rehearsal against synthetic/disposable copies.
 

@@ -25,7 +25,9 @@ class SeedProductionSafetyTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory(prefix="lgu-seed-safety-")
         self.old_db = config.DB_PATH
         config.DB_PATH = str(Path(self.tmp.name) / "synthetic.sqlite3")
-        database.init_db()
+        # Declared isolated development is required to bootstrap a new DB.
+        with patch.dict(os.environ, {"LGU_APP_ENV": "development"}):
+            database.init_db()
 
     def tearDown(self):
         config.DB_PATH = self.old_db

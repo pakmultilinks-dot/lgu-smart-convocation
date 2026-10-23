@@ -103,6 +103,107 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
                 sys.modules.pop("run", None)
         self.assertEqual(Path(self.path).read_bytes(), before)
 
+    def test_custom_db_without_environment_is_managed_and_unchanged(self):
+        self.set_version(6)
+        before = Path(self.path).read_bytes()
+        with (
+            patch.dict(os.environ, {
+                "LGU_APP_ENV": "",
+                "LGU_TESTING": "",
+                "LGU_ALLOW_DEMO_SECRETS": "",
+            }),
+            patch.object(config, "DB_PATH", self.path),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "migration approval"):
+                startup_schema.require_current_schema()
+            with self.assertRaisesRegex(RuntimeError, "migration approval"):
+                database.init_db()
+        self.assertEqual(Path(self.path).read_bytes(), before)
+
+    def test_custom_db_without_environment_is_never_created(self):
+        with (
+            patch.dict(os.environ, {"LGU_APP_ENV": "", "LGU_TESTING": ""}),
+            patch.object(config, "DB_PATH", self.path),
+        ):
+            with self.assertRaises(RuntimeError):
+                database.init_db()
+        self.assertFalse(Path(self.path).exists())
+
+    def test_explicit_production_direct_init_refused_even_if_schema_current(self):
+        self.set_version(self.current)
+        before = Path(self.path).read_bytes()
+        with (
+            patch.dict(os.environ, {"LGU_APP_ENV": "production", "LGU_TESTING": ""}),
+            patch.object(config, "DB_PATH", self.path),
+        ):
+            with self.assertRaisesRegex(RuntimeError, "migration approval"):
+                database.init_db()
+        self.assertEqual(Path(self.path).read_bytes(), before)
+
+    def test_default_db_path_cannot_be_bootstrapped_even_as_development(self):
+        # Rebind only the path constant to a disposable fixture. Nothing is
+        # opened at the repository's actual app/lgu.db.
+        with (
+            patch.dict(os.environ, {"LGU_APP_ENV": "development", "LGU_TESTING": ""}),
+            patch.object(config, "DB_PATH", self.path),
+            patch.object(config, "PRODUCTION_DB_PATH", self.path),
+        ):
+            with self.assertRaises(RuntimeError):
+                database.init_db()
+        self.assertFalse(Path(self.path).exists())
+
+    def test_current_schema_managed_startup_never_initializes_or_seeds(self):
+        self.set_version(self.current)
+        before = Path(self.path).read_bytes()
+        with (
+            patch.dict(os.environ, {
+                "LGU_APP_ENV": "production",
+                "LGU_TESTING": "",
+                "LGU_ALLOW_DEMO_SECRETS": "",
+            }),
+            patch.object(config, "DB_PATH", self.path),
+            patch.object(config, "demo_secret_violation", return_value=None),
+            patch.object(config, "demo_secrets", return_value=[]),
+            patch.object(config, "assert_production_secrets"),
+            patch.object(database, "init_db") as init_db,
+            patch.object(database, "seed") as seed,
+        ):
+            sys.modules.pop("run", None)
+            try:
+                imported = importlib.import_module("run")
+                self.assertIsNotNone(imported.app)
+                init_db.assert_not_called()
+                seed.assert_not_called()
+            finally:
+                sys.modules.pop("run", None)
+        self.assertEqual(Path(self.path).read_bytes(), before)
+
+    def test_unmarked_custom_db_entrypoint_refuses_before_any_writes(self):
+        self.set_version(6)
+        original = Path(self.path).read_bytes()
+        with (
+            patch.dict(os.environ, {
+                "LGU_APP_ENV": "",
+                "LGU_TESTING": "",
+                "LGU_ALLOW_DEMO_SECRETS": "",
+            }),
+            patch.object(config, "DB_PATH", self.path),
+            patch.object(config, "demo_secret_violation", return_value=None),
+            patch.object(config, "demo_secrets", return_value=[]),
+            patch.object(config, "assert_production_secrets"),
+            patch.object(database, "init_db") as init_db,
+            patch.object(database, "seed") as seed,
+        ):
+            sys.modules.pop("run", None)
+            try:
+                with self.assertRaisesRegex(RuntimeError, "migration approval"):
+                    importlib.import_module("run")
+                init_db.assert_not_called()
+                seed.assert_not_called()
+            finally:
+                sys.modules.pop("run", None)
+        self.assertEqual(Path(self.path).read_bytes(), original)
+
     def test_operator_migration_rehearsal_uses_disposable_copy(self):
         # Build an actual synthetic v6 schema; PRAGMA-only empty DBs cannot
         # validate migration SQL that alters pre-existing legacy tables.
