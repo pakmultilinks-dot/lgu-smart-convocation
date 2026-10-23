@@ -1,9 +1,9 @@
 import { useCallback, useState } from "react";
-import { Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { getSettings, updateSettings, type ConvocationSettings } from "../api/settingsApi";
 import { useFocusEffect } from "expo-router";
 import { AppButton, ErrorState, LoadingState, SectionCard, SectionEyebrow } from "../ui";
-import { colors, fonts } from "../theme";
+import { colors, fonts, spacing } from "../theme";
 
 export function DashboardControls() {
   const [settings, setSettings] = useState<ConvocationSettings | null>(null);
@@ -33,17 +33,37 @@ export function DashboardControls() {
   };
   return <SectionCard>
     <SectionEyebrow>Dashboard availability</SectionEyebrow>
-    <Text style={{ fontFamily: fonts.displayMedium, color: colors.ink, marginBottom: 12 }}>
+    <Text style={styles.description}>
       Student Portal: always enabled. Existing registration and verification requirements still apply.
     </Text>
     {!settings && !error ? <LoadingState label="Loading controls…" /> : null}
     {error ? <ErrorState title="Dashboard controls" body={error} onRetry={() => setRetry((value) => value + 1)} /> : null}
-    {settings ? <>
-      <AppButton label={`${settings.volunteer_enabled === "true" ? "Disable" : "Enable"} Volunteer Operations`}
-        disabled={saving} onPress={() => void toggle("volunteer_enabled")} />
-      <AppButton label={`${settings.liveboard_enabled === "true" ? "Disable" : "Enable"} Live Dashboard`}
-        variant="secondary" disabled={saving} onPress={() => void toggle("liveboard_enabled")} />
-    </> : null}
-    {note ? <Text style={{ fontFamily: fonts.displayMedium, color: colors.valid }}>{note}</Text> : null}
+    {settings ? <View style={styles.roles}>
+      {([{ key: "volunteer_enabled", title: "Volunteer Operations", description: "Scanning, guest registration and gate operations." },
+        { key: "liveboard_enabled", title: "Live Dashboard", description: "Attendance display for event screens." }] as const).map((role) => {
+        const enabled = settings[role.key] === "true";
+        return <View key={role.key} style={styles.role}>
+          <View style={styles.row}>
+            <Text style={styles.title}>{role.title}</Text>
+            <Text style={styles.status}>{enabled ? "Enabled" : "Disabled"}</Text>
+          </View>
+          <Text style={styles.description}>{role.description}</Text>
+          <AppButton label={`${enabled ? "Disable" : "Enable"} ${role.title}`}
+            variant="secondary" disabled={saving} loading={saving}
+            onPress={() => void toggle(role.key)} />
+        </View>;
+      })}
+    </View> : null}
+    {note ? <Text accessibilityLiveRegion="polite" style={styles.note}>{note}</Text> : null}
   </SectionCard>;
 }
+
+const styles = StyleSheet.create({
+  roles: { gap: spacing.lg },
+  role: { borderTopWidth: 1, borderTopColor: colors.track, paddingTop: spacing.md, gap: spacing.sm },
+  row: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.sm, flexWrap: "wrap" },
+  title: { fontFamily: fonts.display, color: colors.ink, fontSize: 15 },
+  status: { fontFamily: fonts.displayMedium, color: colors.muted, fontSize: 13 },
+  description: { fontFamily: fonts.displayMedium, color: colors.muted, fontSize: 13, lineHeight: 20, marginBottom: spacing.sm },
+  note: { fontFamily: fonts.displayMedium, color: colors.ink, fontSize: 13, lineHeight: 20, marginTop: spacing.md },
+});

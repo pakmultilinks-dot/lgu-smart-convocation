@@ -1645,7 +1645,7 @@ def create_app():
             # Phase 35G: POST /api/broadcasts carries an X-Admin-Pin header,
             # so browsers must allow it in the preflight (web / Metro target).
             # Phase 5: the student API authenticates with Authorization.
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Admin-Pin, Authorization"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Admin-Pin, X-Scanner-Token, Authorization"
             response.headers["Vary"] = "Origin"
         # Master audit V-HEAD-01: minimal hardening headers. A full CSP is
         # intentionally not set (inline scripts in the templates); HSTS is

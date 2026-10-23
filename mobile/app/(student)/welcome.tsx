@@ -7,7 +7,7 @@ import { AppButton, LguMark, Screen } from "../../src/ui";
 /** Student Portal welcome: create an account, sign in, or recover access. */
 export default function StudentWelcome() {
   return (
-    <Screen scroll={false}>
+    <Screen>
       <View style={styles.top}>
         <LguMark size={96} />
         <Text style={styles.title}>Student Portal</Text>
@@ -16,19 +16,21 @@ export default function StudentWelcome() {
         <Text style={styles.university}>{UNIVERSITY_NAME}</Text>
       </View>
       <View style={styles.actions}>
-        <AppButton
-          label="Create your account"
-          size="lg"
-          onPress={() => router.push("/(student)/verify")}
-        />
+        <Text style={styles.intro}>Your registration, entry pass and university updates in one place.</Text>
         <AppButton
           label="Sign in"
-          variant="secondary"
+          size="lg"
           onPress={() => router.push("/(student)/login")}
         />
         <AppButton
-          label="Connect to server"
+          label="Create your account"
           variant="secondary"
+          onPress={() => router.push("/(student)/verify")}
+        />
+        <Text style={styles.note}>Account creation requires a matching official university registration and email verification.</Text>
+        <AppButton
+          label="Connect to server"
+          variant="ghost"
           onPress={() => router.push("/connect-server")}
         />
         <AppButton
@@ -37,7 +39,7 @@ export default function StudentWelcome() {
           onPress={() => router.push("/(student)/recovery")}
         />
         <AppButton
-          label="Change device mode"
+          label="Choose dashboard"
           variant="ghost"
           onPress={() => router.replace("/mode-picker")}
         />
@@ -51,7 +53,7 @@ const styles = StyleSheet.create({
   title: {
     color: colors.ink,
     fontFamily: fonts.display,
-    fontSize: 20,
+    fontSize: 24,
     letterSpacing: -0.4,
     marginTop: spacing.md,
     textAlign: "center",
@@ -77,4 +79,6 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   actions: { gap: spacing.sm, marginTop: spacing.xl },
+  intro: { color: colors.ink, fontFamily: fonts.displayMedium, fontSize: 15, lineHeight: 23, marginBottom: spacing.md },
+  note: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginBottom: spacing.md },
 });

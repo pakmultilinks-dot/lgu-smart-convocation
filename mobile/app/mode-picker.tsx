@@ -1,9 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { router } from "expo-router";
+import { useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { fetchAppConfig, fetchDashboardAccess, type AppConfig, type DashboardAccess } from "../src/api/client";
-import { UNIVERSITY_NAME, eventTitle } from "../src/config";
+import { fetchAppConfig, fetchDashboardAccess, type AppConfig } from "../src/api/client";
+import { APP_TITLE_SHORT, UNIVERSITY_NAME, eventTitle } from "../src/config";
 import {
   getAppMode,
   needsModeConfirmation,
@@ -11,6 +11,7 @@ import {
   type AppMode,
 } from "../src/store/appMode";
 import { colors, fonts, radius, spacing } from "../src/theme";
+import { useDashboardAvailability } from "../src/hooks/useDashboardAvailability";
 import { AppButton, LguMark, Screen } from "../src/ui";
 
 interface Choice {
@@ -22,22 +23,22 @@ interface Choice {
 
 const CHOICES: Choice[] = [
   {
+    mode: "student",
+    title: "Student Portal",
+    subtitle: "Your registration, profile, entry pass and university updates.",
+    icon: "school-outline",
+  },
+  {
     mode: "volunteer",
     title: "Volunteer Operations",
-    subtitle: "Scan QR codes at the gates and record entry and exit",
-    icon: "qr-code",
+    subtitle: "Gate scanning, guest registration and attendance operations.",
+    icon: "qr-code-outline",
   },
   {
     mode: "liveboard",
     title: "Live Dashboard",
-    subtitle: "Watch the convocation attendance live, for everyone on campus",
-    icon: "tv",
-  },
-  {
-    mode: "student",
-    title: "Student Portal",
-    subtitle: "Claim your convocation registration and complete your profile",
-    icon: "person-circle",
+    subtitle: "A live view of convocation attendance for event displays.",
+    icon: "tv-outline",
   },
 ];
 
@@ -46,30 +47,14 @@ function targetFor(mode: AppMode): "/(volunteer)/home" | "/(liveboard)" | "/(stu
   return mode === "student" ? "/(student)" : "/(liveboard)";
 }
 
-/**
- * Mode selection — two product surfaces on paper (Phase 35C): seal, title,
- * one thin gold rule, then two launch cards (33-QA P8-29: the bare
- * dashed-divider rows now read as cards).
- * The choice persists on the device (store/appMode). 35M R2 (item 13):
- * the university name is sans, and the footer hint sentence is gone —
- * the two rows are the whole screen.
- */
+/** Student-first entry point; event tools have independent server controls. */
 export default function ModePickerScreen() {
   const [busy, setBusy] = useState<AppMode | null>(null);
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [current, setCurrent] = useState<AppMode | null>(null);
   const [pending, setPending] = useState<AppMode | null>(null);
   const [accessError, setAccessError] = useState<string | null>(null);
-  const [access, setAccess] = useState<DashboardAccess | null>(null);
-  useFocusEffect(useCallback(() => {
-    let active = true;
-    const refresh = () => void fetchDashboardAccess().then((data) => {
-      if (active) setAccess(data);
-    }).catch(() => {});
-    refresh();
-    const timer = setInterval(refresh, 15000);
-    return () => { active = false; clearInterval(timer); };
-  }, []));
+  const { access, state: connection, refresh } = useDashboardAvailability();
 
   // 35M items 2 + 20: consume the SERVER convocation configuration for
   // the brand title — eventTitle() stays as the offline fallback.
@@ -101,7 +86,6 @@ export default function ModePickerScreen() {
       setAccessError(null);
       if (mode !== "student") {
         const next = await fetchDashboardAccess();
-        setAccess(next);
         if (next[mode] !== true) {
           setAccessError("This dashboard is currently disabled by the administrator.");
           return;
@@ -135,58 +119,76 @@ export default function ModePickerScreen() {
   return (
     <Screen>
       <View style={styles.top}>
-        <LguMark size={96} />
-        {/* 35M item 20: authoritative server event name; the local
-            constant is the offline fallback only. */}
-        <Text style={styles.title}>{cfg?.event.name || eventTitle()}</Text>
+        <LguMark size={56} />
+        <View style={styles.brandText}>
+          <Text style={styles.university}>{cfg?.university || UNIVERSITY_NAME}</Text>
+          <Text style={styles.title}>{APP_TITLE_SHORT}</Text>
+        </View>
+      </View>
+      <View style={styles.intro}>
+        <Text style={styles.eyebrow}>YOUR CONVOCATION, CONNECTED</Text>
+        <Text style={styles.heading}>Start here.</Text>
+        <Text style={styles.description}>Access your student portal or choose an event dashboard.</Text>
         <View style={styles.rule} />
-        {/* 35M item 20 trace+fix: university line now consumes the
-            server value (cfg.university) like Home/Guest Pass; the
-            constant remains the offline fallback only. */}
-        <Text style={styles.university}>{cfg?.university || UNIVERSITY_NAME}</Text>
       </View>
 
       <View style={styles.choices}>
         {CHOICES.map((choice) => {
           const active = busy === choice.mode;
-          const unavailable = choice.mode !== "student" && access?.[choice.mode] === false;
+          const student = choice.mode === "student";
+          const unavailable = !student && access?.[choice.mode] === false;
+          const status = student ? "Always enabled" : connection === "checking" ? "Checking availability" :
+            connection === "offline" ? "Connection required" : unavailable ? "Disabled by admin" : "Enabled";
           return (
-            <Pressable
-              key={choice.mode}
-              accessibilityRole="button"
-              accessibilityLabel={choice.title}
-              accessibilityState={{ disabled: busy !== null || unavailable }}
-              disabled={busy !== null || unavailable}
-              onPress={() => void pick(choice.mode)}
-              style={({ pressed }) => [
-                styles.choice,
-                pressed && styles.choicePressed,
-                active && styles.choiceBusy,
-                unavailable && styles.choiceBusy,
-              ]}
-            >
-              <Ionicons name={choice.icon} size={22} color={colors.ink} />
-              <View style={styles.choiceText}>
-                <Text style={styles.choiceTitle}>{choice.title}</Text>
-                <Text style={styles.choiceSubtitle}>{unavailable ? "Currently disabled by the administrator" : choice.subtitle}</Text>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.muted} />
-            </Pressable>
+            <View key={choice.mode}>
+              {choice.mode === "volunteer" ? <Text style={styles.sectionLabel}>EVENT DAY TOOLS</Text> : null}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={`${choice.title}. ${status}`}
+                accessibilityState={{ disabled: busy !== null || unavailable, busy: active }}
+                disabled={busy !== null || unavailable}
+                onPress={() => void pick(choice.mode)}
+                style={({ pressed }) => [styles.choice, student && styles.studentChoice,
+                  pressed && styles.choicePressed, active && styles.choiceBusy]}
+              >
+                <View style={styles.cardTop}>
+                  <Ionicons name={choice.icon} size={24} color={student ? colors.paper : colors.ink} />
+                  <Text style={[styles.status, student && styles.onDark]}>{status}</Text>
+                </View>
+                <Text style={[styles.choiceTitle, student && styles.studentTitle]}>{choice.title}</Text>
+                <Text style={[styles.choiceSubtitle, student && styles.onDark]}>
+                  {unavailable ? "Available when the administrator enables this dashboard." : choice.subtitle}
+                </Text>
+                <View style={styles.cardAction}>
+                  <Text style={[styles.actionText, student && styles.onDark]}>
+                    {active ? "Opening…" : unavailable ? "Currently unavailable" : student ? "Open Student Portal" : "Open dashboard"}
+                  </Text>
+                  <Ionicons name={unavailable ? "lock-closed-outline" : "arrow-forward"} size={18}
+                    color={student ? colors.paper : colors.ink} />
+                </View>
+              </Pressable>
+              {student ? <Text style={styles.registrationNote}>New here? Register using the details on your official university record.</Text> : null}
+            </View>
           );
         })}
       </View>
-      {accessError ? <Text style={styles.choiceSubtitle}>{accessError}</Text> : null}
+      {accessError ? <Text accessibilityRole="alert" style={styles.error}>{accessError}</Text> : null}
+      <View style={styles.connectionPanel}>
+        <View style={styles.connectionHeading}>
+          <Ionicons name={connection === "online" ? "cloud-done-outline" : "cloud-offline-outline"}
+            size={18} color={colors.ink} />
+          <Text style={styles.actionText}>{connection === "online" ? "Connected to university server" :
+            connection === "checking" ? "Checking server connection…" : "Server connection needed"}</Text>
+        </View>
+        {connection === "offline" ? <>
+          <Text style={styles.connectionNote}>Connect to load your records and sign in. Student registration requirements remain the same.</Text>
+          <AppButton label="Retry connection" variant="secondary" onPress={refresh} />
+        </> : null}
+        <AppButton label={connection === "online" ? "Connection settings" : "Connect to server"}
+          variant="ghost" onPress={() => router.push("/connect-server")} />
+      </View>
       <AppButton label="Administrator access" variant="ghost" onPress={() => router.push("/administration")} />
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Connect to server"
-        onPress={() => router.push("/connect-server")}
-        style={styles.serverLink}
-      >
-        <Ionicons name="cloud-outline" size={19} color={colors.ink} />
-        <Text style={styles.serverLinkText}>Connect to server</Text>
-        <Ionicons name="chevron-forward" size={17} color={colors.muted} />
-      </Pressable>
+      <Text style={styles.footer}>{cfg?.event.name || eventTitle()}</Text>
       {/* 33-QA (I21): explicit confirm step before the device role
           changes — Confirm/Cancel, keyboard- and screen-reader-labelled. */}
       {pending ? (
@@ -235,90 +237,35 @@ export default function ModePickerScreen() {
 }
 
 const styles = StyleSheet.create({
-  top: {
-    alignItems: "center",
-    paddingTop: spacing.xl,
-  },
-  title: {
-    color: colors.ink,
-    // 35M R2 (item 14): display family encodes the weight.
-    // 35M item 2: slightly smaller so the full configured event name
-    // wraps balanced at 360px — never a one-word orphan line.
-    fontFamily: fonts.display,
-    fontSize: 20,
-    letterSpacing: -0.4,
-    marginTop: spacing.md,
-    textAlign: "center",
-  },
-  rule: {
-    width: 64,
-    height: 2,
-    backgroundColor: colors.gold,
-    marginTop: spacing.md,
-    marginBottom: spacing.sm,
-  },
-  university: {
-    // 35M R2 (item 13): sans label — not spaced mono lettering.
-    color: colors.muted,
-    fontFamily: fonts.displayMedium,
-    fontSize: 13,
-    textAlign: "center",
-  },
-  choices: {
-    gap: spacing.sm,
-    marginTop: spacing.lg,
-  },
-  serverLink: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    minHeight: 48,
-    paddingVertical: spacing.sm,
-    paddingHorizontal: spacing.md,
-  },
-  serverLinkText: {
-    flex: 1,
-    color: colors.ink,
-    fontFamily: fonts.displayMedium,
-    fontSize: 14,
-  },
-  // 33-QA (P8-29): each launch choice reads as a CARD — track border,
-  // quiet paper fill, breathing room — instead of a bare dashed row.
-  choice: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.md,
-    paddingVertical: spacing.lg,
-    paddingHorizontal: spacing.md,
-    minHeight: 72,
-    borderRadius: radius.sm,
-    borderWidth: 1,
-    borderColor: colors.track,
-    backgroundColor: colors.paper,
-    marginBottom: spacing.sm,
-  },
-  choicePressed: {
-    opacity: 0.7,
-  },
-  choiceBusy: {
-    opacity: 0.55,
-  },
-  choiceText: {
-    flex: 1,
-  },
-  choiceTitle: {
-    color: colors.ink,
-    fontFamily: fonts.display,
-    fontSize: 15,
-    letterSpacing: -0.2,
-  },
-  choiceSubtitle: {
-    color: colors.muted,
-    fontFamily: fonts.displayMedium,
-    fontSize: 15,
-    marginTop: 2,
-    lineHeight: 21,
-  },
+  top: { flexDirection: "row", alignItems: "center", gap: spacing.md, paddingTop: spacing.sm },
+  brandText: { flex: 1, gap: spacing.xs },
+  title: { color: colors.ink, fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.4 },
+  university: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13 },
+  intro: { marginTop: spacing.xl, marginBottom: spacing.lg },
+  eyebrow: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8 },
+  heading: { color: colors.ink, fontFamily: fonts.display, fontSize: 46, letterSpacing: -1.2, marginTop: spacing.sm },
+  description: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 15, lineHeight: 23, marginTop: spacing.sm },
+  rule: { width: 56, height: 2, backgroundColor: colors.gold, marginTop: spacing.lg },
+  choices: { gap: spacing.md },
+  sectionLabel: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.md },
+  choice: { borderColor: colors.track, borderWidth: 1, borderRadius: radius.lg, padding: spacing.lg },
+  studentChoice: { backgroundColor: colors.ink, borderColor: colors.ink },
+  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
+  status: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13 },
+  onDark: { color: colors.paper },
+  choiceTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 15 },
+  studentTitle: { color: colors.paper, fontSize: 24 },
+  choiceSubtitle: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 15, lineHeight: 23, marginTop: spacing.sm },
+  cardAction: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, minHeight: 44, marginTop: spacing.md },
+  actionText: { color: colors.ink, fontFamily: fonts.displayMedium, fontSize: 13, flexShrink: 1 },
+  registrationNote: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginTop: spacing.sm, paddingHorizontal: spacing.xs },
+  choicePressed: { opacity: 0.8 },
+  choiceBusy: { opacity: 0.65 },
+  connectionPanel: { borderTopWidth: 1, borderTopColor: colors.track, marginTop: spacing.xl, paddingTop: spacing.lg, gap: spacing.sm },
+  connectionHeading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  connectionNote: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20 },
+  error: { color: colors.invalid, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginTop: spacing.md },
+  footer: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 11, textAlign: "center", marginTop: spacing.md, marginBottom: spacing.md },
   confirmBackdrop: {
     flex: 1,
     justifyContent: "center",
@@ -344,6 +291,10 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
   },
   confirmBtn: {
+    minHeight: 48,
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.ink,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.sm,

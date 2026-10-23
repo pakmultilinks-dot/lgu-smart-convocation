@@ -104,7 +104,12 @@ export interface DashboardData {
 export interface DashboardAccess { student: true; volunteer: boolean; liveboard: boolean }
 
 export async function fetchDashboardAccess(): Promise<DashboardAccess> {
-  return request<DashboardAccess>("/api/dashboard-access");
+  const access = await request<DashboardAccess>("/api/dashboard-access");
+  if (!access || access.student !== true || typeof access.volunteer !== "boolean" ||
+      typeof access.liveboard !== "boolean") {
+    throw new ApiError("Dashboard availability could not be verified. Please retry.", 502);
+  }
+  return access;
 }
 
 export interface AppConfig {

@@ -350,6 +350,7 @@ export function AdminScreen() {
         subtitle="Dashboard availability, server connection and convocation details"
       />
 
+      <DashboardControls />
       {/* ------------------------------------------------- server connection */}
       <SectionCard>
         <SectionEyebrow>Server connection</SectionEyebrow>
@@ -537,7 +538,6 @@ export function AdminScreen() {
         </SectionCard>
       ) : null}
 
-      <DashboardControls />
       {/* ------------------------------------------------- operational tools */}
       <SectionCard>
         <SectionEyebrow>Operations</SectionEyebrow>

@@ -1,5 +1,11 @@
 # Run LGU Convocation in Expo Go
 
+After the one-time installation below, run `./Start-LGU.ps1` from the repository
+root or `npm start` from `mobile`. The root script resolves this checkout even
+when the terminal starts in another directory. See
+[system design](../docs/SYSTEM_DESIGN.md) for navigation, dashboard access,
+server boundaries, offline behavior and deployment requirements.
+
 From this checkout, install the backend once:
 
 ```powershell

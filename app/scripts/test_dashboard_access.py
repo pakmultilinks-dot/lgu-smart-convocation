@@ -32,6 +32,12 @@ def save(**values):
     assert response.status_code == 200, response.json
 
 assert access() == {"student": True, "volunteer": True, "liveboard": True}
+preflight = client.options("/api/scan", headers={
+    "Origin": "http://localhost:8081", "Access-Control-Request-Method": "POST",
+    "Access-Control-Request-Headers": "Content-Type,X-Scanner-Token"})
+assert preflight.status_code == 200
+assert "X-Scanner-Token" in preflight.headers["Access-Control-Allow-Headers"]
+assert preflight.headers["Access-Control-Allow-Origin"] == "http://localhost:8081"
 assert client.put("/api/settings", json={"volunteer_enabled": "false"}).status_code == 401
 for value in [True, False, None, 1, "yes", "TRUE", {}, []]:
     assert client.put("/api/settings", json={"volunteer_enabled": value}, headers=admin).status_code == 400
