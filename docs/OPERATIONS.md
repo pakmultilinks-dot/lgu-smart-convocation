@@ -84,7 +84,11 @@ An empty list `[]` is the only acceptable result.
 
 Migrations are tracked with `PRAGMA user_version` and applied inside one
 transaction each together with the version bump, so a failure rolls back **both**
-the schema and the version. Current latest: **version 11**.
+the schema and the version. Current latest: **version 14**. Ordinary
+production startup now checks schema version **read-only** before init_db()
+and refuses missing or outdated schemas. Migration requires a separate
+operator-approved offline procedure, a verified private backup, and a
+successful rehearsal against synthetic/disposable copies.
 
 `migrate()` **refuses to open** a database whose version is newer than the build
 supports. This is deliberate: silently applying nothing would let the app run
@@ -301,7 +305,7 @@ before production use:
 | --- | --- |
 | Real SMTP delivery with the university mail server | **NOT TESTED** — no SMTP reachable from this environment |
 | Android device / emulator validation of the mobile app | **NOT TESTED** — no `adb`, emulator or JDK available |
-| Migration 11 applied to the production database | **NOT APPLIED** — rehearsed only on disposable databases |
+| Migration to schema v14 approved and applied in production | **NOT VERIFIED / NO-GO** — requires a separate operator-authorized procedure with backup and recovery evidence |
 | Performance and capacity under event-day load | **NOT TESTED** |
 | Production credentials provisioned by the operator | **NOT DONE** — the service will not start until they are |
 
