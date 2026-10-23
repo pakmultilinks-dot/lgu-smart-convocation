@@ -1,0 +1,3 @@
+# Deployment-only WSGI server. Local development continues using app/run.py.
+-r requirements.txt
+gunicorn>=23.0,<26.0
