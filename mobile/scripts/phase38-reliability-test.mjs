@@ -104,7 +104,11 @@ check("Home summary refresh has an inflight guard",
   has(home, "const inflight = useRef(false);") &&
     has(home, "if (inflight.current) return;"));
 check("Home refetches the summary whenever it gains focus",
-  has(home, "void refresh();") && has(home, "}, [refresh]),"));
+  has(home, "void refresh();") &&
+  // Connection recovery also refetches gates on focus, so the dependency
+  // list can include loadGates while preserving the original guarantee.
+  (has(home, "}, [refresh]),") ||
+    (has(home, "void loadGates();") && has(home, "}, [refresh, loadGates]),"))));
 
 // ---- Dashboard + attendance integration ------------------------------------
 console.log("Integration — DashboardData keys and student attendance");
