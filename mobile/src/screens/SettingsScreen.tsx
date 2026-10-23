@@ -218,7 +218,7 @@ export function SettingsScreen() {
           label="Connection settings"
           icon="settings-outline"
           variant="secondary"
-          onPress={() => router.push("/(volunteer)/admin")}
+          onPress={() => router.push("/connect-server")}
         />
         {/* Quiet queue status — no technical language. 33-QA (I16): an
             offline device never claims "All scans synced" — it says the
