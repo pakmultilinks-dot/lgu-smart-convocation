@@ -56,8 +56,10 @@ export default function ConnectServerScreen() {
       }
       await setApiBaseUrl(next);
       setSuccess(true);
-    } catch {
-      setError("Could not save the connection. Try again.");
+    } catch (e) {
+      setError(
+        e instanceof Error ? e.message : "Could not save the connection. Try again.",
+      );
     } finally {
       setBusy(false);
     }
