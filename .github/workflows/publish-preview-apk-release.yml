@@ -1,0 +1,71 @@
+name: Publish direct-download LGU Preview APK
+
+# One-time publishing of the already-verified synthetic QA preview build.
+# Adding this workflow on main publishes a GitHub Release with an actual APK
+# (NOT the zipped Actions artifact). Manual reruns are idempotent.
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/publish-preview-apk-release.yml"
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Retrieve successful preview APK build artifact
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            -H "Authorization: Bearer ${GH_TOKEN}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${GITHUB_REPOSITORY}/actions/artifacts/12493336581/zip" \
+            --output preview.zip
+          unzip -t preview.zip
+          mkdir -p publish
+          unzip -jo preview.zip LGU-Smart-Convocation-Preview.apk -d publish
+          test -s publish/LGU-Smart-Convocation-Preview.apk
+          echo "61c2d99bca067fd880667be1531eb12b41157b8b6d4b43527dc9aee9455cd1b4  publish/LGU-Smart-Convocation-Preview.apk" | sha256sum -c -
+
+      - name: Verify Android package and signature before publishing
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=publish/LGU-Smart-Convocation-Preview.apk
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          test -d "${sdk}/build-tools"
+          signer=$(find "${sdk}/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          aapt=$(find "${sdk}/build-tools" -name aapt -type f | sort -V | tail -n 1)
+          test -x "${signer}"
+          test -x "${aapt}"
+          "${signer}" verify --verbose "${apk}"
+          "${aapt}" dump badging "${apk}" | head -n 1 | grep -F "name='pk.edu.lgu.smartconvocation.preview'"
+
+      - name: Publish publicly shareable direct APK download
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          tag="lgu-preview-android-20261023-pr24"
+          apk="publish/LGU-Smart-Convocation-Preview.apk"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "Release already exists; keeping existing public asset."
+          else
+            gh release create "${tag}" "${apk}" \
+              --target "${GITHUB_SHA}" \
+              --title "LGU Smart Convocation — Android QA Preview (23 Oct 2026)" \
+              --notes "Installable test-signed Android Preview APK from successful GitHub Actions run 39932480157. SHA-256: 61c2d99bca067fd880667be1531eb12b41157b8b6d4b43527dc9aee9455cd1b4. Separate preview package; does not include university data or login credentials. Use Connect to demo server to supply a reachable HTTPS synthetic staging backend. Device installation, camera scanning, and all three hosted logins are not yet certified; not for real event operations." \
+              --prerelease
+          fi
+          gh release view "${tag}" --json assets --jq '.assets[].name' | grep -Fx 'LGU-Smart-Convocation-Preview.apk'
+          echo "Direct link: https://github.com/${GITHUB_REPOSITORY}/releases/download/${tag}/LGU-Smart-Convocation-Preview.apk"
