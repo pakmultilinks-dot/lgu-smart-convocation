@@ -260,6 +260,8 @@ export function AdminScreen() {
       const reachable = await probe(effective);
       setProbeState(reachable ? "ok" : "fail");
       setProbeNote(probeNoteFor(reachable));
+    } catch (e) {
+      setUrlError(e instanceof Error ? e.message : "Could not reset connection.");
     } finally {
       setBusy(false);
     }
