@@ -1,5 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import Constants from "expo-constants";
+import { clearAdminPin } from "./adminAccess";
+import { clearScannerSession } from "./scannerSession";
+import { clearToken } from "./studentSession";
+import { queueCount } from "./offlineQueue";
 
 const KEY_API_BASE_URL = "lgu.api_base_url";
 // "custom" is written only when an admin explicitly saves a backend URL.
@@ -88,17 +92,31 @@ export async function getApiBaseUrl(): Promise<string> {
   }
 }
 
-/** Admin save: record the URL as an intentional custom configuration. */
+/** Save an explicitly checked server. Never carry bearer credentials across
+ * backends: a host switch could otherwise disclose tokens/PINs to another
+ * server. Preserve queued offline admissions instead of redirecting them. */
 export async function setApiBaseUrl(url: string): Promise<void> {
   const value = normaliseBaseUrl(url);
-  if (value.length === 0) return;
-  sessionBaseUrl = value;
-  try {
-    await AsyncStorage.setItem(KEY_API_BASE_URL, value);
-    await AsyncStorage.setItem(KEY_API_BASE_URL_MODE, "custom");
-  } catch {
-    // Storage failures leave the session override in place for this run.
+  if (!value) throw new Error("Enter a valid server address.");
+  const previous = await getApiBaseUrl();
+  if (previous !== value) {
+    const pending = await queueCount();
+    if (pending > 0) {
+      throw new Error(
+        "Sync your pending offline scans before switching servers.",
+      );
+    }
+    await clearAdminPin();
+    await clearScannerSession();
+    await clearToken();
   }
+  // Fail visibly on storage errors. Never claim "saved" when the next
+  // cold start would silently return to an old backend.
+  await AsyncStorage.multiSet([
+    [KEY_API_BASE_URL, value],
+    [KEY_API_BASE_URL_MODE, "custom"],
+  ]);
+  sessionBaseUrl = value;
 }
 
 /**
