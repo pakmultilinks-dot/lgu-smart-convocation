@@ -128,7 +128,11 @@ export async function probeBackend(url: string): Promise<boolean> {
     const response = await fetch(`${url}/api/health`, {
       signal: controller.signal,
     });
-    return response.ok;
+    if (!response.ok) return false;
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object") return false;
+    const result = body as { ok?: unknown; app?: unknown };
+    return result.ok === true && result.app === "LGU Smart Convocation";
   } catch {
     return false;
   } finally {
