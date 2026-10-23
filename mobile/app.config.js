@@ -7,7 +7,7 @@ module.exports = ({ config }) => {
   if (process.env.APP_VARIANT !== "preview") return config;
   return {
     ...config,
-    name: "LGU Convocation Preview",
+    name: "LGU Convocation",
     android: {
       ...config.android,
       package: "pk.edu.lgu.smartconvocation.preview",

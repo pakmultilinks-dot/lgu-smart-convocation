@@ -153,12 +153,12 @@ export default function ModePickerScreen() {
       </View>
       <Pressable
         accessibilityRole="button"
-        accessibilityLabel="Connect to demo server"
+        accessibilityLabel="Connect to server"
         onPress={() => router.push("/connect-server")}
         style={styles.serverLink}
       >
         <Ionicons name="cloud-outline" size={19} color={colors.ink} />
-        <Text style={styles.serverLinkText}>Connect to demo server</Text>
+        <Text style={styles.serverLinkText}>Connect to server</Text>
         <Ionicons name="chevron-forward" size={17} color={colors.muted} />
       </Pressable>
       {/* 33-QA (I21): explicit confirm step before the device role

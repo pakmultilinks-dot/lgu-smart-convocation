@@ -27,7 +27,7 @@ export default function StudentWelcome() {
           onPress={() => router.push("/(student)/login")}
         />
         <AppButton
-          label="Connect to demo server"
+          label="Connect to server"
           variant="secondary"
           onPress={() => router.push("/connect-server")}
         />

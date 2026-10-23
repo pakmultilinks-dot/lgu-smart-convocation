@@ -160,7 +160,7 @@ export function AdminGate({ children }: { children: ReactNode }) {
         />
       </SectionCard>
       <AppButton
-        label="Connect to demo server"
+        label="Connect to server"
         variant="secondary"
         icon="cloud-outline"
         onPress={() => router.push("/connect-server")}

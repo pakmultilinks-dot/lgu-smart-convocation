@@ -6,7 +6,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const read = (p) => readFileSync(resolve(root, p), "utf8");
+const read = (p) => readFileSync(resolve(root, p), "utf8").replace(/\r\n/g, "\n");
 const picker = read("app/mode-picker.tsx");
 const scanner = read("src/screens/ScannerScreen.tsx");
 const home = read("src/screens/HomeScreen.tsx");
@@ -32,7 +32,7 @@ assertAll("Scanner loads only one login/name prompt at a time",
 assertAll("Scanner checks connection before asking for credentials",
   scanner.includes("getApiBaseUrl()"),
   scanner.includes("connectionConfigured === false || online === false"),
-  scanner.includes('label="Connect to demo server"'),
+  scanner.includes('label="Connect to server"'),
   scanner.includes('label="Back to home"'),
   scanner.includes('label="Retry connection"')
 );
@@ -51,7 +51,7 @@ assertAll("Home never reports zero attendance as actual while offline",
 );
 assertAll("Home surfaces connection setup and reloads gate list",
   home.includes("backendConfigured === false"),
-  home.includes('label="Connect to demo server"'),
+  home.includes('label="Connect to server"'),
   home.includes("void loadGates();")
 );
 assertAll("Offline queue count is not lost when offline",
@@ -59,6 +59,6 @@ assertAll("Offline queue count is not lost when offline",
   home.indexOf("queued > 0\n      ?") < home.indexOf("online === false\n        ?")
 );
 assertAll("API errors point to current connection flow instead of hidden Admin area",
-  client.includes("Tap Connect to demo server"),
+  client.includes("Tap Connect to server"),
   !client.includes("Admin > Backend Connection")
 );

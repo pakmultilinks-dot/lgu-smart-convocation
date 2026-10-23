@@ -285,7 +285,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // Production safety: nothing configured and no development host to
     // discover from. Sanitized message only — no URLs in user UI.
     throw new ApiError(
-      "No demo server connected. Tap Connect to demo server on the start or scanner screen.",
+      "No server connected. Tap Connect to server on the start or scanner screen.",
       0,
     );
   }

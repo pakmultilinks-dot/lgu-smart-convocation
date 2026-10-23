@@ -23,7 +23,7 @@
       "bundleIdentifier": "pk.edu.lgu.smartconvocation",
       "supportsTablet": true
     },
-    "name": "LGU Smart Convocation",
+    "name": "LGU Convocation",
     "orientation": "portrait",
     "plugins": [
       "expo-router",
@@ -31,7 +31,7 @@
       [
         "expo-camera",
         {
-          "cameraPermission": "Allow LGU Smart Convocation to scan QR codes at convocation gates."
+          "cameraPermission": "Allow LGU Convocation to scan QR codes at convocation gates."
         }
       ],
       "expo-image-picker",

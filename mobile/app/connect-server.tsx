@@ -50,7 +50,7 @@ export default function ConnectServerScreen() {
     try {
       if (!(await probeBackend(next))) {
         setError(
-          "The LGU demo server did not respond correctly. Check the link and internet connection.",
+          "The LGU server did not respond correctly. Check the link and internet connection.",
         );
         return;
       }
@@ -75,11 +75,11 @@ export default function ConnectServerScreen() {
       />
       <SectionCard>
         <Text style={styles.helper}>
-          Enter the HTTPS address of the demo server. Do not enter your email,
+          Enter the address of your LGU server. Do not enter your email,
           student password, or admin PIN here.
         </Text>
         <Field
-          label="Demo server address"
+          label="Server address"
           value={url}
           onChangeText={(value) => {
             setUrl(value);
@@ -105,7 +105,7 @@ export default function ConnectServerScreen() {
           {success ? (
             <>
               <Text style={styles.success}>
-                Connected to LGU Smart Convocation. You can now sign in.
+                Connected to LGU Convocation. You can now sign in.
               </Text>
               <AppButton
                 label="Continue"

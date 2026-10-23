@@ -1,3 +1,34 @@
+# Run LGU Convocation in Expo Go
+
+From this checkout, install the backend once:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r app/requirements.txt
+cd mobile
+npm ci
+npm start
+```
+
+`npm start` starts the local backend, waits for its health check, then displays
+Expo's QR code. Keep this terminal running. Connect your phone and laptop to
+the same Wi-Fi, open Expo Go and scan the QR. Allow Python and Node through
+Windows Firewall on your private network if Windows prompts.
+
+The app discovers the backend on the Expo laptop at port 5000. A previously
+saved custom server takes priority; use Settings to reset to Automatic when
+returning to local testing. An installed APK has no Expo laptop to discover
+and still needs a reachable server configured through Connect to server.
+
+Local synthetic data and generated accounts persist in
+`%USERPROFILE%\LGU-Local-Mobile`. Read `TEST-LOGIN-DETAILS.txt` there for the
+student, scanner and admin logins. Nothing in that folder is committed.
+The scanner test account is assigned to Gate 1. The local backend never opens
+the university database. `npm run start:expo` starts only Metro when using an
+independently managed backend.
+
+---
+
 # LGU Smart Convocation System (mobile)
 
 Expo + React Native + TypeScript companion app for the LGU Smart Convocation

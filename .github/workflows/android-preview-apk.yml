@@ -57,7 +57,7 @@ jobs:
           const fs = require("fs");
           const file = "app.json";
           const settings = JSON.parse(fs.readFileSync(file, "utf8"));
-          settings.expo.name = "LGU Convocation Preview";
+          settings.expo.name = "LGU Convocation";
           settings.expo.android.package = "pk.edu.lgu.smartconvocation.preview";
           // Preview must connect to an HTTPS synthetic staging backend.
           settings.expo.android.usesCleartextTraffic = false;
