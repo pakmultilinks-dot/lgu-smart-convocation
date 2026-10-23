@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useEffect, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
-import { fetchAppConfig, type AppConfig } from "../src/api/client";
+import { fetchAppConfig, fetchDashboardAccess, type AppConfig, type DashboardAccess } from "../src/api/client";
 import { UNIVERSITY_NAME, eventTitle } from "../src/config";
 import {
   getAppMode,
@@ -11,7 +11,7 @@ import {
   type AppMode,
 } from "../src/store/appMode";
 import { colors, fonts, radius, spacing } from "../src/theme";
-import { LguMark, Screen } from "../src/ui";
+import { AppButton, LguMark, Screen } from "../src/ui";
 
 interface Choice {
   mode: AppMode;
@@ -59,6 +59,17 @@ export default function ModePickerScreen() {
   const [cfg, setCfg] = useState<AppConfig | null>(null);
   const [current, setCurrent] = useState<AppMode | null>(null);
   const [pending, setPending] = useState<AppMode | null>(null);
+  const [accessError, setAccessError] = useState<string | null>(null);
+  const [access, setAccess] = useState<DashboardAccess | null>(null);
+  useFocusEffect(useCallback(() => {
+    let active = true;
+    const refresh = () => void fetchDashboardAccess().then((data) => {
+      if (active) setAccess(data);
+    }).catch(() => {});
+    refresh();
+    const timer = setInterval(refresh, 15000);
+    return () => { active = false; clearInterval(timer); };
+  }, []));
 
   // 35M items 2 + 20: consume the SERVER convocation configuration for
   // the brand title — eventTitle() stays as the offline fallback.
@@ -87,8 +98,19 @@ export default function ModePickerScreen() {
   const commit = async (mode: AppMode) => {
     setBusy(mode);
     try {
+      setAccessError(null);
+      if (mode !== "student") {
+        const next = await fetchDashboardAccess();
+        setAccess(next);
+        if (next[mode] !== true) {
+          setAccessError("This dashboard is currently disabled by the administrator.");
+          return;
+        }
+      }
       await setAppMode(mode);
       router.replace(targetFor(mode));
+    } catch (e) {
+      setAccessError(e instanceof Error ? e.message : "Could not open dashboard.");
     } finally {
       setBusy(null);
       setPending(null);
@@ -127,30 +149,34 @@ export default function ModePickerScreen() {
       <View style={styles.choices}>
         {CHOICES.map((choice) => {
           const active = busy === choice.mode;
+          const unavailable = choice.mode !== "student" && access?.[choice.mode] === false;
           return (
             <Pressable
               key={choice.mode}
               accessibilityRole="button"
               accessibilityLabel={choice.title}
-              accessibilityState={{ disabled: busy !== null }}
-              disabled={busy !== null}
+              accessibilityState={{ disabled: busy !== null || unavailable }}
+              disabled={busy !== null || unavailable}
               onPress={() => void pick(choice.mode)}
               style={({ pressed }) => [
                 styles.choice,
                 pressed && styles.choicePressed,
                 active && styles.choiceBusy,
+                unavailable && styles.choiceBusy,
               ]}
             >
               <Ionicons name={choice.icon} size={22} color={colors.ink} />
               <View style={styles.choiceText}>
                 <Text style={styles.choiceTitle}>{choice.title}</Text>
-                <Text style={styles.choiceSubtitle}>{choice.subtitle}</Text>
+                <Text style={styles.choiceSubtitle}>{unavailable ? "Currently disabled by the administrator" : choice.subtitle}</Text>
               </View>
               <Ionicons name="chevron-forward" size={18} color={colors.muted} />
             </Pressable>
           );
         })}
       </View>
+      {accessError ? <Text style={styles.choiceSubtitle}>{accessError}</Text> : null}
+      <AppButton label="Administrator access" variant="ghost" onPress={() => router.push("/administration")} />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Connect to server"

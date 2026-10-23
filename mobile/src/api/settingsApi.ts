@@ -15,6 +15,8 @@ import { getAdminPin } from "../store/adminAccess";
 import { ApiError } from "./client";
 
 export interface ConvocationSettings {
+  volunteer_enabled: "true" | "false";
+  liveboard_enabled: "true" | "false";
   convocation_name: string;
   convocation_year: string;
   convocation_datetime: string;

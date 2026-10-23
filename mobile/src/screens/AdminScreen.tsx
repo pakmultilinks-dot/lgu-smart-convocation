@@ -3,6 +3,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { getSettings, updateSettings } from "../api/settingsApi";
+import { DashboardControls } from "../components/DashboardControls";
 import { getQueue } from "../store/offlineQueue";
 import {
   getApiBaseUrl,
@@ -294,7 +295,10 @@ export function AdminScreen() {
     try {
       // Year is derived from the chosen date — never a free-text field.
       const next = await updateSettings({
-        ...settings,
+        convocation_name: settings.convocation_name,
+        university_name: settings.university_name,
+        venue: settings.venue,
+        expected_attendance: settings.expected_attendance,
         convocation_year: String(parts.y),
         convocation_datetime: buildIso(parts),
       });
@@ -338,12 +342,12 @@ export function AdminScreen() {
           the shared eyebrowSans family, not DM Mono. */}
       <AppHeader
         onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
+          router.canGoBack() ? router.back() : router.replace("/mode-picker")
         }
         eyebrow="Admin"
         eyebrowSans
         title="System configuration"
-        subtitle="Server connection and convocation details"
+        subtitle="Dashboard availability, server connection and convocation details"
       />
 
       {/* ------------------------------------------------- server connection */}
@@ -533,6 +537,7 @@ export function AdminScreen() {
         </SectionCard>
       ) : null}
 
+      <DashboardControls />
       {/* ------------------------------------------------- operational tools */}
       <SectionCard>
         <SectionEyebrow>Operations</SectionEyebrow>

@@ -155,6 +155,8 @@ SETTING_KEYS = (
     "venue",
     "expected_attendance",
     "university_name",
+    "volunteer_enabled",
+    "liveboard_enabled",
 )
 
 DEFAULT_SETTINGS = [
@@ -191,6 +193,8 @@ def get_settings():
         # DB-003: a busy or failing read must not strand the handle.
         db.close()
     settings = {key: "" for key in SETTING_KEYS}
+    # Existing installations retain access until an administrator changes it.
+    settings.update(volunteer_enabled="true", liveboard_enabled="true")
     for row in rows:
         settings[row["key"]] = row["value"]
     return settings

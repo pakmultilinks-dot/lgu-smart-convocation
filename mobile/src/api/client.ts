@@ -101,7 +101,14 @@ export interface DashboardData {
 }
 
 /** Event identity + shared operational config (GET /api/config, 35K). */
+export interface DashboardAccess { student: true; volunteer: boolean; liveboard: boolean }
+
+export async function fetchDashboardAccess(): Promise<DashboardAccess> {
+  return request<DashboardAccess>("/api/dashboard-access");
+}
+
 export interface AppConfig {
+  dashboard_access?: DashboardAccess;
   app_name: string;
   university: string;
   motto: string;
