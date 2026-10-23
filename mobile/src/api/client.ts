@@ -285,7 +285,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // Production safety: nothing configured and no development host to
     // discover from. Sanitized message only — no URLs in user UI.
     throw new ApiError(
-      "This device is not configured to reach the convocation server. Ask the administrator to set the backend under Admin > Backend Connection.",
+      "No demo server connected. Tap Connect to demo server on the start or scanner screen.",
       0,
     );
   }
