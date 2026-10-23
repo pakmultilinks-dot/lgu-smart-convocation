@@ -132,7 +132,7 @@ const styles = StyleSheet.create({
   },
   actions: { gap: spacing.sm, marginTop: spacing.md },
   success: {
-    color: colors.live,
+    color: colors.valid,
     fontFamily: fonts.displayMedium,
     fontSize: 14,
     lineHeight: 21,
