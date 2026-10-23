@@ -75,7 +75,7 @@ export default function ConnectServerScreen() {
       />
       <SectionCard>
         <Text style={styles.helper}>
-          Enter the HTTPS address of the demo server. Don't enter your email,
+          Enter the HTTPS address of the demo server. Do not enter your email,
           student password, or admin PIN here.
         </Text>
         <Field
