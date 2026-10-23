@@ -151,6 +151,16 @@ export default function ModePickerScreen() {
           );
         })}
       </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Connect to demo server"
+        onPress={() => router.push("/connect-server")}
+        style={styles.serverLink}
+      >
+        <Ionicons name="cloud-outline" size={19} color={colors.ink} />
+        <Text style={styles.serverLinkText}>Connect to demo server</Text>
+        <Ionicons name="chevron-forward" size={17} color={colors.muted} />
+      </Pressable>
       {/* 33-QA (I21): explicit confirm step before the device role
           changes — Confirm/Cancel, keyboard- and screen-reader-labelled. */}
       {pending ? (
@@ -222,6 +232,20 @@ const styles = StyleSheet.create({
   choices: {
     flex: 1,
     justifyContent: "center",
+  },
+  serverLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  serverLinkText: {
+    flex: 1,
+    color: colors.ink,
+    fontFamily: fonts.displayMedium,
+    fontSize: 14,
   },
   // 33-QA (P8-29): each launch choice reads as a CARD — track border,
   // quiet paper fill, breathing room — instead of a bare dashed row.
