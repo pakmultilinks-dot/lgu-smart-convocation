@@ -36,8 +36,8 @@ async function probe(url: string): Promise<boolean> {
     const res = await fetch(`${url.replace(/\/$/, "")}/api/health`, {
       signal: controller.signal,
     });
-    const body = (await res.json()) as { ok?: boolean };
-    return res.ok && body.ok === true;
+    const body = (await res.json()) as { ok?: boolean; app?: string };
+    return res.ok && body.ok === true && body.app === "LGU Smart Convocation";
   } catch {
     return false;
   } finally {
@@ -229,7 +229,7 @@ export function AdminScreen() {
   const saveConnection = useCallback(async () => {
     const trimmed = url.trim().replace(/\/$/, "");
     if (!isValidBaseUrl(trimmed)) {
-      setUrlError("Enter a full address, e.g. http://192.168.1.10:5000");
+      setUrlError("Enter a full HTTPS address, e.g. https://demo.example.org");
       return;
     }
     setUrlError(null);
