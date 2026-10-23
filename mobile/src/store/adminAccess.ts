@@ -5,7 +5,7 @@
 // Phase 38 (MOB-001): the PIN is a credential — stored through the
 // secureStorage keystore wrapper (SecureStore on native, in-memory on web),
 // with automatic migration of any legacy AsyncStorage row.
-import { readSecret, writeSecret } from "./secureStorage";
+import { eraseSecret, readSecret, writeSecret } from "./secureStorage";
 
 const KEY_ADMIN_PIN = "lgu.admin_pin";
 
@@ -28,4 +28,9 @@ export async function setAdminPin(pin: string): Promise<void> {
   } catch {
     // Storage failure keeps the gate locked — the safe default.
   }
+}
+
+/** Forget a PIN whenever this device switches to a different backend. */
+export async function clearAdminPin(): Promise<void> {
+  await eraseSecret(KEY_ADMIN_PIN);
 }

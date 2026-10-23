@@ -1,3 +1,4 @@
+import { router } from "expo-router";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Text } from "react-native";
 import { verifyAdminPin, ApiError } from "../api/client";
@@ -158,6 +159,12 @@ export function AdminGate({ children }: { children: ReactNode }) {
           onPress={() => void unlock()}
         />
       </SectionCard>
+      <AppButton
+        label="Connect to demo server"
+        variant="secondary"
+        icon="cloud-outline"
+        onPress={() => router.push("/connect-server")}
+      />
       <Text style={[text.body, styles.gateNote]}>
         Administrator tools stay locked on this device until access is granted.
       </Text>
