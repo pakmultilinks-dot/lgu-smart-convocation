@@ -1,7 +1,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { fetchAppConfig, type AppConfig } from "../src/api/client";
 import { UNIVERSITY_NAME, eventTitle } from "../src/config";
 import {
@@ -111,7 +111,7 @@ export default function ModePickerScreen() {
   };
 
   return (
-    <Screen scroll={false}>
+    <Screen>
       <View style={styles.top}>
         <LguMark size={96} />
         {/* 35M item 20: authoritative server event name; the local
@@ -164,7 +164,14 @@ export default function ModePickerScreen() {
       {/* 33-QA (I21): explicit confirm step before the device role
           changes — Confirm/Cancel, keyboard- and screen-reader-labelled. */}
       {pending ? (
-        <View style={styles.confirmBar}>
+        <Modal
+          visible={pending !== null}
+          transparent
+          animationType="fade"
+          onRequestClose={() => setPending(null)}
+        >
+          <View style={styles.confirmBackdrop}>
+            <View style={styles.confirmBar}>
           <Text style={styles.confirmText}>
             Switch this device to{" "}
             {CHOICES.find((c) => c.mode === pending)?.title}?
@@ -193,7 +200,9 @@ export default function ModePickerScreen() {
               </Text>
             </Pressable>
           </View>
-        </View>
+            </View>
+          </View>
+        </Modal>
       ) : null}
     </Screen>
   );
@@ -230,8 +239,8 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   choices: {
-    flex: 1,
-    justifyContent: "center",
+    gap: spacing.sm,
+    marginTop: spacing.lg,
   },
   serverLink: {
     flexDirection: "row",
@@ -284,7 +293,17 @@ const styles = StyleSheet.create({
     marginTop: 2,
     lineHeight: 21,
   },
+  confirmBackdrop: {
+    flex: 1,
+    justifyContent: "center",
+    paddingHorizontal: spacing.screen,
+    backgroundColor: colors.overlay,
+  },
   confirmBar: {
+    backgroundColor: colors.paper,
+    borderRadius: radius.md,
+    borderColor: colors.track,
+    borderWidth: 1,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md,
     gap: spacing.sm,

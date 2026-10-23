@@ -74,7 +74,7 @@ import {
   type OpsScanResult,
   type SelectedGate,
 } from "../store/ops";
-import { getVolunteerName, setVolunteerName } from "../store/settings";
+import { getApiBaseUrl, getVolunteerName, setVolunteerName } from "../store/settings";
 import { colors, fonts, radius, spacing } from "../theme";
 import {
   AppButton,
@@ -127,6 +127,7 @@ export function ScannerScreen() {
   // the permitted gate(s) from the session — never from device input.
   const [session, setSession] = useState<ScannerSession | null>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
+  const [connectionConfigured, setConnectionConfigured] = useState<boolean | null>(null);
   const [loginVisible, setLoginVisible] = useState(false);
   const [loginUser, setLoginUser] = useState("");
   const [loginPin, setLoginPin] = useState("");
@@ -265,19 +266,22 @@ export function ScannerScreen() {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const [sess, , savedMode, savedOccasion] = await Promise.all([
+      const [sess, , savedMode, savedOccasion, backendUrl] = await Promise.all([
         getScannerSession(),
         volunteerRef.current.load(),
         getScanMode(),
         getScanOccasion(),
+        getApiBaseUrl(),
       ]);
       if (cancelled) return;
       setSession(sess);
       setSessionLoaded(true);
-      if (!sess) setLoginVisible(true);
+      setConnectionConfigured(backendUrl.length > 0);
+      // Show one onboarding prompt at a time: login first, name only after auth.
+      setLoginVisible(!sess && backendUrl.length > 0);
+      setNamePromptVisible(!!sess && volunteerRef.current.needsSetup);
       setMode(savedMode);
       setOccasion(savedOccasion);
-      if (volunteerRef.current.needsSetup) setNamePromptVisible(true);
       await loadGates();
       await loadTestRecords();
       await refreshQueueCount();
@@ -290,19 +294,23 @@ export function ScannerScreen() {
   useFocusEffect(
     useCallback(() => {
       void refreshQueueCount();
+      // A saved server address must take effect when returning from setup.
+      void loadGates();
       // The stored name may have been set or cleared in Settings meanwhile,
       // and a session revoked elsewhere must re-lock this device.
       void (async () => {
-        const [sess] = await Promise.all([
+        const [sess, , backendUrl] = await Promise.all([
           getScannerSession(),
           volunteerRef.current.load(),
+          getApiBaseUrl(),
         ]);
         setSession(sess);
         setSessionLoaded(true);
-        if (!sess) setLoginVisible(true);
-        if (volunteerRef.current.needsSetup) setNamePromptVisible(true);
+        setConnectionConfigured(backendUrl.length > 0);
+        setLoginVisible(!sess && backendUrl.length > 0);
+        setNamePromptVisible(!!sess && volunteerRef.current.needsSetup);
       })();
-    }, [refreshQueueCount]),
+    }, [refreshQueueCount, loadGates]),
   );
 
   const persistOpsResult = useCallback((r: ScanResult) => {
@@ -413,14 +421,15 @@ export function ScannerScreen() {
         // 35L (F): no scan is ever stamped under an unusable identity —
         // while the stored name is missing/invalid the setup prompt owns
         // the screen and this read is dropped.
-        if (volunteerRef.current.needsSetup) {
-          setNamePromptVisible(true);
+        // Authentication always precedes volunteer-name setup. Never open
+        // two native modals on top of each other.
+        if (!session) {
+          setNamePromptVisible(false);
+          setLoginVisible(true);
           return;
         }
-        // Phase 14: no scan leaves the device without an authenticated
-        // scanner session — the sign-in prompt owns the screen instead.
-        if (!session) {
-          setLoginVisible(true);
+        if (volunteerRef.current.needsSetup) {
+          setNamePromptVisible(true);
           return;
         }
         // 35J (G8): a scan never leaves the device without a gate — no
@@ -665,8 +674,14 @@ export function ScannerScreen() {
     setLoginError(null);
     try {
       const sess = await loginScanner(loginUser.trim(), loginPin);
+      // Account display name comes from the authenticated backend. Avoid a
+      // second name pop-up when this is already a valid volunteer name.
+      if (volunteerRef.current.needsSetup) {
+        await volunteerRef.current.ensure(sess.displayName);
+      }
       setSession(sess);
       setLoginVisible(false);
+      setNamePromptVisible(volunteerRef.current.needsSetup);
       setLoginUser("");
       setLoginPin("");
       await haptic("success");
@@ -684,6 +699,7 @@ export function ScannerScreen() {
   const signOut = useCallback(async () => {
     await logoutScanner();
     setSession(null);
+    setNamePromptVisible(false);
     setLoginVisible(true);
   }, []);
 
@@ -783,6 +799,44 @@ export function ScannerScreen() {
     260,
     Math.min(Math.round(windowH * 0.58), windowH - 330),
   );
+
+  // No authenticated scanner session plus no reachable server is a setup
+  // problem, not a PIN problem. Keep cached authenticated offline scanning
+  // available; block only first-time logins that cannot reach the server.
+  if (sessionLoaded && !session && (connectionConfigured === false || online === false)) {
+    return (
+      <Screen>
+        <AppHeader
+          title={connectionConfigured === false ? "Connect to server" : "Server unavailable"}
+          subtitle="Scanner access needs a working demo server before sign-in."
+        />
+        <SectionCard>
+          <Text style={styles.permissionBody}>
+            {connectionConfigured === false
+              ? "No demo server is configured. Connect first, then sign in with your scanner account."
+              : "The configured server is not responding. Check the address and your internet connection."}
+          </Text>
+          <AppButton
+            label="Connect to demo server"
+            icon="cloud-outline"
+            onPress={() => router.push("/connect-server")}
+          />
+          {connectionConfigured ? (
+            <AppButton
+              label="Retry connection"
+              variant="secondary"
+              onPress={() => void loadGates()}
+            />
+          ) : null}
+          <AppButton
+            label="Back to home"
+            variant="ghost"
+            onPress={() => router.replace("/(volunteer)/home")}
+          />
+        </SectionCard>
+      </Screen>
+    );
+  }
 
   if (!permission) {
     return (
@@ -1064,11 +1118,12 @@ export function ScannerScreen() {
       {/* Scanner sign-in (Phase 14): required before any scan is sent.
           The server decides the volunteer identity and permitted gates. */}
       <Modal
-        visible={sessionLoaded && loginVisible}
+        visible={sessionLoaded && loginVisible && connectionConfigured !== false && online !== false}
         transparent
         animationType="fade"
         onRequestClose={() => {
-          if (session) setLoginVisible(false);
+          setLoginVisible(false);
+          router.replace("/(volunteer)/home");
         }}
       >
         <View style={styles.promptBackdrop}>
@@ -1108,13 +1163,24 @@ export function ScannerScreen() {
               label="Connect to demo server"
               icon="cloud-outline"
               variant="secondary"
-              onPress={() => router.push("/connect-server")}
+              onPress={() => {
+                setLoginVisible(false);
+                router.push("/connect-server");
+              }}
             />
             <AppButton
               label={loginBusy ? "Signing in…" : "Sign in"}
               icon="log-in"
               onPress={() => void submitLogin()}
               disabled={loginBusy}
+            />
+            <AppButton
+              label="Back to home"
+              variant="ghost"
+              onPress={() => {
+                setLoginVisible(false);
+                router.replace("/(volunteer)/home");
+              }}
             />
             {session ? (
               <AppButton
@@ -1129,7 +1195,7 @@ export function ScannerScreen() {
 
       {/* Volunteer name — first use only; stored on this device. */}
       <Modal
-        visible={namePromptVisible}
+        visible={namePromptVisible && session !== null && !loginVisible}
         transparent
         animationType="fade"
         onRequestClose={() => setNamePromptVisible(false)}

@@ -1,0 +1,33 @@
+name: Android phone first-run regression
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/phone-first-run-regression.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  first-run-android-qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - working-directory: mobile
+        run: npm ci
+      - name: Check screenshot-reported fixes
+        working-directory: mobile
+        run: node scripts/phone-first-run-ui-test.mjs
+      - name: TypeScript and lint
+        working-directory: mobile
+        run: |
+          npm run tsc
+          npm run lint

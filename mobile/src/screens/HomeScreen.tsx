@@ -22,6 +22,7 @@ import {
   type ScanMode,
 } from "../store/ops";
 import { queueCount } from "../store/offlineQueue";
+import { getApiBaseUrl } from "../store/settings";
 import { colors, fonts, radius, spacing } from "../theme";
 import {
   AppButton,
@@ -58,6 +59,7 @@ export function HomeScreen() {
   const [queued, setQueued] = useState(0);
   const [summary, setSummary] = useState<DashboardData | null>(null);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  const [backendConfigured, setBackendConfigured] = useState<boolean | null>(null);
   const [online, setOnline] = useState<boolean | null>(null);
   const [lastOkAt, setLastOkAt] = useState<number>(0);
   const [gates, setGates] = useState<Gate[]>([]);
@@ -82,6 +84,8 @@ export function HomeScreen() {
       setLastOkAt(Date.now());
     } catch (e) {
       setOnline(false);
+      // Never present previously loaded live figures as current after failure.
+      setSummary(null);
       setSummaryError(
         e instanceof Error ? e.message : "The event summary could not be loaded.",
       );
@@ -117,6 +121,10 @@ export function HomeScreen() {
     useCallback(() => {
       let cancelled = false;
       void refresh();
+      void loadGates();
+      void getApiBaseUrl().then((url) => {
+        if (!cancelled) setBackendConfigured(url.length > 0);
+      });
       void (async () => {
         const [gate, mode, last, q] = await Promise.all([
           getSelectedGate(),
@@ -134,12 +142,12 @@ export function HomeScreen() {
       return () => {
         cancelled = true;
       };
-    }, [refresh]),
+    }, [refresh, loadGates]),
   );
 
   const expected = summary?.expected_attendance ?? 0;
   const inside = summary?.inside_total ?? 0;
-  const loaded = summary !== null || summaryError !== null;
+  const loaded = summary !== null;
   const throughput = summary?.throughput ?? [];
   const countFor = (label: string) =>
     throughput.find((t) => t.gate.label === label)?.count ?? 0;
@@ -168,10 +176,10 @@ export function HomeScreen() {
   // Queue copy (Phase 35K M): "All scans synced" is only claimed when the
   // last server call succeeded — offline we say scans are waiting to sync.
   const queueCopy =
-    online === false
-      ? "No scans waiting to sync"
-      : queued > 0
-        ? `${queued} scan(s) waiting to sync`
+    queued > 0
+      ? `${queued} scan(s) waiting to sync`
+      : online === false
+        ? "No scans waiting to sync"
         : "All scans synced";
 
   const handleSelectGate = useCallback((gate: Gate) => {
@@ -225,7 +233,26 @@ export function HomeScreen() {
       />
 
       {online === false || queued > 0 ? (
-        <OfflineBanner lastSyncedAt={lastOkAt || null} onRetry={() => void refresh()} />
+        <OfflineBanner
+          lastSyncedAt={lastOkAt || null}
+          onRetry={() => void refresh()}
+          title={backendConfigured === false ? "Server not connected" : "Server offline"}
+          body={
+            backendConfigured === false
+              ? "Connect to a demo server to load gates and sign in."
+              : queued > 0
+                ? "Pending scans stay on this device until you reconnect and sync."
+                : "Live attendance and gate data are unavailable."
+          }
+        />
+      ) : null}
+      {backendConfigured === false ? (
+        <AppButton
+          label="Connect to demo server"
+          variant="secondary"
+          icon="cloud-outline"
+          onPress={() => router.push("/connect-server")}
+        />
       ) : null}
 
       {/* 1 — Assignment + mode (35M R2 item 1): the gate label is a
@@ -321,16 +348,18 @@ export function HomeScreen() {
       <SectionCard>
         <Text style={styles.heroEyebrow}>Inside now</Text>
         <MetricBlock
-          value={loaded ? inside.toLocaleString() : "..."}
+          value={loaded ? inside.toLocaleString() : summaryError ? "—" : "..."}
           caption={
-            expected > 0
-              ? `${inside.toLocaleString()} of ${expected.toLocaleString()} expected`
-              : "Expected attendance not set"
+            !loaded
+              ? "Live attendance is unavailable until the server responds."
+              : expected > 0
+                ? `${inside.toLocaleString()} of ${expected.toLocaleString()} expected`
+                : "Expected attendance not set"
           }
         />
-        <ProgressTrack value={inside} max={expected} />
-        {/* One quiet demographic line — counting model unchanged (Phase 35A). */}
-        <View style={styles.demoRow}>
+        {loaded ? <ProgressTrack value={inside} max={expected} /> : null}
+        {/* Never display a fabricated zero for male/female/guest counts offline. */}
+        {loaded ? <View style={styles.demoRow}>
           <Text style={styles.demoItem}>
             Male <Text style={styles.demoValue}>{(summary?.male ?? 0).toLocaleString()}</Text>
           </Text>
@@ -343,10 +372,10 @@ export function HomeScreen() {
                 roster guests are a different number entirely. */}
             Guests inside <Text style={styles.demoValue}>{(summary?.guests_inside ?? 0).toLocaleString()}</Text>
           </Text>
-        </View>
-        {summaryError ? (
-          <Text style={styles.inlineError} numberOfLines={2}>
-            {summaryError}
+        </View> : null}
+        {summaryError && backendConfigured !== false ? (
+          <Text style={styles.inlineError}>
+            Live attendance unavailable. Check the server connection.
           </Text>
         ) : null}
       </SectionCard>
@@ -355,6 +384,9 @@ export function HomeScreen() {
           light tint, readable ink text/count, one thin ink marker. */}
       <SectionCard>
         <SectionEyebrow>{windowLabel}</SectionEyebrow>
+        {gates.length === 0 ? (
+          <Text style={styles.scanNote}>No gate list available. Connect to the server.</Text>
+        ) : null}
         {gates.map((gate) => {
           const selected = gate.id === gateId;
           const count = countFor(gate.label);
