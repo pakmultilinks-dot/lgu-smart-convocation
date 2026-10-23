@@ -126,14 +126,24 @@ export async function setApiBaseUrl(url: string): Promise<void> {
  * use* calls outside components as hook violations.)
  */
 export async function resetToAutomaticBackend(): Promise<void> {
-  sessionBaseUrl = null;
-  try {
-    await AsyncStorage.removeItem(KEY_API_BASE_URL_MODE);
-  } catch {
-    // Ignore — mode simply stays whatever it was.
+  const previous = await getApiBaseUrl();
+  const discovered = getDiscoveredBackendUrl();
+  if (previous && previous !== (discovered ?? "")) {
+    if ((await queueCount()) > 0) {
+      throw new Error("Sync your pending offline scans before switching servers.");
+    }
+    await clearAdminPin();
+    await clearScannerSession();
+    await clearToken();
   }
+  // Standalone APKs cannot discover Metro: reset must clear the stale URL.
+  if (discovered) {
+    await AsyncStorage.removeItem(KEY_API_BASE_URL_MODE);
+  } else {
+    await AsyncStorage.multiRemove([KEY_API_BASE_URL_MODE, KEY_API_BASE_URL]);
+  }
+  sessionBaseUrl = null;
 }
-
 /**
  * 33-QA (I16): a direct health probe against a base URL — shared by the
  * Settings connection pill (the Admin screen keeps its own stricter
