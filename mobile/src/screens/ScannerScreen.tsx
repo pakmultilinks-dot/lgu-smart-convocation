@@ -1105,6 +1105,12 @@ export function ScannerScreen() {
             />
             {loginError ? <Text style={styles.promptError}>{loginError}</Text> : null}
             <AppButton
+              label="Connect to demo server"
+              icon="cloud-outline"
+              variant="secondary"
+              onPress={() => router.push("/connect-server")}
+            />
+            <AppButton
               label={loginBusy ? "Signing in…" : "Sign in"}
               icon="log-in"
               onPress={() => void submitLogin()}
