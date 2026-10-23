@@ -121,6 +121,7 @@ export function HomeScreen() {
     useCallback(() => {
       let cancelled = false;
       void refresh();
+      void loadGates();
       void getApiBaseUrl().then((url) => {
         if (!cancelled) setBackendConfigured(url.length > 0);
       });
@@ -141,7 +142,7 @@ export function HomeScreen() {
       return () => {
         cancelled = true;
       };
-    }, [refresh]),
+    }, [refresh, loadGates]),
   );
 
   const expected = summary?.expected_attendance ?? 0;
