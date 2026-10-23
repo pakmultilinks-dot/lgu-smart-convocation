@@ -1,0 +1,31 @@
+name: Free demo backend three-role authentication
+
+on:
+  pull_request:
+    paths:
+      - "app/scripts/create_preview_demo.py"
+      - "app/scripts/pythonanywhere_preview_wsgi.py"
+      - "app/tests/test_preview_demo_accounts.py"
+      - "app/tests/test_pythonanywhere_preview.py"
+      - ".github/workflows/pythonanywhere-demo-preview.yml"
+      - "docs/FREE_PYTHONANYWHERE_DEMO.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  synthetic-wsgi:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install backend deps only
+        run: python -m pip install -r app/requirements.txt
+      - name: Verify generated private accounts and safety boundaries
+        run: python -m unittest discover -s app/tests -p "test_preview_demo_accounts.py" -v
+      - name: Verify actual Flask login routes through synthetic WSGI
+        run: python -m unittest discover -s app/tests -p "test_pythonanywhere_preview.py" -v
