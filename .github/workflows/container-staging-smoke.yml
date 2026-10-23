@@ -1,0 +1,76 @@
+name: Staging container and startup safety
+
+on:
+  pull_request:
+    paths:
+      - "Dockerfile"
+      - ".dockerignore"
+      - "app/requirements-server.txt"
+      - "app/run.py"
+      - "app/startup_schema.py"
+      - "app/tests/test_container_deployment_contract.py"
+      - ".github/workflows/container-staging-smoke.yml"
+      - "docs/CONTAINER_STAGING.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  container-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Static build contract (no databases)
+        run: python -m unittest discover -s app/tests -p 'test_container_deployment_contract.py' -v
+      - name: Build image without secrets, data, or uploads
+        run: docker build --tag lgu-staging-smoke:ci .
+      - name: Synthetic isolated development service responds
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run -d --rm --name lgu-staging-smoke \
+            --read-only --tmpfs /tmp \
+            -e LGU_APP_ENV=development \
+            -e LGU_ALLOW_DEMO_SECRETS=1 \
+            -e LGU_DB_PATH=/tmp/lgu-staging-ci.sqlite3 \
+            -p 127.0.0.1:18700:8000 lgu-staging-smoke:ci
+          trap 'docker logs lgu-staging-smoke || true; docker stop lgu-staging-smoke || true' EXIT
+          for i in $(seq 1 40); do
+            if curl -fsS http://127.0.0.1:18700/api/health > /tmp/lgu-staging-health.json; then
+              break
+            fi
+            sleep 1
+          done
+          python -c 'import json; data=json.load(open("/tmp/lgu-staging-health.json")); assert data.get("ok") is True; print("PASS: synthetic staging service /api/health")'
+          docker stop lgu-staging-smoke
+          trap - EXIT
+      - name: Production mode refuses missing schema without a database mount
+        shell: bash
+        run: |
+          set -euo pipefail
+          set +e
+          docker run --rm --network none \
+            -e LGU_APP_ENV=production \
+            -e LGU_COOKIE_SECURE=1 \
+            -e LGU_SECRET_KEY=CI_SESSION_KEY_ONLY_NOT_REAL_12345678901234567890 \
+            -e LGU_HMAC_SECRET=CI_QR_SIGNING_KEY_ONLY_NOT_REAL_12345678901234567890 \
+            -e LGU_ADMIN_PIN=825319 \
+            -e LGU_DB_PATH=/tmp/absent-synthetic-ci.sqlite3 \
+            lgu-staging-smoke:ci > /tmp/lgu-expected-refusal.log 2>&1
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            echo "ERROR: unprovisioned production service unexpectedly started"
+            exit 1
+          fi
+          if ! grep -q 'schema cannot be verified read-only' /tmp/lgu-expected-refusal.log; then
+            echo "ERROR: production refusal did not reach schema gate"
+            cat /tmp/lgu-expected-refusal.log
+            exit 1
+          fi
+          echo "PASS: protected production start refused missing database before bootstrap"
