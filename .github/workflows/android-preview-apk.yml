@@ -1,0 +1,99 @@
+name: Free installable Android preview APK
+
+on:
+  pull_request:
+    paths:
+      - "mobile/**"
+      - ".github/workflows/android-preview-apk.yml"
+      - "docs/ANDROID_PREVIEW_ACCEPTANCE.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-preview-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    env:
+      CI: "1"
+      EXPO_NO_TELEMETRY: "1"
+      EXPO_NO_DEPLOY: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+      # GitHub-hosted ubuntu-latest already provides Android SDK.
+      # android-actions/setup-android@v3 calls obsolete "sdkmanager tools"
+      # which fails on the current command-line tools repository (Oct 2026).
+      - name: Check GitHub-hosted Android SDK
+        shell: bash
+        run: |
+          test -d "${ANDROID_HOME}/platforms"
+          test -d "${ANDROID_HOME}/build-tools"
+          echo "Using preinstalled Android SDK"
+      - name: Install locked Expo packages
+        working-directory: mobile
+        run: npm ci
+      - name: Check native-target source
+        working-directory: mobile
+        run: |
+          npm run tsc
+          npm run lint
+          npx expo export --platform android --output-dir dist-ci-android
+          node scripts/check-release-export.mjs dist-ci-android
+      - name: Assign isolated preview app identity (CI checkout only)
+        working-directory: mobile
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+          const file = "app.json";
+          const settings = JSON.parse(fs.readFileSync(file, "utf8"));
+          settings.expo.name = "LGU Convocation Preview";
+          settings.expo.android.package = "pk.edu.lgu.smartconvocation.preview";
+          // Preview must connect to an HTTPS synthetic staging backend.
+          settings.expo.android.usesCleartextTraffic = false;
+          fs.writeFileSync(file, JSON.stringify(settings, null, 2) + "\n");
+          if (!settings.expo.android.package.endsWith(".preview")) {
+            throw new Error("Preview app package identity was not isolated");
+          }
+          console.log("Preview build identity set; no server URL or secret embedded");
+          NODE
+      - name: Generate native Android project without Expo account credentials
+        working-directory: mobile
+        run: npx expo prebuild --platform android --non-interactive --no-install
+      - name: Compile standalone Android release APK
+        working-directory: mobile/android
+        shell: bash
+        run: |
+          chmod +x ./gradlew
+          ./gradlew --no-daemon --stacktrace :app:assembleRelease
+      - name: Confirm APK exists and its Android signature is valid
+        shell: bash
+        run: |
+          set -euo pipefail
+          apk=mobile/android/app/build/outputs/apk/release/app-release.apk
+          test -s "$apk"
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner=$(find "$sdk/build-tools" -name apksigner -type f | sort -V | tail -n 1)
+          test -x "$apksigner"
+          "$apksigner" verify --verbose "$apk"
+          mkdir -p preview-artifact
+          cp "$apk" preview-artifact/LGU-Smart-Convocation-Preview.apk
+          sha256sum preview-artifact/LGU-Smart-Convocation-Preview.apk
+          echo "APK compiled and signature validated. Device/camera tests are still NOT verified."
+      - name: Upload test APK for manual installation
+        uses: actions/upload-artifact@v4
+        with:
+          name: LGU-Smart-Convocation-Preview-APK
+          path: preview-artifact/LGU-Smart-Convocation-Preview.apk
+          if-no-files-found: error
+          retention-days: 7
