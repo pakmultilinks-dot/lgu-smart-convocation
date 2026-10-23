@@ -239,6 +239,8 @@ export function AdminScreen() {
       if (!reachable) return;
       await setApiBaseUrl(trimmed);
       setMode("custom");
+    } catch (e) {
+      setUrlError(e instanceof Error ? e.message : "Could not save connection.");
     } finally {
       setBusy(false);
     }
