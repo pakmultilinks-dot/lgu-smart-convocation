@@ -11,13 +11,15 @@ export const STUDENT_PUBLIC_ROUTES = new Set(["index", "(student)", "welcome", "
 export function StudentRouteGate({ children }: { children: ReactNode }) {
   const segments = useSegments() as readonly string[];
   const isPublic = STUDENT_PUBLIC_ROUTES.has(segments[segments.length - 1] ?? "index");
+  return isPublic ? <>{children}</> : <AuthenticatedStudentGate>{children}</AuthenticatedStudentGate>;
+}
+
+function AuthenticatedStudentGate({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<"checking" | "ready" | "missing" | "error">("checking");
   const [error, setError] = useState("");
   const [retry, setRetry] = useState(0);
   useEffect(() => {
     let active = true;
-    setStatus("checking");
-    if (isPublic) return;
     void (async () => {
       try {
         const token = await getToken();
@@ -35,12 +37,12 @@ export function StudentRouteGate({ children }: { children: ReactNode }) {
       }
     })();
     return () => { active = false; };
-  }, [isPublic, retry]);
-  if (isPublic || status === "ready") return <>{children}</>;
+  }, [retry]);
+  if (status === "ready") return <>{children}</>;
   if (status === "missing") return <Redirect href="/(student)/welcome" />;
   return <Screen>
     {status === "checking" ? <LoadingState label="Opening your account..." /> :
-      <><ErrorState title="Unable to reach your account" body={error} onRetry={() => setRetry((value) => value + 1)} />
+      <><ErrorState title="Unable to reach your account" body={error} onRetry={() => { setStatus("checking"); setRetry((value) => value + 1); }} />
         <AppButton label="Connection settings" variant="secondary" onPress={() => router.push("/connect-server")} />
         <AppButton label="Back to welcome" variant="ghost" onPress={() => router.replace("/(student)/welcome")} /></>}
   </Screen>;
