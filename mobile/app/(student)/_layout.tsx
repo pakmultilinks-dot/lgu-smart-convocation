@@ -4,6 +4,7 @@ import type { BottomTabBarProps } from "expo-router/js-tabs";
 import type { ColorValue } from "react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StudentRouteGate, STUDENT_PUBLIC_ROUTES } from "../../src/components/StudentRouteGate";
 import { colors, fonts, radius } from "../../src/theme";
 
 /**
@@ -59,6 +60,7 @@ function tabIcon(name: keyof typeof Ionicons.glyphMap) {
 /** Paper tab bar mirroring the volunteer shell: filtered visible routes,
  *  PARENT_OF active mapping, safe-area bottom padding, a11y semantics. */
 function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarProps) {
+  if (STUDENT_PUBLIC_ROUTES.has(state.routes[state.index]?.name ?? "index")) return null;
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {state.routes
@@ -116,6 +118,7 @@ function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarP
 export default function StudentTabLayout() {
   const insets = useSafeAreaInsets();
   return (
+    <StudentRouteGate>
     <Tabs
       tabBar={(props) => <StudentTabBar {...props} insets={insets} />}
       screenOptions={{
@@ -142,7 +145,7 @@ export default function StudentTabLayout() {
         options={{
           title: "My Registration",
           tabBarLabel: "Registration",
-          tabBarIcon: tabIcon("person"),
+          tabBarIcon: tabIcon("document-text"),
         }}
       />
       <Tabs.Screen
@@ -156,9 +159,9 @@ export default function StudentTabLayout() {
       <Tabs.Screen
         name="more"
         options={{
-          title: "More",
-          tabBarLabel: "More",
-          tabBarIcon: tabIcon("ellipsis-horizontal"),
+          title: "Account",
+          tabBarLabel: "Account",
+          tabBarIcon: tabIcon("person-circle"),
         }}
       />
       {/* Hidden secondary/auth routes — reached from Registration/More or
@@ -177,13 +180,14 @@ export default function StudentTabLayout() {
       <Tabs.Screen name="login" options={{ title: "Sign in", href: null, headerShown: false }} />
       <Tabs.Screen name="index" options={{ title: "Entry", href: null, headerShown: false }} />
     </Tabs>
+    </StudentRouteGate>
   );
 }
 
 const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
-    backgroundColor: colors.paper,
+    backgroundColor: "#FFFFFF",
     borderTopColor: colors.track,
     borderTopWidth: 1,
     paddingTop: 6,

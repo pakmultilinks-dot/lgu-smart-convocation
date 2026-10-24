@@ -256,10 +256,6 @@ export default function StudentHome() {
           }
         />
       </SectionCard>
-      <Text style={styles.hint}>
-        The student API reports no separate last-status-check time — status is read live at
-        each refresh.
-      </Text>
 
       {/* Primary actions, right next to the status. */}
       <AppButton

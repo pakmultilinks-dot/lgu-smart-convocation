@@ -457,6 +457,7 @@ export function Field({
     <View style={[styles.fieldWrap, style]}>
       {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <TextInput
+          accessibilityLabel={label}
         placeholderTextColor={colors.muted}
         {...inputProps}
         style={[styles.input, !!error && styles.inputError]}
