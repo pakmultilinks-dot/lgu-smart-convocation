@@ -19,7 +19,7 @@ export default function StudentMore() {
     finally { router.replace("/(student)/welcome"); setSigningOut(false); }
   };
   const row = (title: string, icon: keyof typeof Ionicons.glyphMap, path: Destination) =>
-    <Pressable accessibilityRole="button" key={title} onPress={() => router.push(path)} style={styles.row}>
+    <Pressable accessibilityRole="button" accessibilityLabel={title} key={title} onPress={() => router.push(path)} style={styles.row}>
       <View style={styles.icon}><Ionicons name={icon} size={20} color={colors.ink} /></View>
       <Text style={styles.label}>{title}</Text><Ionicons name="chevron-forward" size={17} color={colors.muted} />
     </Pressable>;
@@ -42,7 +42,7 @@ export default function StudentMore() {
       {row("Connection settings", "settings-outline", "/connect-server")}
       {row("Staff & event access", "people-outline", "/event-tools")}
     </View>
-    <Pressable accessibilityRole="button" disabled={signingOut} onPress={() => void signOut()} style={styles.signout}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={signingOut} onPress={() => void signOut()} style={styles.signout}>
       <Ionicons name="log-out-outline" size={20} color={colors.invalid} /><Text style={styles.signoutText}>{signingOut ? "Signing out..." : "Sign out"}</Text>
     </Pressable>
   </Screen></StudentRouteGate>;

@@ -40,7 +40,7 @@ export function StudentWelcome() {
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
       <Pressable accessibilityRole="button" onPress={() => router.push("/(student)/recovery")} style={styles.link}><Text style={styles.linkText}>Forgot your password?</Text></Pressable>
     </View>
-    <Pressable accessibilityRole="button" onPress={() => router.push("/event-tools")} style={styles.staff}>
+    <Pressable accessibilityRole="button" accessibilityLabel="Staff & event access" onPress={() => router.push("/event-tools")} style={styles.staff}>
       <Ionicons name="people-outline" size={20} color={colors.ink} /><Text style={styles.staffText}>Staff & event access</Text><Ionicons name="chevron-forward" size={18} color={colors.muted} />
     </Pressable>
   </Screen>;
