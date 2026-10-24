@@ -25,19 +25,19 @@ const CHOICES: Choice[] = [
   {
     mode: "student",
     title: "Student Portal",
-    subtitle: "Your registration, profile, entry pass and university updates.",
+    subtitle: "Registration, updates and your personal QR entry pass.",
     icon: "school-outline",
   },
   {
     mode: "volunteer",
     title: "Volunteer Operations",
-    subtitle: "Gate scanning, guest registration and attendance operations.",
+    subtitle: "Check-in, guest passes and gate operations.",
     icon: "qr-code-outline",
   },
   {
     mode: "liveboard",
     title: "Live Dashboard",
-    subtitle: "A live view of convocation attendance for event displays.",
+    subtitle: "Live admissions and attendance for event screens.",
     icon: "tv-outline",
   },
 ];
@@ -119,29 +119,55 @@ export default function ModePickerScreen() {
   return (
     <Screen>
       <View style={styles.top}>
-        <LguMark size={56} />
+        <LguMark size={44} />
         <View style={styles.brandText}>
           <Text style={styles.university}>{cfg?.university || UNIVERSITY_NAME}</Text>
           <Text style={styles.title}>{APP_TITLE_SHORT}</Text>
         </View>
       </View>
       <View style={styles.intro}>
-        <Text style={styles.eyebrow}>YOUR CONVOCATION, CONNECTED</Text>
-        <Text style={styles.heading}>Start here.</Text>
-        <Text style={styles.description}>Access your student portal or choose an event dashboard.</Text>
+        <Text style={styles.eyebrow}>ONE EVENT. EVERYTHING IN ONE PLACE.</Text>
+        <Text style={styles.heading}>Your convocation, simplified.</Text>
+        <Text style={styles.description}>Students, volunteers and event teams each have their own workspace.</Text>
         <View style={styles.rule} />
       </View>
 
+      <View style={styles.connectionPanel}>
+        <View style={styles.connectionHeading}>
+          <Ionicons name={connection === "online" ? "cloud-done-outline" : "cloud-offline-outline"}
+            size={18} color={connection === "offline" ? colors.invalid : colors.ink} />
+          <Text style={styles.connectionTitle}>{connection === "online" ? "Connected to university server" :
+            connection === "checking" ? "Checking university server..." : "Server connection required"}</Text>
+        </View>
+        {connection === "offline" ? (
+          <Text style={styles.connectionNote}>Sign-in and live event tools need a reachable LGU server.</Text>
+        ) : null}
+        <View style={styles.networkActions}>
+          {connection === "offline" ? (
+            <Pressable accessibilityRole="button" accessibilityLabel="Retry university server connection"
+              style={styles.networkAction} onPress={refresh}>
+              <Ionicons name="refresh" size={16} color={colors.ink} />
+              <Text style={styles.networkActionText}>Retry</Text>
+            </Pressable>
+          ) : null}
+          <Pressable accessibilityRole="button" accessibilityLabel="Open server connection settings"
+            style={styles.networkAction} onPress={() => router.push("/connect-server")}>
+            <Ionicons name="settings-outline" size={16} color={colors.ink} />
+            <Text style={styles.networkActionText}>{connection === "online" ? "Server settings" : "Connect to server"}</Text>
+            <Ionicons name="chevron-forward" size={15} color={colors.ink} />
+          </Pressable>
+        </View>
+      </View>
       <View style={styles.choices}>
         {CHOICES.map((choice) => {
           const active = busy === choice.mode;
           const student = choice.mode === "student";
           const unavailable = !student && access?.[choice.mode] === false;
-          const status = student ? "Always enabled" : connection === "checking" ? "Checking availability" :
+          const status = student ? "Student access" : connection === "checking" ? "Checking availability" :
             connection === "offline" ? "Connection required" : unavailable ? "Disabled by admin" : "Enabled";
           return (
             <View key={choice.mode}>
-              {choice.mode === "volunteer" ? <Text style={styles.sectionLabel}>EVENT DAY TOOLS</Text> : null}
+              {choice.mode === "volunteer" ? <Text style={styles.sectionLabel}>EVENT OPERATIONS</Text> : null}
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`${choice.title}. ${status}`}
@@ -167,26 +193,12 @@ export default function ModePickerScreen() {
                     color={student ? colors.paper : colors.ink} />
                 </View>
               </Pressable>
-              {student ? <Text style={styles.registrationNote}>New here? Register using the details on your official university record.</Text> : null}
+              
             </View>
           );
         })}
       </View>
       {accessError ? <Text accessibilityRole="alert" style={styles.error}>{accessError}</Text> : null}
-      <View style={styles.connectionPanel}>
-        <View style={styles.connectionHeading}>
-          <Ionicons name={connection === "online" ? "cloud-done-outline" : "cloud-offline-outline"}
-            size={18} color={colors.ink} />
-          <Text style={styles.actionText}>{connection === "online" ? "Connected to university server" :
-            connection === "checking" ? "Checking server connection…" : "Server connection needed"}</Text>
-        </View>
-        {connection === "offline" ? <>
-          <Text style={styles.connectionNote}>Connect to load your records and sign in. Student registration requirements remain the same.</Text>
-          <AppButton label="Retry connection" variant="secondary" onPress={refresh} />
-        </> : null}
-        <AppButton label={connection === "online" ? "Connection settings" : "Connect to server"}
-          variant="ghost" onPress={() => router.push("/connect-server")} />
-      </View>
       <AppButton label="Administrator access" variant="ghost" onPress={() => router.push("/administration")} />
       <Text style={styles.footer}>{cfg?.event.name || eventTitle()}</Text>
       {/* 33-QA (I21): explicit confirm step before the device role
@@ -241,27 +253,31 @@ const styles = StyleSheet.create({
   brandText: { flex: 1, gap: spacing.xs },
   title: { color: colors.ink, fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.4 },
   university: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13 },
-  intro: { marginTop: spacing.xl, marginBottom: spacing.lg },
+  intro: { marginTop: spacing.lg, marginBottom: spacing.md },
   eyebrow: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8 },
-  heading: { color: colors.ink, fontFamily: fonts.display, fontSize: 46, letterSpacing: -1.2, marginTop: spacing.sm },
-  description: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 15, lineHeight: 23, marginTop: spacing.sm },
-  rule: { width: 56, height: 2, backgroundColor: colors.gold, marginTop: spacing.lg },
-  choices: { gap: spacing.md },
-  sectionLabel: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8, marginTop: spacing.lg, marginBottom: spacing.md },
-  choice: { borderColor: colors.track, borderWidth: 1, borderRadius: radius.lg, padding: spacing.lg },
+  heading: { color: colors.ink, fontFamily: fonts.display, fontSize: 24, letterSpacing: -0.4, marginTop: spacing.sm },
+  description: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginTop: spacing.xs },
+  rule: { width: 56, height: 2, backgroundColor: colors.gold, marginTop: spacing.md },
+  choices: { gap: spacing.sm },
+  sectionLabel: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8, marginTop: spacing.md, marginBottom: spacing.sm },
+  choice: { borderColor: colors.track, borderWidth: 1, borderRadius: radius.lg, padding: spacing.md },
   studentChoice: { backgroundColor: colors.ink, borderColor: colors.ink },
-  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.md },
+  cardTop: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: spacing.sm, marginBottom: spacing.sm },
   status: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13 },
   onDark: { color: colors.paper },
   choiceTitle: { color: colors.ink, fontFamily: fonts.display, fontSize: 15 },
   studentTitle: { color: colors.paper, fontSize: 24 },
-  choiceSubtitle: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 15, lineHeight: 23, marginTop: spacing.sm },
-  cardAction: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, minHeight: 44, marginTop: spacing.md },
+  choiceSubtitle: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginTop: spacing.xs },
+  cardAction: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", gap: spacing.md, minHeight: 40, marginTop: spacing.sm },
   actionText: { color: colors.ink, fontFamily: fonts.displayMedium, fontSize: 13, flexShrink: 1 },
   registrationNote: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginTop: spacing.sm, paddingHorizontal: spacing.xs },
   choicePressed: { opacity: 0.8 },
   choiceBusy: { opacity: 0.65 },
-  connectionPanel: { borderTopWidth: 1, borderTopColor: colors.track, marginTop: spacing.xl, paddingTop: spacing.lg, gap: spacing.sm },
+  connectionPanel: { borderWidth: 1, borderColor: colors.track, borderRadius: radius.md, padding: spacing.md, gap: spacing.sm, marginBottom: spacing.md },
+  connectionTitle: { flexShrink: 1, color: colors.ink, fontFamily: fonts.display, fontSize: 13 },
+  networkActions: { flexDirection: "row", alignItems: "center", gap: spacing.md, flexWrap: "wrap" },
+  networkAction: { flexDirection: "row", alignItems: "center", gap: spacing.xs, minHeight: 44, paddingRight: spacing.sm },
+  networkActionText: { color: colors.ink, fontFamily: fonts.displayMedium, fontSize: 13 },
   connectionHeading: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   connectionNote: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20 },
   error: { color: colors.invalid, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginTop: spacing.md },

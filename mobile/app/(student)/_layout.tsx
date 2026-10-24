@@ -59,6 +59,9 @@ function tabIcon(name: keyof typeof Ionicons.glyphMap) {
 /** Paper tab bar mirroring the volunteer shell: filtered visible routes,
  *  PARENT_OF active mapping, safe-area bottom padding, a11y semantics. */
 function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarProps) {
+  // Never show authenticated tabs on the student entry, login or welcome routes.
+  const currentRoute = state.routes[state.index]?.name ?? "";
+  if (PARENT_OF[currentRoute] === "") return null;
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {state.routes
