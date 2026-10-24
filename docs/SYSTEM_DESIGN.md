@@ -2,16 +2,20 @@
 
 ## Product entry and navigation
 
-The landing screen presents Student Portal first. It carries registration,
-profile, entry pass, updates, and student support. Volunteer Operations and Live
-Dashboard are secondary event tools with separate availability controls.
-Administration and connection recovery remain reachable outside those tools.
-The app name is LGU Convocation in every build variant.
+The landing and signed-out student entry share StudentWelcome. Sign in and Create
+student account are the primary actions. Staff & event access opens a separate
+compact tools screen containing Volunteer Operations, Live Dashboard and admin.
+Connection settings is a utility action. The student landing does not poll event
+availability or display server setup errors. The name is LGU Convocation in every build.
 
-Choosing a dashboard changes a device preference, not its permissions. A role
-change requires confirmation; each server API still authenticates its caller.
+Choosing an event dashboard changes a device preference, not its permissions.
+Event role changes require confirmation; signing in is an explicit student choice.
+Each server API still authenticates its caller.
 Disabled and disconnected are different states, with different recovery actions.
 Entry screens scroll on small devices and large system text settings.
+StudentRouteGate separates public login/activation from protected content and
+verifies /me before mounting account content. Auth screens have no bottom tabs.
+Authenticated navigation has Home, Registration, Pass, Updates and Account.
 
 ```mermaid
 flowchart TD
@@ -100,3 +104,19 @@ overlap, background pause, foreground refresh, offline retention and cleanup.
 
 TypeScript, lint and full Android bundling cover mobile integration. Visual web
 and physical-phone acceptance are separate checks; a bundle is not visual QA.
+
+## Research and visual acceptance
+
+Android's [navigation patterns](https://developer.android.com/design/ui/mobile/guides/layout-and-content/layout-and-nav-patterns)
+inform the five peer destinations in authenticated navigation. NN/g's
+[progressive disclosure](https://www.nngroup.com/articles/progressive-disclosure/)
+informs separation of occasional staff tools from everyday student actions.
+Expo's [authentication guidance](https://docs.expo.dev/router/advanced/authentication/)
+informs the public/protected boundary; server authorization remains required.
+
+The visual_acceptance.py script runs the actual Expo web client with a new
+synthetic backend. It checks 360x800 and 390x844 layouts, student activation within
+the initial viewport, absence of tabs on auth routes, service setup through the UI,
+real student login, account navigation, and administrator disabling of event tools.
+Screenshots are uploaded by Mobile visual acceptance CI. They validate browser
+layout; real Android camera and device testing remain separate.
