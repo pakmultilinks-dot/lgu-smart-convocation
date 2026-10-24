@@ -25,6 +25,31 @@ import scanner_auth
 
 bp = Blueprint("main", __name__)
 
+# These controls govern operational surfaces, never student or admin APIs.
+# Sync is refused as a whole so clients retain queued scans for reopening.
+_VOLUNTEER_ENDPOINTS = {
+    "scan_page", "api_scanner_login", "api_scan", "api_sync", "guests",
+    "guest_directory", "guest_pass", "api_guests", "api_register_guest",
+    "api_guest_pass", "api_revoke_guest", "api_search",
+    "api_dashboard_summary",
+}
+_LIVE_ENDPOINTS = {"dashboard", "api_dashboard"}
+
+
+@bp.before_request
+def enforce_dashboard_access():
+    if request.method == "OPTIONS":
+        return None
+    endpoint = (request.endpoint or "").removeprefix("main.")
+    mode = ("volunteer" if endpoint in _VOLUNTEER_ENDPOINTS else
+            "liveboard" if endpoint in _LIVE_ENDPOINTS else None)
+    if mode and database.get_settings()[mode + "_enabled"] != "true":
+        return jsonify({"ok": False, "code": "dashboard_disabled",
+                        "dashboard": mode,
+                        "error": ("Volunteer Operations" if mode == "volunteer"
+                                  else "Live Dashboard") +
+                                 " is currently disabled by the administrator."}), 403
+
 # --- Master audit: scan atomicity (V-RACE-01/02/03) -----------------------
 # The person-state check and the scan insert must be atomic per process:
 # concurrent scans of the same person must not both pass the "already
@@ -360,6 +385,13 @@ def api_config():
     return jsonify(models.app_config_payload())
 
 
+@bp.route("/api/dashboard-access")
+def api_dashboard_access():
+    response = jsonify(models.dashboard_access())
+    response.headers["Cache-Control"] = "no-store"
+    return response
+
+
 # ---------------------------------------------------------------- settings
 # Event-level settings (convocation name/year/datetime/venue/university),
 # editable via the mobile Admin screen. Administrator PIN required (35K T):
@@ -437,6 +469,9 @@ def api_put_settings():
                             "error": "Unknown setting: %s" % key}), 400
         if key == "convocation_year" and type(value) is int:
             value = str(value)
+        if key in ("volunteer_enabled", "liveboard_enabled"):
+            if value not in ("true", "false") or not isinstance(value, str):
+                return _bad_scan_request("%s must be true or false text." % key)
         if not isinstance(value, str):
             return _bad_scan_request("%s must be text." % key)
         updates[key] = value
@@ -1610,7 +1645,7 @@ def create_app():
             # Phase 35G: POST /api/broadcasts carries an X-Admin-Pin header,
             # so browsers must allow it in the preflight (web / Metro target).
             # Phase 5: the student API authenticates with Authorization.
-            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Admin-Pin, Authorization"
+            response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Admin-Pin, X-Scanner-Token, Authorization"
             response.headers["Vary"] = "Origin"
         # Master audit V-HEAD-01: minimal hardening headers. A full CSP is
         # intentionally not set (inline scripts in the templates); HSTS is

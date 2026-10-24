@@ -466,6 +466,13 @@ def queued_scan_exists(qr_id, gate_id, mode, scanned_at, volunteer):
     return row is not None
 
 
+def dashboard_access(settings=None):
+    settings = settings if settings is not None else database.get_settings()
+    return {"student": True,
+            "volunteer": settings["volunteer_enabled"] == "true",
+            "liveboard": settings["liveboard_enabled"] == "true"}
+
+
 def app_config_payload():
     """Authoritative app configuration for GET /api/config (Phase 35K).
 
@@ -484,6 +491,7 @@ def app_config_payload():
     expected = _expected_attendance()
     return {
         "app_name": config.APP_NAME,
+        "dashboard_access": dashboard_access(settings),
         "university": settings.get("university_name") or config.UNIVERSITY,
         "motto": config.MOTTO,
         "event": {

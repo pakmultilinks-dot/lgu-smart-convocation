@@ -12,15 +12,15 @@
 export const CONVOCATION_YEAR = 2026;
 
 export const UNIVERSITY_NAME = "Lahore Garrison University";
-export const APP_NAME = "LGU Smart Convocation";
+export const APP_NAME = "LGU Convocation";
 export const MOTTO = "Nurturing the Future of Pakistan in an Excellent Environment";
 
 // Official naming, used verbatim everywhere the product names itself:
 // full institutional name on landings/about, short form on live surfaces.
-export const APP_TITLE_FULL = "Lahore Garrison University Smart Convocation";
-export const APP_TITLE_SHORT = "LGU Smart Convocation";
+export const APP_TITLE_FULL = "Lahore Garrison University Convocation";
+export const APP_TITLE_SHORT = "LGU Convocation";
 
-/** Event identifier: "LGU Smart Convocation 2026" (landing fallback). */
+/** Event identifier: "LGU Convocation 2026" (landing fallback). */
 export function eventTitle(year: number = CONVOCATION_YEAR): string {
   return `${APP_TITLE_SHORT} ${year}`;
 }

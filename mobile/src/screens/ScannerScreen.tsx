@@ -808,16 +808,16 @@ export function ScannerScreen() {
       <Screen>
         <AppHeader
           title={connectionConfigured === false ? "Connect to server" : "Server unavailable"}
-          subtitle="Scanner access needs a working demo server before sign-in."
+          subtitle="Scanner access needs a working server before sign-in."
         />
         <SectionCard>
           <Text style={styles.permissionBody}>
             {connectionConfigured === false
-              ? "No demo server is configured. Connect first, then sign in with your scanner account."
+              ? "No server is configured. Connect first, then sign in with your scanner account."
               : "The configured server is not responding. Check the address and your internet connection."}
           </Text>
           <AppButton
-            label="Connect to demo server"
+            label="Connect to server"
             icon="cloud-outline"
             onPress={() => router.push("/connect-server")}
           />
@@ -1160,7 +1160,7 @@ export function ScannerScreen() {
             />
             {loginError ? <Text style={styles.promptError}>{loginError}</Text> : null}
             <AppButton
-              label="Connect to demo server"
+              label="Connect to server"
               icon="cloud-outline"
               variant="secondary"
               onPress={() => {

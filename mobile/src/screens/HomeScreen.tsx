@@ -239,7 +239,7 @@ export function HomeScreen() {
           title={backendConfigured === false ? "Server not connected" : "Server offline"}
           body={
             backendConfigured === false
-              ? "Connect to a demo server to load gates and sign in."
+              ? "Connect to the server to load gates and sign in."
               : queued > 0
                 ? "Pending scans stay on this device until you reconnect and sync."
                 : "Live attendance and gate data are unavailable."
@@ -248,7 +248,7 @@ export function HomeScreen() {
       ) : null}
       {backendConfigured === false ? (
         <AppButton
-          label="Connect to demo server"
+          label="Connect to server"
           variant="secondary"
           icon="cloud-outline"
           onPress={() => router.push("/connect-server")}

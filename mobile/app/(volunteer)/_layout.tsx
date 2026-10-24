@@ -4,6 +4,7 @@ import type { BottomTabBarProps } from "expo-router/js-tabs";
 import type { ColorValue } from "react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { DashboardAccessGate } from "../../src/components/DashboardAccessGate";
 import { colors, fonts, radius } from "../../src/theme";
 
 /**
@@ -127,6 +128,7 @@ function InstitutionalTabBar({ state, descriptors, insets, navigation }: BottomT
 export default function VolunteerTabLayout() {
   const insets = useSafeAreaInsets();
   return (
+    <DashboardAccessGate mode="volunteer">
     <Tabs
       tabBar={(props) => (
         <InstitutionalTabBar {...props} insets={insets} />
@@ -186,6 +188,7 @@ export default function VolunteerTabLayout() {
         options={{ title: "Announcement", href: null, headerShown: false }}
       />
     </Tabs>
+    </DashboardAccessGate>
   );
 }
 

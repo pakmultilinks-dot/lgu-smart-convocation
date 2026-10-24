@@ -387,17 +387,18 @@ async function main() {
   }
 
   console.log("Offline sync");
-  if (studentPayload && guest) {
-    const syncRes = await api.sync([
+  if (guest) {
+    const items = [
       { payload: guest.payload, gate_id: gateId, mode: "entry", volunteer: "ApiTest", scanned_at: nowStamp() },
-      { payload: studentPayload, gate_id: gateId, mode: "entry", volunteer: "ApiTest", scanned_at: nowStamp() },
-    ]);
-    check("POST /api/sync uploads 2 queued scans", syncRes.synced === 2, JSON.stringify(syncRes.synced));
+    ];
+    if (studentPayload) items.push({ payload: studentPayload, gate_id: gateId, mode: "entry", volunteer: "ApiTest", scanned_at: nowStamp() });
+    const syncRes = await api.sync(items);
+    check("POST /api/sync uploads queued scans", syncRes.synced === items.length, JSON.stringify(syncRes.synced));
     const titles = syncRes.results.map((r) => r.result.title);
     check("sync records the guest entry", titles.includes("GUEST ENTRY RECORDED"), titles.join(", "));
-    check("sync records the student entry", titles.includes("ENTRY RECORDED"), titles.join(", "));
+    if (studentPayload) check("sync records the student entry", titles.includes("ENTRY RECORDED"), titles.join(", "));
   } else {
-    skip("offline sync", "needs a student payload and a registered guest");
+    skip("offline sync", "needs a registered guest");
   }
 
   console.log("Scan rules");

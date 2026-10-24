@@ -217,15 +217,22 @@ export function GuestsScreen() {
             : "Guest list"}
         </SectionEyebrow>
         {listError ? (
-          <ErrorState
-            title={needsSignIn ? "Sign in to view guests" : "Guest list unavailable"}
-            body={
-              needsSignIn
-                ? "The guest list is restricted to signed-in scanner staff. Sign in on the Scanner tab, then retry."
-                : listError
-            }
-            onRetry={() => void loadGuests()}
-          />
+          <>
+            <ErrorState
+              title={needsSignIn ? "Sign in to view guests" : "Guest list unavailable"}
+              body={
+                needsSignIn
+                  ? "The guest list is restricted to signed-in scanner staff. Sign in on the Scanner tab, then retry."
+                  : listError
+              }
+              onRetry={() => void loadGuests()}
+            />
+            <AppButton
+              label={needsSignIn ? "Sign in to scanner" : "Connect to server"}
+              variant="secondary"
+              onPress={() => router.push(needsSignIn ? "/(volunteer)/scanner" : "/connect-server")}
+            />
+          </>
         ) : guests === null ? (
           <LoadingState label="Loading guests..." />
         ) : guests.length === 0 ? (

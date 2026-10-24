@@ -101,7 +101,19 @@ export interface DashboardData {
 }
 
 /** Event identity + shared operational config (GET /api/config, 35K). */
+export interface DashboardAccess { student: true; volunteer: boolean; liveboard: boolean }
+
+export async function fetchDashboardAccess(): Promise<DashboardAccess> {
+  const access = await request<DashboardAccess>("/api/dashboard-access");
+  if (!access || access.student !== true || typeof access.volunteer !== "boolean" ||
+      typeof access.liveboard !== "boolean") {
+    throw new ApiError("Dashboard availability could not be verified. Please retry.", 502);
+  }
+  return access;
+}
+
 export interface AppConfig {
+  dashboard_access?: DashboardAccess;
   app_name: string;
   university: string;
   motto: string;
@@ -285,7 +297,7 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
     // Production safety: nothing configured and no development host to
     // discover from. Sanitized message only — no URLs in user UI.
     throw new ApiError(
-      "No demo server connected. Tap Connect to demo server on the start or scanner screen.",
+      "No server connected. Tap Connect to server on the start or scanner screen.",
       0,
     );
   }
