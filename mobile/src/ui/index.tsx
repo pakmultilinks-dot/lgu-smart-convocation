@@ -1,7 +1,5 @@
-// Phase 35C institutional UI kit (Order #3).
-// Design law: paper/ink dominance, whitespace + thin/dashed rules instead of
-// card stacks, Bricolage Grotesque + DM Mono, at most one raised element per
-// screen. Status is ALWAYS carried by text (+ dot); color reinforces only.
+// Shared university UI: cool backgrounds, white groups, green actions.
+// Status always carries text; color reinforces meaning.
 
 import type { ReactNode } from "react";
 import {
@@ -1005,21 +1003,21 @@ const styles = StyleSheet.create({
   },
 
   sectionCard: {
-    backgroundColor: "transparent",
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.track,
     gap: spacing.sm,
   },
   sectionCardTint: {
-    borderTopWidth: 1,
-    borderTopColor: colors.track,
-    borderStyle: "dashed",
-    paddingTop: spacing.lg,
+    backgroundColor: colors.card,
   },
   sectionCardDark: {
     backgroundColor: colors.ink,
     borderRadius: radius.md,
   },
   sectionPad: {
-    paddingVertical: spacing.xs,
+    padding: spacing.md,
   },
 
   track: {

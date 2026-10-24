@@ -52,6 +52,11 @@ try:
             page.screenshot(path=str(OUT / ("welcome-%d.png" % width)), full_page=True)
             assert create.bounding_box()["y"] < height - 48
             assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
+            page.get_by_role("button", name="Connection settings", exact=True).click()
+            page.get_by_label("Server address", exact=True).fill("http://localhost:5000")
+            page.get_by_role("button", name="Test and save connection", exact=True).click()
+            expect(page.get_by_text("Connected to LGU Convocation. You can now sign in.", exact=True)).to_be_visible()
+            page.get_by_role("button", name="Continue", exact=True).click()
             signin.click()
             expect(page.get_by_label("University email", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Home", exact=True)).to_have_count(0)
@@ -60,13 +65,23 @@ try:
             page.get_by_label("Password", exact=True).fill(credentials["Student password"])
             page.get_by_role("button", name="Sign in", exact=True).click()
             account = page.get_by_role("button", name="Account", exact=True)
-            expect(account).to_be_visible(timeout=30000)
+            account.wait_for(state="visible", timeout=30000)
             account.click()
             expect(page.get_by_role("button", name="Profile & contact details", exact=True)).to_be_visible()
             page.screenshot(path=str(OUT / ("account-%d.png" % width)), full_page=True)
             page.get_by_role("button", name="Staff & event access", exact=True).click()
             expect(page.get_by_role("button", name="Volunteer Operations", exact=True)).to_be_visible()
+            expect(page.get_by_role("button", name="Volunteer Operations", exact=True)).to_be_enabled(timeout=20000)
             page.screenshot(path=str(OUT / ("event-tools-%d.png" % width)), full_page=True)
+            response = context.request.put("http://localhost:5000/api/settings",
+                headers={"X-Admin-Pin": credentials["Admin PIN"]},
+                data={"volunteer_enabled": "false", "liveboard_enabled": "false"})
+            assert response.ok
+            expect(page.get_by_role("button", name="Volunteer Operations", exact=True)).to_be_disabled(timeout=20000)
+            page.screenshot(path=str(OUT / ("event-tools-disabled-%d.png" % width)), full_page=True)
+            context.request.put("http://localhost:5000/api/settings",
+                headers={"X-Admin-Pin": credentials["Admin PIN"]},
+                data={"volunteer_enabled": "true", "liveboard_enabled": "true"})
             context.close()
         browser.close()
     print("PASS: phone-size layout, auth navigation, real student login and account/event tools")
@@ -74,7 +89,6 @@ except Exception:
     try:
         page.screenshot(path=str(OUT / "failure.png"), full_page=True)
         print("Failed page:", page.url)
-        print(page.locator("body").inner_text()[:3500])
     except Exception:
         pass
     raise
