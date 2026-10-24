@@ -46,10 +46,12 @@ try:
             page.goto("http://localhost:8081/mode-picker", wait_until="domcontentloaded", timeout=240000)
             signin = page.get_by_role("button", name="Sign in", exact=True)
             expect(signin).to_be_visible(timeout=120000)
+            create = page.get_by_role("button", name="Create student account", exact=True)
+            expect(create).to_be_visible(timeout=30000)
             expect(page.get_by_role("button", name="Home", exact=True)).to_have_count(0)
-            assert page.get_by_role("button", name="Create student account", exact=True).bounding_box()["y"] < height - 48
-            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             page.screenshot(path=str(OUT / ("welcome-%d.png" % width)), full_page=True)
+            assert create.bounding_box()["y"] < height - 48
+            assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
             signin.click()
             expect(page.get_by_label("University email", exact=True)).to_be_visible()
             expect(page.get_by_role("button", name="Home", exact=True)).to_have_count(0)
@@ -68,6 +70,14 @@ try:
             context.close()
         browser.close()
     print("PASS: phone-size layout, auth navigation, real student login and account/event tools")
+except Exception:
+    try:
+        page.screenshot(path=str(OUT / "failure.png"), full_page=True)
+        print("Failed page:", page.url)
+        print(page.locator("body").inner_text()[:3500])
+    except Exception:
+        pass
+    raise
 finally:
     for child in reversed(processes):
         child.terminate()
