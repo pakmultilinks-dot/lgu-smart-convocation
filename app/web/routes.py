@@ -28,7 +28,7 @@ bp = Blueprint("main", __name__)
 # These controls govern operational surfaces, never student or admin APIs.
 # Sync is refused as a whole so clients retain queued scans for reopening.
 _VOLUNTEER_ENDPOINTS = {
-    "scan_page", "api_scanner_login", "api_scan", "api_sync", "guests",
+    "scan_page", "api_scan", "api_sync", "guests",
     "guest_directory", "guest_pass", "api_guests", "api_register_guest",
     "api_guest_pass", "api_revoke_guest", "api_search",
     "api_dashboard_summary",
@@ -43,7 +43,11 @@ def enforce_dashboard_access():
     endpoint = (request.endpoint or "").removeprefix("main.")
     mode = ("volunteer" if endpoint in _VOLUNTEER_ENDPOINTS else
             "liveboard" if endpoint in _LIVE_ENDPOINTS else None)
-    if mode and database.get_settings()[mode + "_enabled"] != "true":
+    return _dashboard_access_denial(mode) if mode else None
+
+
+def _dashboard_access_denial(mode):
+    if database.get_settings()[mode + "_enabled"] != "true":
         return jsonify({"ok": False, "code": "dashboard_disabled",
                         "dashboard": mode,
                         "error": ("Volunteer Operations" if mode == "volunteer"
@@ -718,6 +722,10 @@ def api_scanner_login():
         _scan_login_record_failure()
         return jsonify({"ok": False, "code": "invalid_credentials",
                         "error": err}), 401
+    # Malformed login requests must be rejected before any database read.
+    denied = _dashboard_access_denial("volunteer")
+    if denied:
+        return denied
     scanner = scanner_auth.authenticate(username.strip(), pin)
     if not scanner:
         _scan_login_record_failure()
