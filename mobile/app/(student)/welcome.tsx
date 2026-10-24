@@ -1,5 +1,5 @@
 import { router } from "expo-router";
-import { StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { UNIVERSITY_NAME, eventTitle } from "../../src/config";
 import { colors, fonts, spacing } from "../../src/theme";
 import { AppButton, LguMark, Screen } from "../../src/ui";
@@ -9,14 +9,14 @@ export default function StudentWelcome() {
   return (
     <Screen>
       <View style={styles.top}>
-        <LguMark size={96} />
-        <Text style={styles.title}>Student Portal</Text>
+        <LguMark size={64} />
+        <Text style={styles.title}>Welcome to your student portal</Text>
         <View style={styles.rule} />
         <Text style={styles.event}>{eventTitle()}</Text>
         <Text style={styles.university}>{UNIVERSITY_NAME}</Text>
       </View>
       <View style={styles.actions}>
-        <Text style={styles.intro}>Your registration, entry pass and university updates in one place.</Text>
+        <Text style={styles.intro}>Sign in to track your registration, view your entry pass and read event updates.</Text>
         <AppButton
           label="Sign in"
           size="lg"
@@ -28,28 +28,24 @@ export default function StudentWelcome() {
           onPress={() => router.push("/(student)/verify")}
         />
         <Text style={styles.note}>Account creation requires a matching official university registration and email verification.</Text>
-        <AppButton
-          label="Connect to server"
-          variant="ghost"
-          onPress={() => router.push("/connect-server")}
-        />
-        <AppButton
-          label="Forgot password?"
-          variant="ghost"
-          onPress={() => router.push("/(student)/recovery")}
-        />
-        <AppButton
-          label="Choose dashboard"
-          variant="ghost"
-          onPress={() => router.replace("/mode-picker")}
-        />
+        <View style={styles.links}>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/connect-server")} style={styles.link}>
+            <Text style={styles.linkText}>Server settings</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/(student)/recovery")} style={styles.link}>
+            <Text style={styles.linkText}>Forgot password?</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => router.replace("/mode-picker")} style={styles.link}>
+            <Text style={styles.linkText}>Change workspace</Text>
+          </Pressable>
+        </View>
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  top: { alignItems: "center", paddingTop: spacing.xl },
+  top: { alignItems: "center", paddingTop: spacing.sm },
   title: {
     color: colors.ink,
     fontFamily: fonts.display,
@@ -78,7 +74,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.xs,
     textAlign: "center",
   },
-  actions: { gap: spacing.sm, marginTop: spacing.xl },
+  actions: { gap: spacing.sm, marginTop: spacing.lg },
+  links: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", justifyContent: "center", gap: spacing.sm, marginTop: spacing.md },
+  link: { minHeight: 44, justifyContent: "center", paddingHorizontal: spacing.sm },
+  linkText: { color: colors.ink, fontFamily: fonts.displayMedium, fontSize: 13, textDecorationLine: "underline" },
   intro: { color: colors.ink, fontFamily: fonts.displayMedium, fontSize: 15, lineHeight: 23, marginBottom: spacing.md },
-  note: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginBottom: spacing.md },
+  note: { color: colors.muted, fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, marginBottom: spacing.sm },
 });
