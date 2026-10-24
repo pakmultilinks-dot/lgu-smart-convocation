@@ -1,4 +1,5 @@
 """Check synthetic three-role demo provisioning without real student data."""
+from contextlib import closing
 import os
 from pathlib import Path
 import sqlite3
@@ -42,7 +43,7 @@ class PreviewDemoProvisioningTests(unittest.TestCase):
         self.assertIn("LGU_APP_ENV=production", env)
         student_pw = creds.split("Student password: ", 1)[1].splitlines()[0]
         scanner_pin = creds.split("Scanner PIN: ", 1)[1].splitlines()[0]
-        with sqlite3.connect(db_path) as db:
+        with closing(sqlite3.connect(db_path)) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
             self.assertEqual(version, 14)
             student_hash = db.execute(
