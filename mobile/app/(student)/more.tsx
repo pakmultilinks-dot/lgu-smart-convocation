@@ -6,6 +6,7 @@ import * as studentApi from "../../src/api/studentApi";
 import { getToken } from "../../src/store/studentSession";
 import { colors, fonts } from "../../src/theme";
 import { AppHeader, Screen } from "../../src/ui";
+import { StudentRouteGate } from "../../src/components/StudentRouteGate";
 
 type Destination = Parameters<typeof router.push>[0];
 export default function StudentMore() {
@@ -22,7 +23,7 @@ export default function StudentMore() {
       <View style={styles.icon}><Ionicons name={icon} size={20} color={colors.ink} /></View>
       <Text style={styles.label}>{title}</Text><Ionicons name="chevron-forward" size={17} color={colors.muted} />
     </Pressable>;
-  return <Screen>
+  return <StudentRouteGate><Screen>
     <AppHeader title="Account & services" subtitle="Manage your details and prepare for the day." />
     <Text style={styles.section}>YOUR ACCOUNT</Text>
     <View style={styles.group}>
@@ -44,7 +45,7 @@ export default function StudentMore() {
     <Pressable accessibilityRole="button" disabled={signingOut} onPress={() => void signOut()} style={styles.signout}>
       <Ionicons name="log-out-outline" size={20} color={colors.invalid} /><Text style={styles.signoutText}>{signingOut ? "Signing out..." : "Sign out"}</Text>
     </Pressable>
-  </Screen>;
+  </Screen></StudentRouteGate>;
 }
 const styles = StyleSheet.create({
   section: { fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8, color: colors.muted, marginBottom: -12 },

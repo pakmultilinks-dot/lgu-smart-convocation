@@ -4,7 +4,7 @@ import type { BottomTabBarProps } from "expo-router/js-tabs";
 import type { ColorValue } from "react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { StudentRouteGate, STUDENT_PUBLIC_ROUTES } from "../../src/components/StudentRouteGate";
+import { STUDENT_PUBLIC_ROUTES } from "../../src/components/StudentRouteGate";
 import { colors, fonts, radius } from "../../src/theme";
 
 /**
@@ -118,7 +118,6 @@ function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarP
 export default function StudentTabLayout() {
   const insets = useSafeAreaInsets();
   return (
-    <StudentRouteGate>
     <Tabs
       tabBar={(props) => <StudentTabBar {...props} insets={insets} />}
       screenOptions={{
@@ -180,7 +179,6 @@ export default function StudentTabLayout() {
       <Tabs.Screen name="login" options={{ title: "Sign in", href: null, headerShown: false }} />
       <Tabs.Screen name="index" options={{ title: "Entry", href: null, headerShown: false }} />
     </Tabs>
-    </StudentRouteGate>
   );
 }
 
