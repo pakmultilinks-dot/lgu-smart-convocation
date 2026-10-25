@@ -204,10 +204,66 @@ export function GuestsScreen() {
 
       {/* Top action — primary (35I T.3), no icon, never a hero card. */}
       <AppButton
-        label="+ Add guest"
+        label={formOpen ? "Cancel guest registration" : "+ Add guest"}
         variant="primary"
         onPress={() => setFormOpen((open) => !open)}
       />
+
+      {/* 2 — Registration form below the list, paper/ink, revealed by the
+          inline Add guest action. Submit/showPass logic unchanged. */}
+      {formOpen ? (
+        <SectionCard tone="tint">
+          <SectionEyebrow>Register a guest</SectionEyebrow>
+          <Field
+            label="Guest name"
+            placeholder="Full name"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+          />
+          <Field
+            label="Mobile number"
+            placeholder="03XXXXXXXXX"
+            value={phone}
+            onChangeText={setPhone}
+            keyboardType="phone-pad"
+            hint="Used to verify the pass at the gate."
+          />
+          <Field
+            label="Host roll number"
+            placeholder="LGU-2024-XXXX"
+            value={hostRoll}
+            onChangeText={(t) => setHostRoll(t.toUpperCase())}
+            autoCapitalize="characters"
+            hint="The host student must already exist in the system."
+          />
+          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
+          <AppButton
+            label={saving ? "Registering..." : "Register guest"}
+            icon="person-add-outline"
+            loading={saving}
+            onPress={() => void submit()}
+          />
+          {lastPass ? (
+            <View style={styles.passCreated}>
+              <Ionicons name="checkmark-circle" size={18} color={colors.valid} />
+              <View style={styles.flex1}>
+                <Text style={styles.passCreatedTitle}>Guest registered</Text>
+                <Text style={styles.passCreatedBody} numberOfLines={2}>
+                  Pass created. Show the QR pass to the guest now.
+                </Text>
+              </View>
+              <AppButton
+                label="Show pass"
+                variant="secondary"
+                size="md"
+                onPress={() => showPass(lastPass.gid)}
+                style={styles.passCreatedButton}
+              />
+            </View>
+          ) : null}
+        </SectionCard>
+      ) : null}
 
       {/* 1 — Guest list FIRST. */}
       <SectionCard>
@@ -388,61 +444,6 @@ export function GuestsScreen() {
         )}
       </SectionCard>
 
-      {/* 2 — Registration form below the list, paper/ink, revealed by the
-          inline Add guest action. Submit/showPass logic unchanged. */}
-      {formOpen ? (
-        <SectionCard tone="tint">
-          <SectionEyebrow>Register a guest</SectionEyebrow>
-          <Field
-            label="Guest name"
-            placeholder="Full name"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
-          <Field
-            label="Mobile number"
-            placeholder="03XXXXXXXXX"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            hint="Used to verify the pass at the gate."
-          />
-          <Field
-            label="Host roll number"
-            placeholder="LGU-2024-XXXX"
-            value={hostRoll}
-            onChangeText={(t) => setHostRoll(t.toUpperCase())}
-            autoCapitalize="characters"
-            hint="The host student must already exist in the system."
-          />
-          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
-          <AppButton
-            label={saving ? "Registering..." : "Register guest"}
-            icon="person-add-outline"
-            loading={saving}
-            onPress={() => void submit()}
-          />
-          {lastPass ? (
-            <View style={styles.passCreated}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.valid} />
-              <View style={styles.flex1}>
-                <Text style={styles.passCreatedTitle}>Guest registered</Text>
-                <Text style={styles.passCreatedBody} numberOfLines={2}>
-                  Pass created. Show the QR pass to the guest now.
-                </Text>
-              </View>
-              <AppButton
-                label="Show pass"
-                variant="secondary"
-                size="md"
-                onPress={() => showPass(lastPass.gid)}
-                style={styles.passCreatedButton}
-              />
-            </View>
-          ) : null}
-        </SectionCard>
-      ) : null}
     </Screen>
   );
 }

@@ -164,7 +164,7 @@ export default function PassScreen() {
       {pass.registration ? (
         <>
           <SectionEyebrow>Registration</SectionEyebrow>
-          <SectionCard pad={false}>
+          <SectionCard>
             <ListRow title="Student" subtitle={pass.registration.student_name} />
             <ListRow
               title="Registration number"
@@ -179,7 +179,7 @@ export default function PassScreen() {
       {event ? (
         <>
           <SectionEyebrow>Official event details</SectionEyebrow>
-          <SectionCard pad={false}>
+          <SectionCard>
             {/* Phase 33 Part F: the row names the ceremony date, so
                 "Confirmed <date>" can't be misread as a registration
                 confirmation — the label carries the meaning. */}

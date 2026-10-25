@@ -1,7 +1,8 @@
 // Shared university UI: cool backgrounds, white groups, green actions.
 // Status always carries text; color reinforces meaning.
 
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import {
   ActivityIndicator,
   Image,
@@ -51,6 +52,9 @@ export function Screen({
   statusBar?: "light" | "dark";
   style?: StyleProp<ViewStyle>;
 }) {
+  // Tabs already reserve the device's bottom inset; applying it twice
+  // creates an unusable strip above the tab bar on Android.
+  const tabHeight = useContext(BottomTabBarHeightContext);
   const body = scroll ? (
     <ScrollView
       // 35M R3: explicit flex — the scroll container always has a bounded
@@ -71,12 +75,12 @@ export function Screen({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.screenScroll, styles.flex1]}>{children}</View>
+    <View style={[styles.screenScroll, styles.screenFixed, styles.flex1]}>{children}</View>
   );
   return (
     <SafeAreaView
       style={[styles.screen, dark ? styles.screenDark : styles.screenLight, style]}
-      edges={["top", "left", "right", "bottom"]}
+      edges={tabHeight ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}
     >
       {/* One status-bar system: dark icons on paper, light on ink. */}
       <StatusBar style={statusBar ?? (dark ? "light" : "dark")} />
@@ -363,7 +367,7 @@ export function SegmentedControl<T extends string>({
               active && activeColor ? { backgroundColor: activeColor } : null,
             ]}
           >
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
               {option.label}
             </Text>
           </Pressable>
@@ -773,6 +777,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
   },
+  screenFixed: { paddingBottom: spacing.sm, gap: spacing.sm },
 
   header: {
     gap: spacing.xs,
@@ -916,12 +921,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm - 1,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 4,
   },
   segmentItemActive: {
     backgroundColor: colors.ink,
   },
   segmentLabel: {
+    flexShrink: 1,
     // 35I (P) + Scanner Fix Round 1 (item 4): control text — active =
     // bold paper on ink (clearly selected), inactive = ink on track
     // (fully readable, visibly unfilled). Entry/Exit are never
@@ -987,7 +993,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingVertical: spacing.md,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
   },
   rowPressed: { opacity: 0.7 },
   rowTitle: {

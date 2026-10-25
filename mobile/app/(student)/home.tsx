@@ -43,7 +43,7 @@ const REG_STATUS: Record<
   active: {
     label: "Registration active",
     state: "accept",
-    meaning: "Your registration is active and usable for entry.",
+    meaning: "Your registration is active. Open your entry pass to check whether it is ready for admission.",
   },
   cancelled: {
     label: "Registration cancelled",

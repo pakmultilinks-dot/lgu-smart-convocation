@@ -27,7 +27,7 @@ const REG_STATUS: Record<
   active: {
     label: "Registration active",
     state: "accept",
-    meaning: "Your registration is active and usable for entry.",
+    meaning: "Your registration is active. Entry also requires an available, valid entry pass.",
   },
   cancelled: {
     label: "Registration cancelled",

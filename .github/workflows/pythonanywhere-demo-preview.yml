@@ -4,9 +4,12 @@ on:
   pull_request:
     paths:
       - "app/scripts/create_preview_demo.py"
+      - "app/scripts/prepare_hosted_demo_content.py"
       - "app/scripts/pythonanywhere_preview_wsgi.py"
       - "app/tests/test_preview_demo_accounts.py"
       - "app/tests/test_pythonanywhere_preview.py"
+      - "app/tests/test_mobile_publication.py"
+      - "app/web/routes.py"
       - ".github/workflows/pythonanywhere-demo-preview.yml"
       - "docs/FREE_PYTHONANYWHERE_DEMO.md"
   workflow_dispatch:
@@ -29,3 +32,5 @@ jobs:
         run: python -m unittest discover -s app/tests -p "test_preview_demo_accounts.py" -v
       - name: Verify actual Flask login routes through synthetic WSGI
         run: python -m unittest discover -s app/tests -p "test_pythonanywhere_preview.py" -v
+      - name: Verify student publication and QR admission
+        run: python -m unittest discover -s app/tests -p "test_mobile_publication.py" -v

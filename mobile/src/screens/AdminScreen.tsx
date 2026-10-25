@@ -4,6 +4,7 @@ import { useCallback, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { getSettings, updateSettings } from "../api/settingsApi";
 import { DashboardControls } from "../components/DashboardControls";
+import { StudentPublishingControls } from "../components/StudentPublishingControls";
 import { getQueue } from "../store/offlineQueue";
 import {
   getApiBaseUrl,
@@ -351,6 +352,7 @@ export function AdminScreen() {
       />
 
       <DashboardControls />
+      <StudentPublishingControls />
       {/* ------------------------------------------------- server connection */}
       <SectionCard>
         <SectionEyebrow>Server connection</SectionEyebrow>
@@ -371,8 +373,8 @@ export function AdminScreen() {
             {effectiveUrl ? (
               <Text style={styles.connBody}>
                 {mode === "custom"
-                  ? `Using: Custom (${effectiveUrl.replace(/^https?:\/\//, "")})`
-                  : "Using: Automatic (dynamic IP)"}
+                  ? "Using a custom HTTPS server"
+                  : "Using the automatic server setting"}
               </Text>
             ) : null}
           </View>
@@ -394,6 +396,8 @@ export function AdminScreen() {
             size="sm"
           />
         </View>
+
+        {effectiveUrl ? <Text style={styles.connBody} selectable>{effectiveUrl}</Text> : null}
 
         {/* 33-QA (P8-27): automatic mode shows the effective server in
             the placeholder — the field never hides which server the

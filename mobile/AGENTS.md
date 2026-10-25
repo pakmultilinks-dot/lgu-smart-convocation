@@ -51,4 +51,4 @@ Docs: https://docs.expo.dev/eas/index.md
 
 ## Scanner layout (35M item 7)
 
-- `ScannerScreen` computes `cameraHeight` from a chrome budget — `Math.max(260, Math.min(Math.round(windowH * 0.58), windowH - 330))` — so the Flash + Find manually controls stay visible below the camera without blind scrolling. Keep the budget if the camera area or surrounding chrome changes.
+- `ScannerScreen` uses `Math.max(120, Math.min(260, windowH - 600))` as the camera minimum inside a flexible column. Reserve room for system bars, tabs, selectors and manual controls. Verify at 360x700 and 390x744 content viewports when surrounding controls change; full device dimensions overestimate usable space.

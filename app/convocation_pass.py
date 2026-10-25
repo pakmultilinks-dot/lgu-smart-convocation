@@ -62,12 +62,9 @@ ROSTER_BLOCKER = (
 
 # What the invitation itself says about QR issuance (GET /pass embeds none).
 QR_BLOCKER = (
-    "Your convocation entry QR is issued separately from this invitation. "
-    "Convocation registrations are still not linked to the operational "
-    "check-in roster, so the legacy roster scanner cannot resolve them — "
-    "but while your registration is eligible you can issue a scannable "
-    "convocation QR from this screen, and the gate verifies it against your "
-    "registration record. The QR carries no personal data."
+    "Your entry QR becomes available when your registration is eligible "
+    "and the university has published the event details. "
+    "Refresh this page after the event is published."
 )
 
 

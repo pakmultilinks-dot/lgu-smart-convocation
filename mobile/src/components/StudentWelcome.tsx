@@ -29,10 +29,8 @@ export function StudentWelcome() {
       <Text style={styles.eyebrow}>STUDENT SERVICES</Text>
       <Text style={styles.heroTitle}>Your moment.{"\n"}Your convocation.</Text>
       <Text style={styles.heroBody}>Your official registration, entry pass and ceremony updates, together.</Text>
-      <View style={styles.tags}><Text style={styles.tag}>Registration</Text><Text style={styles.tag}>Entry pass</Text><Text style={styles.tag}>Updates</Text></View>
     </View>
     <View style={styles.account}>
-      <Text style={styles.title}>Welcome to your portal</Text>
       <Text style={styles.body}>Sign in to continue, or activate your student account.</Text>
       <AppButton label="Sign in" icon="arrow-forward" disabled={busy} onPress={() => void open("/(student)/login")} />
       <AppButton label="Create student account" variant="secondary" disabled={busy} onPress={() => void open("/(student)/verify")} />
@@ -50,14 +48,14 @@ const styles = StyleSheet.create({
   brandName: { fontFamily: fonts.display, fontSize: 15, color: colors.ink },
   caption: { fontFamily: fonts.displayMedium, fontSize: 11, color: colors.muted, marginTop: 3 },
   settings: { minWidth: 44, minHeight: 44, justifyContent: "center", alignItems: "center" },
-  hero: { backgroundColor: "#14452F", borderRadius: 20, padding: 20, gap: 8 },
+  hero: { backgroundColor: "#14452F", borderRadius: 20, padding: 16, gap: 6 },
   heroIcon: { position: "absolute", top: 16, right: 16, backgroundColor: "#2E5B46", width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center" },
   eyebrow: { fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 1, color: "#C3D6CA" },
   heroTitle: { fontFamily: fonts.display, fontSize: 24, lineHeight: 30, color: "#FFFFFF" },
   heroBody: { fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, color: "#DCE9E1" },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: { fontFamily: fonts.displayMedium, fontSize: 11, color: "#FFFFFF", backgroundColor: "#2E5B46", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },
-  account: { gap: 12 },
+  account: { gap: 10 },
   title: { fontFamily: fonts.display, fontSize: 24, color: colors.ink },
   body: { fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, color: colors.muted },
   note: { fontFamily: fonts.displayMedium, fontSize: 11, lineHeight: 17, color: colors.muted },

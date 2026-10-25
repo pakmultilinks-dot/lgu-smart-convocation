@@ -61,7 +61,7 @@ export default function StudentRecovery() {
     <Screen>
       <AppHeader
         title="Reset password"
-        subtitle="We will email a code to your university address"
+        subtitle="Recover access to your student account"
         onBack={() => (step === "code" ? setStep("email") : router.back())}
       />
       <Field

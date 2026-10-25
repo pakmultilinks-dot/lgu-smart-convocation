@@ -278,7 +278,7 @@ export default function StudentProfile() {
       </View>
 
       <SectionEyebrow>Official record</SectionEyebrow>
-      <SectionCard pad={false}>
+      <SectionCard>
         <ListRow title="Registration number" subtitle={reg.registration_number} />
         <ListRow title="Student name" subtitle={reg.student_name} />
         <ListRow title="Roll number" subtitle={reg.roll_number} />

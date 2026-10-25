@@ -16,6 +16,8 @@ from flask import (Blueprint, Flask, Response, jsonify, redirect,
                    render_template, request, session, url_for)
 
 import config
+import announcements as official_announcements
+import convocation_events as event_publications
 import convocation_qr as convqr
 import database
 import ids
@@ -441,6 +443,71 @@ def _require_admin_pin(denied_message="Administrator access required."):
         return jsonify({"ok": False,
                         "error": denied_message}), 401
     return None
+
+
+@bp.route("/api/admin/student-event", methods=["GET", "PUT"])
+@bp.route("/api/admin/student-event/publish", methods=["POST"])
+def api_admin_student_event():
+    """Explicit, audited publication; saving a draft never publishes it."""
+    denied = _require_admin_pin()
+    if denied:
+        return denied
+    db = database.get_db()
+    try:
+        conv = event_publications.active(db)
+        if conv is None:
+            return jsonify({"ok": False, "error": "No active convocation."}), 409
+        if request.method == "PUT":
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict) or any(
+                key not in event_publications.DETAIL_FIELDS or
+                (value is not None and not isinstance(value, str))
+                for key, value in data.items()
+            ):
+                return jsonify({"ok": False, "error": "Expected event detail text fields."}), 400
+            details = event_publications.clean_details({**event_publications.details_of(conv), **data})
+            event_publications.save_details(db, conv, details, "mobile-admin")
+            db.commit()
+            conv = event_publications.get(db, conv["id"])
+        elif request.method == "POST":
+            event_publications.publish(db, conv, "mobile-admin")
+            db.commit()
+        pub = event_publications.publication(db, conv["id"])
+        return jsonify({"ok": True, "draft": event_publications.details_of(conv),
+                        "published": dict(pub) if pub else None,
+                        "has_changes": event_publications.is_dirty(db, conv)})
+    except event_publications.EventError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        db.close()
+
+
+@bp.route("/api/admin/student-announcements", methods=["POST"])
+def api_admin_student_announcement():
+    """Publish to the student's in-app feed; never claim external delivery."""
+    denied = _require_admin_pin()
+    if denied:
+        return denied
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or any(not isinstance(data.get(key), str)
+                                         for key in ("title", "body")):
+        return jsonify({"ok": False, "error": "Title and message are required."}), 400
+    db = database.get_db()
+    try:
+        conv = event_publications.active(db)
+        if conv is None:
+            return jsonify({"ok": False, "error": "No active convocation."}), 409
+        clean = official_announcements.clean({"title": data["title"],
+            "body": data["body"], "audience": "students"}, "mobile-admin")
+        ann = official_announcements.create(db, conv["id"], clean)
+        official_announcements.publish(db, ann, "mobile-admin")
+        db.commit()
+        return jsonify({"ok": True, "id": ann["id"],
+                        "note": "Published in student Updates. No SMS or email was sent."})
+    except official_announcements.AnnouncementError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        db.close()
 
 
 @bp.route("/api/settings")
