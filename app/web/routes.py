@@ -1679,7 +1679,7 @@ def create_app():
 
     @app.context_processor
     def inject_brand():
-        return {"APP_NAME": config.APP_NAME, "UNIVERSITY": config.UNIVERSITY,
+        return {"APP_NAME": config.APP_DISPLAY_NAME, "UNIVERSITY": config.UNIVERSITY,
                 "MOTTO": config.MOTTO}
 
     return app
