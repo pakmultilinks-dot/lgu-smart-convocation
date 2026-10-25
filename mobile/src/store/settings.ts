@@ -58,6 +58,14 @@ function normaliseBaseUrl(raw: string | null): string {
   return (raw ?? "").trim().replace(/\/+$/, "");
 }
 
+/** Public deployment address supplied by the build; never contains secrets. */
+function getConfiguredBackendUrl(): string {
+  const value: unknown = Constants.expoConfig?.extra?.apiBaseUrl;
+  if (typeof value !== "string") return "";
+  const url = normaliseBaseUrl(value);
+  return /^https:\/\/[^\s/?#@]+$/.test(url) ? url : "";
+}
+
 export async function getApiBaseUrlMode(): Promise<ApiBaseMode> {
   try {
     const mode = await AsyncStorage.getItem(KEY_API_BASE_URL_MODE);
@@ -73,7 +81,8 @@ export async function getApiBaseUrlMode(): Promise<ApiBaseMode> {
  * - Custom (explicitly saved by an admin): always honored, never replaced.
  * - Auto: the live development-discovered host wins (DHCP-proof). The last
  *   stored URL is only a fallback when discovery is unavailable (e.g. a
- *   production build with no configuration). When neither exists the result
+ *   production build with no configuration). A build-configured HTTPS server
+ *   is used for a fresh installation. When none exists the result
  *   is "" and callers raise a sanitized "not configured" error.
  */
 export async function getApiBaseUrl(): Promise<string> {
@@ -86,9 +95,9 @@ export async function getApiBaseUrl(): Promise<string> {
     if (mode === "custom" && stored.length > 0) return stored;
     const discovered = getDiscoveredBackendUrl();
     if (discovered) return sessionBaseUrl ?? discovered;
-    return sessionBaseUrl ?? stored;
+    return sessionBaseUrl ?? (stored || getConfiguredBackendUrl());
   } catch {
-    return sessionBaseUrl ?? getDiscoveredBackendUrl() ?? "";
+    return sessionBaseUrl ?? getDiscoveredBackendUrl() ?? getConfiguredBackendUrl();
   }
 }
 
