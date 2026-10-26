@@ -1,5 +1,6 @@
 """Small data-access helpers. All queries live here, not in the routes."""
 
+import json
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timedelta
@@ -171,16 +172,25 @@ def add_students(rows):
     return added, skipped
 
 
-def register_guest(name, phone, host_roll_no, generate):
+def register_guest(name, phone, host_roll_no, generate, *, payment_reference=None, actor=None):
     with _db() as db:
         # Serialize eligibility, identity checks and issuance even before v14.
         db.execute("BEGIN IMMEDIATE")
+        if payment_reference:
+            # BEGIN IMMEDIATE serializes receipt reuse checks with issuance.
+            receipt = payment_reference.strip().upper()
+            duplicate = db.execute(
+                "SELECT 1 FROM audit_log WHERE action = 'paid_guest_issued' "
+                "AND json_extract(detail, '$.payment_reference') = ? LIMIT 1",
+                (receipt,)).fetchone()
+            if duplicate:
+                return None, "This payment reference already issued a guest pass."
         host = db.execute("SELECT * FROM students WHERE roll_no = ?",
                           (host_roll_no.strip(),)).fetchone()
         if not host:
             return None, "No student found with roll number %s." % host_roll_no
-        # 33-QA (I22): duplicate identity is rejected at intake — the "one
-        # free guest" rule the landing page advertises is now enforced: one
+        # Duplicate identity is rejected at intake — the "one
+        # guest per host limit is retained independently of paid issuance: one
         # live pass per host roll, and no twin (same name + phone) holding a
         # second pass under another host. The phone compare is SPACED-FORMAT
         # tolerant — stored numbers appear both as "0300 1112233" and
@@ -216,6 +226,11 @@ def register_guest(name, phone, host_roll_no, generate):
                 raise  # qr_id collision etc. is not this rule's error
             return None, "This student already has a guest registered."
         gid = cur.lastrowid
+        if payment_reference:
+            db.execute("INSERT INTO audit_log (actor,action,detail,created_at) VALUES (?,?,?,?)",
+                       (actor or "administrator", "paid_guest_issued",
+                        json.dumps({"guest_id": gid, "payment_reference": receipt,
+                                    "verification": "administrator_attested"}), now_str()))
         db.commit()
         return gid, None
 
@@ -242,7 +257,7 @@ def guest_by_id(gid):
     return dict(r) if r else None
 
 
-def revoke_guest(gid):
+def revoke_guest(gid, *, actor=None):
     """Phase 34 (Part C): revoke an unused guest pass.
 
     Only an ACTIVE pass can be revoked — a used pass keeps its terminal
@@ -254,8 +269,12 @@ def revoke_guest(gid):
     db = get_db()
     cur = db.execute(
         "UPDATE guests SET status = 'revoked'"
-        " WHERE id = ? AND status = 'active'", (gid,))
+        " WHERE id = ? AND status = 'active' AND NOT EXISTS "
+        "(SELECT 1 FROM scans WHERE qr_id=guests.qr_id AND person_type='guest')", (gid,))
     changed = cur.rowcount > 0
+    if changed and actor:
+        db.execute("INSERT INTO audit_log (actor,action,detail,created_at) VALUES (?,?,?,?)",
+                   (actor, "guest_pass_revoked", json.dumps({"guest_id": gid}), now_str()))
     db.commit()
     db.close()
     return changed

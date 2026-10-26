@@ -66,7 +66,7 @@ export function StudentPublishingControls() {
     <Text style={bodyStyle}>Operational settings do not publish the student schedule. Save a draft, review it, then publish explicitly.</Text>
     <AppButton label={open ? "Close event editor" : "Edit student event"} variant="secondary" onPress={() => setOpen(!open)} />
     {open && event ? <>
-      {fields.map(([key, label, placeholder]) => <Field key={key} label={label} placeholder={placeholder} value={draft[key] ?? ""} onChangeText={(value) => { setDraft({ ...draft, [key]: value }); setConfirm(null); }} multiline={key === "instructions"} />)}
+      {fields.map(([key, label, placeholder]) => <Field key={key} label={label} placeholder={placeholder} value={draft[key] ?? ""} onChangeText={(value) => { setDraft({ ...draft, [key]: value }); setConfirm(null); }} multiline={key === "instructions"} autoCapitalize={key.includes("date") || key.includes("time") ? "none" : "sentences"} hint={key.includes("date") ? "Use year-month-day, for example 2026-12-12. Leave blank when not announced." : key.includes("time") ? "Pakistan time, 24-hour format; for example 09:00." : undefined} />)}
       <AppButton label="Save student event draft" disabled={!edited || busy} loading={busy} onPress={() => void act("save")} />
       <AppButton label="Review event publication" variant="secondary" disabled={edited || busy} onPress={() => setConfirm("event")} />
     </> : null}

@@ -30,9 +30,9 @@ bp = Blueprint("main", __name__)
 # These controls govern operational surfaces, never student or admin APIs.
 # Sync is refused as a whole so clients retain queued scans for reopening.
 _VOLUNTEER_ENDPOINTS = {
-    "scan_page", "api_scan", "api_sync", "guests",
-    "guest_directory", "guest_pass", "api_guests", "api_register_guest",
-    "api_guest_pass", "api_revoke_guest", "api_search",
+    "scan_page", "api_scan", "api_sync",
+    "guest_pass", "api_guests",
+    "api_guest_pass", "api_search",
     "api_dashboard_summary",
 }
 _LIVE_ENDPOINTS = {"dashboard", "api_dashboard"}
@@ -42,6 +42,8 @@ _LIVE_ENDPOINTS = {"dashboard", "api_dashboard"}
 def enforce_dashboard_access():
     if request.method == "OPTIONS":
         return None
+    if request.path.startswith("/api/admin/"):
+        return None  # Each admin handler authenticates independently of tool availability.
     endpoint = (request.endpoint or "").removeprefix("main.")
     mode = ("volunteer" if endpoint in _VOLUNTEER_ENDPOINTS else
             "liveboard" if endpoint in _LIVE_ENDPOINTS else None)
@@ -1239,35 +1241,24 @@ def _guest_reg_blocked():
 
 @bp.route("/guests", methods=["GET", "POST"])
 def guests():
-    """Public guest self-registration shell (Phase 27 C2).
-
-    GET renders ONLY the registration form: the directory moved to
-    ``/guests/directory``, so an anonymous caller can no longer read every
-    guest's name, phone and host straight out of the page source. POST stays
-    anonymous — a walk-up guest has no credential to present yet."""
+    """Administrator-only paid issuance; never a public walk-up kiosk."""
+    denied = _require_web_admin()
+    if denied is not None:
+        return denied
     err = None
-    if request.method == "POST":
-        limited, err = _guest_reg_blocked()
-        name = (request.form.get("name", "") or "").strip()
-        phone = (request.form.get("phone", "") or "").strip()
-        host = (request.form.get("host_roll_no", "") or "").strip()
-        # Master audit V-INP-03: bounded fields on the web form too.
-        if limited:
-            pass                      # err already carries the limiter reply
-        elif len(name) > _NAME_CAP or len(phone) > _PHONE_CAP or len(host) > _ROLL_CAP:
-            err = "Name (max %d), phone (max %d) and host roll (max %d) are limited." % (
-                _NAME_CAP, _PHONE_CAP, _ROLL_CAP)
-        else:
-            gid, err = models.register_guest(name, phone, host, ids.generate_id)
-            if gid:
-                # C3: hand the guest a scoped capability. It rides the signed
-                # session cookie, never the URL, so it cannot land in an
-                # access log or a forwarded link.
-                session["guest_print"] = ids.make_print_token(
-                    gid, config.GUEST_PRINT_TTL_MINUTES * 60)
-                return redirect(url_for("main.guest_pass", gid=gid))
-    return render_template("guests.html", err=err,
-                           is_staff=session.get("lgu_admin") is True)
+    if request.method == "POST" and request.form.get("name") is not None:
+        data = dict(request.form)
+        data["payment_verified"] = request.form.get("payment_verified") == "on"
+        err = _guest_intake_error(data)
+        if err is None:
+            limited, err = _guest_reg_blocked()
+            if not limited:
+                gid, err = models.register_guest(data["name"], data["phone"],
+                    data["host_roll_no"], ids.generate_id,
+                    payment_reference=data["payment_reference"], actor="web-administrator")
+                if gid:
+                    return redirect(url_for("main.guest_pass", gid=gid))
+    return render_template("guests.html", err=err, is_staff=True)
 
 
 @bp.route("/guests/directory")
@@ -1388,42 +1379,46 @@ def api_guests():
     return jsonify({"guests": models.guest_directory()})
 
 
+def _guest_intake_error(data):
+    if not isinstance(data, dict):
+        return "Expected a valid JSON object."
+    for field, cap in (("name", _NAME_CAP), ("phone", _PHONE_CAP),
+                       ("host_roll_no", _ROLL_CAP), ("payment_reference", 80)):
+        value = data.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > cap:
+            return "%s is required and must be text up to %d characters." % (field, cap)
+    if data.get("payment_verified") is not True:
+        return "Verify the guest payment before issuing a pass."
+    return None
+
+
 @bp.route("/api/guests", methods=["POST"])
+@bp.route("/api/admin/guests", methods=["GET", "POST"])
 def api_register_guest():
+    denied = _require_admin_pin("Only an administrator can issue paid guest passes.")
+    if denied is not None:
+        return denied
+    if request.method == "GET":
+        return jsonify({"guests": models.guest_directory()})
     limited, msg = _guest_reg_blocked()
     if limited:
         return jsonify({"ok": False, "error": msg}), 429
     data = request.get_json(force=True, silent=True)
-    if not isinstance(data, dict):
-        return _bad_scan_request("Expected a valid JSON object.")
-    for field in ('name', 'phone', 'host_roll_no'):
-        if field in data and not isinstance(data[field], str):
-            return _bad_scan_request("%s must be text." % field)
-    name = (data.get("name") or "").strip()
-    phone = (data.get("phone") or "").strip()
-    host_roll_no = (data.get("host_roll_no") or "").strip()
-    if not name or not phone or not host_roll_no:
-        return jsonify({"ok": False,
-                        "error": "Name, phone and host roll number are required."}), 400
-    # Master audit V-INP-03: bounded fields.
-    if len(name) > _NAME_CAP or len(phone) > _PHONE_CAP or len(host_roll_no) > _ROLL_CAP:
-        return jsonify({"ok": False, "error":
-                        "Name (max %d), phone (max %d) and host roll (max %d) are limited."
-                        % (_NAME_CAP, _PHONE_CAP, _ROLL_CAP)}), 400
-    gid, err = models.register_guest(name, phone, host_roll_no, ids.generate_id)
+    err = _guest_intake_error(data)
     if err:
         return jsonify({"ok": False, "error": err}), 400
-    g = models.guest_by_id(gid)
-    return jsonify({"ok": True, "gid": gid,
-                    "payload": ids.make_payload(g["qr_id"]),
-                    # Phase 27 C3: the registrant's own scoped capability —
-                    # the approved way to read this pass back without a
-                    # scanner or staff session.
-                    "print_token": ids.make_print_token(
-                        gid, config.GUEST_PRINT_TTL_MINUTES * 60)})
+    gid, err = models.register_guest(data["name"], data["phone"],
+        data["host_roll_no"], ids.generate_id,
+        payment_reference=data["payment_reference"], actor="mobile-administrator")
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    # No bearer QR returned at intake. Authorized pass retrieval remains separate.
+    return jsonify({"ok": True, "gid": gid, "payment_verification": "administrator_attested",
+                    "print_token": ids.make_print_token(gid, config.GUEST_PRINT_TTL_MINUTES * 60)})
 
 
 @bp.route("/api/guest-pass/<int:gid>")
+@bp.route("/api/admin/guest-pass/<int:gid>")
 def api_guest_pass(gid):
     """Single-guest pass JSON (Phase 27 C3).
 
@@ -1434,7 +1429,11 @@ def api_guest_pass(gid):
     cannot read a 401/404 split as an oracle for which guest ids exist."""
     if not (0 < gid < 1_000_000_000):
         return jsonify({"ok": False, "error": "Guest not found."}), 404
-    if not _guest_print_allowed(gid):
+    if request.path.startswith("/api/admin/"):
+        denied = _require_admin_pin()
+        if denied is not None:
+            return denied
+    elif not _guest_print_allowed(gid):
         return jsonify({"ok": False, "code": "guest_pass_forbidden",
                         "error": "Guest pass access requires this guest's "
                                  "print link, or a scanner sign-in."}), 401
@@ -1453,18 +1452,12 @@ def api_guest_pass(gid):
 
 
 @bp.route("/api/guests/<int:gid>/revoke", methods=["POST"])
+@bp.route("/api/admin/guests/<int:gid>/revoke", methods=["POST"])
 def api_revoke_guest(gid):
-    """Phase 34 (Part C): revoke an unused guest pass (scanner/staff only).
-
-    Guest self-registration stays public by design, but revocation is a
-    management action that invalidates a bearer pass, so it rides the same
-    scanner session as the roster. Only an ACTIVE pass transitions — a used
-    pass keeps its terminal 'used' meaning (409), keeping 'used' (entered)
-    and 'revoked' (invalidated) distinct lifecycle states.
-    """
-    auth = _require_scanner()
-    if not isinstance(auth, dict):
-        return auth
+    """Only administrators may revoke an unused paid pass."""
+    denied = _require_admin_pin()
+    if denied is not None:
+        return denied
     if not (0 < gid < 1_000_000_000):
         return jsonify({"ok": False, "error": "Guest not found."}), 404
     g = models.guest_by_id(gid)
@@ -1473,7 +1466,7 @@ def api_revoke_guest(gid):
     if models.guest_used(g["qr_id"]):
         return jsonify({"ok": False, "error":
                         "This guest pass was already used; it cannot be revoked."}), 409
-    changed = models.revoke_guest(gid)
+    changed = models.revoke_guest(gid, actor="administrator")
     return jsonify({"ok": True, "gid": gid, "status": "revoked",
                     "changed": changed})
 

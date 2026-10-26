@@ -661,6 +661,7 @@ export function LiveBoardScreen() {
 
 const styles = {
   board: {
+    gap: spacing.md,
     flex: 1,
   },
   // 35M R3: genuine vertical scrolling for the board content — a bounded
@@ -686,6 +687,7 @@ const styles = {
     alignItems: "flex-start" as const,
   },
   column: {
+    gap: spacing.md,
     flex: 1,
     minWidth: 0,
   },

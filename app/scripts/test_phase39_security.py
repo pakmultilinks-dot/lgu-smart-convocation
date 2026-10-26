@@ -164,6 +164,7 @@ anon = [
     ("GET", "/exam/scanners", None, 302),
 ]
 for method, path, body, want in anon:
+    reset_pin()  # Individual denial checks must not trigger the shared lockout.
     if method == "GET":
         r = client.get(path)
     elif method == "PUT":
@@ -174,6 +175,7 @@ for method, path, body, want in anon:
         r = client.post(path, json=body)
     check("anon %s %s -> %d" % (method, path, want),
           r.status_code == want, "%s vs %r" % (r.status_code, path))
+reset_pin()
 r = client.put("/api/settings", json={"expected_attendance": "10"})
 check("anon PUT settings body never processed", r.status_code == 401,
       r.status_code)
@@ -259,10 +261,10 @@ cases = [
 for name, r, want in cases:
     check("%s -> %d" % (name, want), r.status_code == want, r.status_code)
 reset_guest_reg()
-r = client.post("/api/guests", json={})
+r = client.post("/api/guests", json={}, headers=H)
 check("guest missing fields -> 400", r.status_code == 400, r.status_code)
 r = client.post("/api/guests", json={"name": "N" * 500, "phone": "03001234567",
-                                     "host_roll_no": "LGU-2024-102"})
+                                     "host_roll_no": "LGU-2024-102"}, headers=H)
 check("guest oversized name -> 400", r.status_code == 400, r.status_code)
 reset_guest_reg()
 _r, tok = scanner_login(SCAN_USER, SCAN_PIN)
@@ -296,7 +298,7 @@ check("students table intact after SQLi probes", r.status_code == 200)
 reset_guest_reg()
 for p in ("' OR 1=1--", "%' OR 1=1--"):
     r = client.post("/api/guests", json={"name": "Sneaky", "phone": "03001112223",
-                                         "host_roll_no": p})
+                                         "host_roll_no": p, "payment_reference": "SQLI-TEST", "payment_verified": True}, headers=H)
     check("guest host %r rejected as unknown roll" % p[:8],
           r.status_code == 400 and "No student found" in txt(r),
           "%s %s" % (r.status_code, txt(r)[:80]))
@@ -401,7 +403,7 @@ check("replayed entry -> ALREADY INSIDE", body.get("title") == "ALREADY INSIDE",
 reset_guest_reg()
 r = client.post("/api/guests", json={"name": "QA Sec Visitor",
                                      "phone": "0300 5556667",
-                                     "host_roll_no": "LGU-2024-102"})
+                                     "host_roll_no": "LGU-2024-102", "payment_reference": "SEC-102", "payment_verified": True}, headers=H)
 reg = r.get_json() or {}
 check("guest fixture registered", r.status_code == 200 and reg.get("gid"),
       "%s %s" % (r.status_code, txt(r)[:80]))
@@ -409,7 +411,7 @@ gid_a = reg.get("gid")
 reset_guest_reg()
 r = client.post("/api/guests", json={"name": "QA Sec Visitor 2",
                                      "phone": "0300 5556668",
-                                     "host_roll_no": "LGU-2024-103"})
+                                     "host_roll_no": "LGU-2024-103", "payment_reference": "SEC-103", "payment_verified": True}, headers=H)
 reg_b = r.get_json() or {}
 gid_b = reg_b.get("gid")
 print_tok = reg.get("print_token")

@@ -167,12 +167,26 @@ export function me(token: string): Promise<SessionBody> {
   return request<SessionBody>(`${BASE}/me`, { headers: auth(token) });
 }
 
-/** Binary photo endpoint — RN <Image> accepts auth headers directly. */
-/** Absolute URL + bearer headers for <Image>: RN cannot load a relative
- *  URI, so the route is resolved against the discovered backend host. */
+/** Resolve the protected image through authenticated fetch. Browser image
+ * elements cannot attach bearer headers; a memory-only data URI also avoids
+ * leaking credentials into a URL or an image cache key. */
 export async function photoSource(token: string): Promise<{ uri: string; headers: Record<string, string> }> {
   const base = await getApiBaseUrl();
-  return { uri: `${base}${BASE}/profile/photo`, headers: auth(token) };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(`${base}${BASE}/profile/photo`, { headers: auth(token), signal: controller.signal });
+    if (!response.ok) throw new ApiError("The saved photo could not be loaded.", response.status);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.size > 2 * 1024 * 1024) throw new Error("Invalid photo response.");
+    const uri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Invalid image."));
+      reader.onerror = () => reject(new Error("Photo preview unavailable."));
+      reader.readAsDataURL(blob);
+    });
+    return { uri, headers: {} };
+  } finally { clearTimeout(timer); }
 }
 
 export function updatePhone(

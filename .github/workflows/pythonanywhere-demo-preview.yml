@@ -9,6 +9,8 @@ on:
       - "app/tests/test_preview_demo_accounts.py"
       - "app/tests/test_pythonanywhere_preview.py"
       - "app/tests/test_mobile_publication.py"
+      - "app/tests/test_paid_guest_admin.py"
+      - "app/models.py"
       - "app/web/routes.py"
       - ".github/workflows/pythonanywhere-demo-preview.yml"
       - "docs/FREE_PYTHONANYWHERE_DEMO.md"
@@ -34,3 +36,6 @@ jobs:
         run: python -m unittest discover -s app/tests -p "test_pythonanywhere_preview.py" -v
       - name: Verify student publication and QR admission
         run: python -m unittest discover -s app/tests -p "test_mobile_publication.py" -v
+
+      - name: Verify administrator-only paid guest issuance
+        run: python -m unittest discover -s app/tests -p "test_paid_guest_admin.py" -v

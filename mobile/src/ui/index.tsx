@@ -93,7 +93,7 @@ export function Screen({
 
 export function AppHeader({
   eyebrow,
-  eyebrowSans = false,
+  eyebrowSans = true,
   title,
   titleSize,
   subtitle,

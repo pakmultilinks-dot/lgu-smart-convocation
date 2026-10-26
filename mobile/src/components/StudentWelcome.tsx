@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { setAppMode } from "../store/appMode";
 import { colors, fonts } from "../theme";
-import { AppButton, LguMark, Screen } from "../ui";
+import { DashboardGrid, DashboardTile } from "./DashboardWidgets";
+import { AppButton, LguMark, Screen, SectionEyebrow } from "../ui";
 
 export function StudentWelcome() {
   const [busy, setBusy] = useState(false);
@@ -24,15 +25,16 @@ export function StudentWelcome() {
         <Ionicons name="settings-outline" size={22} color={colors.ink} />
       </Pressable>
     </View>
-    <View style={styles.hero}>
-      <View style={styles.heroIcon}><Ionicons name="school-outline" size={30} color="#FFFFFF" /></View>
-      <Text style={styles.eyebrow}>STUDENT SERVICES</Text>
-      <Text style={styles.heroTitle}>Your moment.{"\n"}Your convocation.</Text>
-      <Text style={styles.heroBody}>Your official registration, entry pass and ceremony updates, together.</Text>
-    </View>
-    <View style={styles.account}>
-      <Text style={styles.body}>Sign in to continue, or activate your student account.</Text>
+    <View style={styles.heading}><Text style={styles.heroTitle}>Convocation dashboard</Text><Text style={styles.body}>Student services and event access</Text></View>
       <AppButton label="Sign in" icon="arrow-forward" disabled={busy} onPress={() => void open("/(student)/login")} />
+    <DashboardGrid>
+      <DashboardTile title="Registration" detail="Activate or view your record" icon="document-text-outline" onPress={() => void open("/(student)/verify")} />
+      <DashboardTile title="Entry pass" detail="Sign in to view your QR" icon="qr-code-outline" onPress={() => void open("/(student)/login")} />
+      <DashboardTile title="Event schedule" detail="Published ceremony details" icon="calendar-outline" onPress={() => router.push("/(student)/event")} />
+      <DashboardTile title="Updates" detail="Published university notices" icon="megaphone-outline" onPress={() => router.push("/(student)/announcements")} />
+    </DashboardGrid>
+    <SectionEyebrow>Your account</SectionEyebrow>
+    <View style={styles.account}>
       <AppButton label="Create student account" variant="secondary" disabled={busy} onPress={() => void open("/(student)/verify")} />
       <Text style={styles.note}>Only students on the official university registration list can create an account.</Text>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
@@ -44,6 +46,7 @@ export function StudentWelcome() {
   </Screen>;
 }
 const styles = StyleSheet.create({
+  heading: { gap: 5 },
   brand: { flexDirection: "row", gap: 10, alignItems: "center" },
   brandName: { fontFamily: fonts.display, fontSize: 15, color: colors.ink },
   caption: { fontFamily: fonts.displayMedium, fontSize: 11, color: colors.muted, marginTop: 3 },
@@ -51,7 +54,7 @@ const styles = StyleSheet.create({
   hero: { backgroundColor: "#14452F", borderRadius: 20, padding: 16, gap: 6 },
   heroIcon: { position: "absolute", top: 16, right: 16, backgroundColor: "#2E5B46", width: 40, height: 40, borderRadius: 12, justifyContent: "center", alignItems: "center" },
   eyebrow: { fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 1, color: "#C3D6CA" },
-  heroTitle: { fontFamily: fonts.display, fontSize: 24, lineHeight: 30, color: "#FFFFFF" },
+  heroTitle: { fontFamily: fonts.display, fontSize: 24, lineHeight: 30, color: colors.ink },
   heroBody: { fontFamily: fonts.displayMedium, fontSize: 13, lineHeight: 20, color: "#DCE9E1" },
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   tag: { fontFamily: fonts.displayMedium, fontSize: 11, color: "#FFFFFF", backgroundColor: "#2E5B46", paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8 },

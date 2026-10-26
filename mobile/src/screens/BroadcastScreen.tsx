@@ -293,7 +293,7 @@ export function BroadcastScreen() {
         onBack={() =>
           router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
         }
-        title="Announcements"
+        title="Operational message log"
         // 35M R2 (item 10): mandated subtitle copy — announcement is a log,
         // not a delivery.
         subtitle="Operational message log for event teams"

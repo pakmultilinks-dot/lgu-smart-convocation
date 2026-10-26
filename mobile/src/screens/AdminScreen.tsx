@@ -1,3 +1,6 @@
+import * as Linking from "expo-linking";
+import { DashboardGrid, DashboardTile } from "../components/DashboardWidgets";
+import { PaidGuestManagement } from "../components/PaidGuestManagement";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
@@ -142,6 +145,12 @@ function calendarGrid(year: number, month: number): number[] {
  * stamped with the probe time (see probeNoteFor).
  */
 export function AdminScreen() {
+  const [section, setSection] = useState<"hub" | "availability" | "publishing" | "guests" | "advanced">("hub");
+  const [portalError, setPortalError] = useState<string | null>(null);
+  const openPortal = async (path: string) => {
+    try { const base = await getApiBaseUrl(); if (!base) throw new Error("Connect to the server first."); await Linking.openURL(base + path); }
+    catch (e) { setPortalError(e instanceof Error ? e.message : "Could not open administrator portal."); }
+  };
   const [mode, setMode] = useState<"auto" | "custom">("auto");
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -347,12 +356,29 @@ export function AdminScreen() {
         }
         eyebrow="Admin"
         eyebrowSans
-        title="System configuration"
-        subtitle="Dashboard availability, server connection and convocation details"
+        title={section === "hub" ? "Administrator dashboard" : section === "guests" ? "Paid guest passes" : section === "publishing" ? "Student publications" : section === "availability" ? "Tool availability" : "System configuration"}
+        subtitle="Manage records, paid passes and event operations"
       />
 
-      <DashboardControls />
-      <StudentPublishingControls />
+      {section !== "hub" ? <AppButton label="Back to admin dashboard" variant="secondary" onPress={() => setSection("hub")} /> : null}
+      {section === "hub" ? <>
+        <SectionEyebrow>Management</SectionEyebrow>
+        <DashboardGrid>
+          <DashboardTile title="Student records" detail="Official intake and corrections" icon="school-outline" onPress={() => void openPortal("/exam/")} />
+          <DashboardTile title="Operational roster" detail="Administrator student import" icon="people-outline" onPress={() => void openPortal("/admin")} />
+          <DashboardTile title="Paid guest passes" detail="Verify payment and issue" icon="ticket-outline" onPress={() => setSection("guests")} />
+          <DashboardTile title="Student publications" detail="Schedule and official Updates" icon="megaphone-outline" onPress={() => setSection("publishing")} />
+          <DashboardTile title="Operational message log" detail="Saved team messages" icon="chatbox-outline" onPress={() => router.push("/(volunteer)/broadcast")} />
+          <DashboardTile title="Tool availability" detail="Scanner and live display" icon="toggle-outline" onPress={() => setSection("availability")} />
+          <DashboardTile title="System configuration" detail="Server and operational settings" icon="settings-outline" onPress={() => setSection("advanced")} />
+        </DashboardGrid>
+        <Text style={{ fontFamily: fonts.displayMedium, fontSize: 13, color: colors.muted }}>Student management opens the protected server portal and requires its administrator or Examination Department sign-in. No credentials are passed in links.</Text>
+        {portalError ? <Text accessibilityRole="alert">{portalError}</Text> : null}
+      </> : null}
+      {section === "availability" ? <DashboardControls /> : null}
+      {section === "publishing" ? <StudentPublishingControls /> : null}
+      {section === "guests" ? <PaidGuestManagement /> : null}
+      {section === "advanced" ? <>
       {/* ------------------------------------------------- server connection */}
       <SectionCard>
         <SectionEyebrow>Server connection</SectionEyebrow>
@@ -716,6 +742,7 @@ export function AdminScreen() {
           </View>
         </View>
       </Modal>
+      </> : null}
     </Screen>
   );
 }

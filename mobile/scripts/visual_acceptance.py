@@ -1,5 +1,8 @@
 """Visual acceptance of the real Expo web app; synthetic local accounts only."""
 import json
+import io
+import base64
+from PIL import Image
 import os
 import re
 from pathlib import Path
@@ -51,6 +54,7 @@ try:
                 page.goto(WEB + "/mode-picker", wait_until="domcontentloaded", timeout=240000)
                 signin = page.get_by_role("button", name="Sign in", exact=True)
                 expect(signin).to_be_visible(timeout=120000)
+                page.wait_for_function("document.fonts.check('15px BricolageGrotesque_800ExtraBold')", timeout=60000)
                 page.evaluate("async () => { await document.fonts.ready; await Promise.all(Array.from(document.images).map(i => i.decode().catch(() => {}))); }")
                 create = page.get_by_role("button", name="Create student account", exact=True)
                 expect(create).to_be_visible(timeout=30000)
@@ -58,7 +62,7 @@ try:
                 page.screenshot(path=str(OUT / ("welcome-%d.png" % width)), full_page=True)
                 assert create.bounding_box()["y"] < height - 48
                 staff = page.get_by_role("button", name="Staff & event access", exact=True)
-                assert staff.bounding_box()["y"] + staff.bounding_box()["height"] <= height
+                expect(staff).to_have_count(1)
                 assert page.evaluate("document.documentElement.scrollWidth <= window.innerWidth")
                 page.get_by_role("button", name="Connection settings", exact=True).click()
                 page.get_by_label("Server address", exact=True).fill("http://localhost:5000")
@@ -69,14 +73,29 @@ try:
                 expect(page.get_by_label("University email", exact=True)).to_be_visible()
                 expect(page.get_by_role("button", name="Home", exact=True)).to_have_count(0)
                 page.screenshot(path=str(OUT / ("signin-%d.png" % width)), full_page=True)
+                # Complete only a missing local synthetic photo, never replace a user upload.
+                api_login = context.request.post("http://localhost:5000/api/student/login", data={"email": credentials["Student email"], "password": credentials["Student password"]}).json()
+                auth = {"Authorization": "Bearer " + api_login["token"]}
+                local_me = context.request.get("http://localhost:5000/api/student/me", headers=auth).json()
+                if not local_me["profile"]["photo"]:
+                    buffer = io.BytesIO(); Image.new("RGB", (128, 128), (35, 70, 50)).save(buffer, format="PNG")
+                    assert context.request.post("http://localhost:5000/api/student/profile/photo", headers=auth, data={"data": base64.b64encode(buffer.getvalue()).decode()}).ok
                 page.get_by_label("University email", exact=True).fill(credentials["Student email"])
                 page.get_by_label("Password", exact=True).fill(credentials["Student password"])
                 page.get_by_role("button", name="Sign in", exact=True).click()
                 account = page.get_by_role("button", name="Account", exact=True)
                 account.wait_for(state="visible", timeout=30000)
+                page.get_by_role("button", name="Home", exact=True).click()
+                expect(page.get_by_text("My dashboard", exact=True)).to_be_visible(timeout=30000)
+                page.screenshot(path=str(OUT / ("student-dashboard-%d.png" % width)), full_page=True)
                 account.click()
                 expect(page.get_by_role("button", name="Profile & contact details", exact=True)).to_be_visible()
                 page.screenshot(path=str(OUT / ("account-%d.png" % width)), full_page=True)
+                page.get_by_role("button", name="Profile & contact details", exact=True).click()
+                photo = page.get_by_role("img", name="Profile photo", exact=True)
+                expect(photo).to_be_visible(timeout=30000)
+                assert photo.get_attribute("src").startswith("data:image/"), "Photo must use authenticated memory-only content"
+                page.get_by_role("button", name="Account", exact=True).click()
                 page.get_by_role("button", name="Staff & event access", exact=True).click()
                 expect(page.get_by_role("button", name="Volunteer Operations", exact=True)).to_be_visible()
                 expect(page.get_by_role("button", name="Volunteer Operations", exact=True)).to_be_enabled(timeout=20000)
@@ -85,6 +104,21 @@ try:
                 page.goto(WEB + "/administration")
                 page.get_by_label("Administrator PIN", exact=True).fill(credentials["Admin PIN"])
                 page.get_by_role("button", name="Unlock", exact=True).click()
+                expect(page.get_by_text("Administrator dashboard", exact=True)).to_be_visible(timeout=30000)
+                page.screenshot(path=str(OUT / ("admin-dashboard-%d.png" % width)), full_page=True)
+                page.get_by_role("button", name="Paid guest passes", exact=True).click()
+                expect(page.get_by_role("button", name="Review paid guest pass", exact=True)).to_be_disabled()
+                page.get_by_label("Guest name", exact=True).fill("Synthetic UI Guest")
+                page.get_by_label("Guest phone", exact=True).fill("03000000000")
+                page.get_by_label("Host roll number", exact=True).fill("DEMO-HOST-001")
+                page.get_by_label("Payment reference", exact=True).fill("SYNTHETIC-UI-ONLY")
+                expect(page.get_by_role("button", name="Review paid guest pass", exact=True)).to_be_disabled()
+                page.get_by_role("button", name="I verified this payment", exact=True).click()
+                page.get_by_role("button", name="Review paid guest pass", exact=True).click()
+                expect(page.get_by_role("button", name="Issue paid guest pass", exact=True)).to_be_visible()
+                page.screenshot(path=str(OUT / ("admin-paid-guest-%d.png" % width)), full_page=True)
+                page.get_by_role("button", name="Back to admin dashboard", exact=True).click()
+                page.get_by_role("button", name="Student publications", exact=True).click()
                 page.get_by_role("button", name="Edit student event", exact=True).click(timeout=30000)
                 case_id = str(time.time_ns())
                 page.get_by_label("Student event name", exact=True).fill("LGU Convocation 2026")
@@ -125,14 +159,21 @@ try:
                 assert box["y"] + box["height"] < height - 40, box
                 page.screenshot(path=str(OUT / ("scanner-controls-%d.png" % width)), full_page=True)
                 page.get_by_role("button", name="Guests", exact=True).click()
-                page.get_by_role("button", name="+ Add guest", exact=True).click()
-                expect(page.get_by_label("Guest name", exact=True)).to_be_visible()
-                assert page.get_by_label("Guest name", exact=True).bounding_box()["y"] < page.get_by_text(re.compile("^Guest list")).first.bounding_box()["y"]
-                page.screenshot(path=str(OUT / ("guest-form-%d.png" % width)), full_page=True)
+                expect(page.get_by_role("button", name="+ Add guest", exact=True)).to_have_count(0)
+                expect(page.get_by_label("Guest name", exact=True)).to_have_count(0)
+                expect(page.get_by_text("Guest directory", exact=True)).to_be_visible()
+                page.screenshot(path=str(OUT / ("guest-directory-%d.png" % width)), full_page=True)
+                page.get_by_role("button", name="Home", exact=True).click()
+                page.get_by_role("button", name="Change gate or direction", exact=True).click()
+                expect(page.get_by_role("button", name="East Gate", exact=True)).to_have_count(0)
+                expect(page.get_by_role("button", name="Main Gate", exact=True)).to_be_visible()
+                page.get_by_role("button", name="Main Gate", exact=True).click()
+                expect(page.get_by_role("button", name="Done", exact=True)).to_be_hidden()
                 page.get_by_role("button", name="More", exact=True).click()
                 page.get_by_role("button", name="Administrator access", exact=True).click()
                 page.get_by_label("Administrator PIN", exact=True).fill(credentials["Admin PIN"])
                 page.get_by_role("button", name="Unlock", exact=True).click()
+                page.get_by_role("button", name="Operational message log", exact=True).click()
                 volunteers = page.get_by_role("button", name="Volunteers", exact=True)
                 expect(volunteers).to_be_visible(timeout=30000)
                 volunteers.click()

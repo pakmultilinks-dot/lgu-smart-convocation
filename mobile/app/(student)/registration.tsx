@@ -159,7 +159,7 @@ export default function MyRegistration() {
       <SectionEyebrow>
         Official details · {reg.registration_number}
       </SectionEyebrow>
-      <SectionCard pad={false}>
+      <SectionCard>
         <ListRow title="Registration number" subtitle={official(reg.registration_number)} />
         <ListRow title="Student name" subtitle={official(reg.student_name)} />
         <ListRow title="Roll number" subtitle={official(reg.roll_number)} />

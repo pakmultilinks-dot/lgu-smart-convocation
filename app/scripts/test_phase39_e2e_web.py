@@ -329,7 +329,9 @@ def group_guests(ctx, page):
     def d1():
         r = page.goto(BASE + "/guests")
         cover("/guests", "E2E-17")
-        expect(r.status == 200, "/guests -> %s" % r.status)
+        expect(r.status == 401, "anonymous /guests -> %s" % r.status)
+        page.fill("input[name=admin_pin]", config.ADMIN_PIN)
+        post_click(page, "button[type=submit]")
         for name in ("name", "phone", "host_roll_no"):
             expect(page.locator("input[name=%s]" % name).count() == 1,
                    "guest form field missing: " + name)
@@ -338,6 +340,8 @@ def group_guests(ctx, page):
         page.fill("input[name=name]", "QA E2E Visitor")
         page.fill("input[name=phone]", "0300 9988776")
         page.fill("input[name=host_roll_no]", "LGU-2024-102")
+        page.fill("input[name=payment_reference]", "E2E-PAID-102")
+        page.check("input[name=payment_verified]")
         post_click(page, "form:has(input[name=host_roll_no]) button[type=submit]")
         cover("/guests", "E2E-18")
         expect("/pass" in page.url, "no redirect to pass page: " + page.url)
@@ -346,6 +350,7 @@ def group_guests(ctx, page):
         expect("Print" in page.content(), "pass page has no print control")
 
     def d3():
+        ctx.clear_cookies()
         r = page.goto(BASE + "/guests/1/pass")
         cover("/guests/<int:gid>/pass", "E2E-19")
         expect(r.status == 401, "anon pass link -> %s" % r.status)
@@ -361,9 +366,13 @@ def group_guests(ctx, page):
 
     def d5():
         page.goto(BASE + "/guests")
+        page.fill("input[name=admin_pin]", config.ADMIN_PIN)
+        post_click(page, "button[type=submit]")
         page.fill("input[name=name]", "QA E2E Visitor 2")
         page.fill("input[name=phone]", "0300 9988777")
         page.fill("input[name=host_roll_no]", "LGU-2024-999")
+        page.fill("input[name=payment_reference]", "E2E-PAID-999")
+        page.check("input[name=payment_verified]")
         post_click(page, "form:has(input[name=host_roll_no]) button[type=submit]")
         expect("No student found with roll number LGU-2024-999"
                in page.content(), "unknown host roll gave no error message")
