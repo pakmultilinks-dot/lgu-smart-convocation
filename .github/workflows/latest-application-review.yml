@@ -31,7 +31,9 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m pip install -r requirements-dev.txt
-      - run: python -m playwright install --with-deps chromium
+      - name: Install browser only for the browser E2E suite
+        if: matrix.script == 'test_phase39_e2e_web.py'
+        run: python -m playwright install --with-deps --only-shell chromium
       - run: python -m compileall -q app
       - name: Run isolated regression
         working-directory: app
