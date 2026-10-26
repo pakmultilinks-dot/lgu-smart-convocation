@@ -46,7 +46,7 @@ try:
             key, value = line.split(": ", 1)
             credentials[key] = value
     with sync_playwright() as p:
-        browser = p.chromium.launch(args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"])
+        browser = p.chromium.launch(channel=os.environ.get("LGU_BROWSER_CHANNEL"), args=["--use-fake-ui-for-media-stream", "--use-fake-device-for-media-stream"])
         for width, height in [(360, 700), (390, 744)]:
             context = browser.new_context(viewport={"width": width, "height": height}, device_scale_factor=1, permissions=["camera"])
             page = context.new_page()

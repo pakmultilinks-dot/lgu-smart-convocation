@@ -946,7 +946,7 @@ def main():
         from playwright.sync_api import sync_playwright
 
         with sync_playwright() as p:
-            browser = p.chromium.launch(headless=True)
+            browser = p.chromium.launch(headless=True, channel=os.environ.get("LGU_BROWSER_CHANNEL"))
 
             def ctx_page():
                 c = browser.new_context()

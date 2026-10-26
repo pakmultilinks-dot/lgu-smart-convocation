@@ -15,6 +15,8 @@ jobs:
   browser-ui:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      LGU_BROWSER_CHANNEL: chrome
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -24,8 +26,8 @@ jobs:
         run: |
           python -m pip install -r app/requirements.txt
           python -m pip install "playwright>=1.52,<2"
-      - name: Install headless Chromium
-        run: python -m playwright install --with-deps chromium
+      - name: Verify preinstalled Chrome
+        run: google-chrome --version
       - name: Compile Python backend
         run: python -m compileall -q app
       - name: Run real-browser tests with isolated database
