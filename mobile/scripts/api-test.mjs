@@ -251,12 +251,13 @@ const api = {
   registerGuest: async (input) => {
     const res = await fetch(`${BASE}/api/guests`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(input),
+      headers: { "Content-Type": "application/json", "X-Admin-Pin": ADMIN_PIN },
+      body: JSON.stringify({ ...input, payment_reference: input.name, payment_verified: true }),
     });
     const body = await res.json();
     if (!res.ok || !body.ok) throw new ApiError(body.error || "Guest registration failed.", res.status);
-    return body;
+    const pass = await api.guestPass(body.gid);
+    return { ...body, payload: pass.payload };
   },
   // Phase 27 C3: the pass payload is a bearer credential, so reading one
   // rides the scanner session (as the mobile app does) — an anonymous GET
@@ -366,8 +367,8 @@ async function main() {
     const phone = `0300${tag}1`.slice(0, 11);
     const dupHostRes = await fetch(`${BASE}/api/guests`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: guestName, phone, host_roll_no: guestHostRoll }),
+      headers: { "Content-Type": "application/json", "X-Admin-Pin": ADMIN_PIN },
+      body: JSON.stringify({ name: guestName, phone, host_roll_no: guestHostRoll, payment_reference: "DUP-HOST-" + tag, payment_verified: true }),
     });
     const dupHostBody = await dupHostRes.json().catch(() => null);
     check("duplicate host registration → 400 (one guest per student)",
@@ -375,8 +376,8 @@ async function main() {
       JSON.stringify(dupHostBody));
     const twinRes = await fetch(`${BASE}/api/guests`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name: guestName, phone, host_roll_no: "LGU-2024-103" }),
+      headers: { "Content-Type": "application/json", "X-Admin-Pin": ADMIN_PIN },
+      body: JSON.stringify({ name: guestName, phone, host_roll_no: "LGU-2024-103", payment_reference: "DUP-TWIN-" + tag, payment_verified: true }),
     });
     const twinBody = await twinRes.json().catch(() => null);
     check("twin identity (same name + phone, other host) → 400",
