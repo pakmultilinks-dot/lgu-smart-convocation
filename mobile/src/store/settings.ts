@@ -160,7 +160,7 @@ export async function resetToAutomaticBackend(): Promise<void> {
  */
 export async function probeBackend(url: string): Promise<boolean> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const response = await fetch(`${url}/api/health`, {
       signal: controller.signal,

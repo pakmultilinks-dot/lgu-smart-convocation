@@ -271,8 +271,8 @@ const REQUEST_TIMEOUT_MS = 20000;
 function networkError(timedOut: boolean): ApiError {
   return new ApiError(
     timedOut
-      ? "The connection is taking too long. Please check your Wi-Fi connection and try again."
-      : "Unable to connect. Please check your Wi-Fi connection or contact the system administrator.",
+      ? "The connection is taking too long. The server may be busy. Please retry."
+      : "Cannot reach the server right now. Check your internet connection and saved server address, then retry.",
     0,
   );
 }

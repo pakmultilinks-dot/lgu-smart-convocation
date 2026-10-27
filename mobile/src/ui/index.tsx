@@ -98,6 +98,7 @@ export function AppHeader({
   titleSize,
   subtitle,
   right,
+  stackRight = false,
   dark = false,
   crest = false,
   onBack,
@@ -113,6 +114,8 @@ export function AppHeader({
   title: string;
   subtitle?: string;
   right?: ReactNode;
+  /** Keep long status labels from squeezing a phone heading. */
+  stackRight?: boolean;
   dark?: boolean;
   crest?: boolean;
   /** Pushed admin routes (Phase 35G): a visible in-screen back action on
@@ -152,7 +155,7 @@ export function AppHeader({
           <Text style={[styles.backLabel, dark && styles.textOnDark]}>Back</Text>
         </Pressable>
       ) : null}
-      <View style={styles.headerMain}>
+      <View style={[styles.headerMain, stackRight && { flexDirection: "column", alignItems: "stretch" }]}>
         {/* Left zone: eyebrow/title/subtitle. flex:1 + minWidth:0 lets the
             text shrink and wrap INSIDE its own zone (Phase 35A bugs 6 + 10). */}
         <View style={styles.headerLeft}>
@@ -204,7 +207,7 @@ export function AppHeader({
             </Text>
           ) : null}
         </View>
-        {right ? <View style={styles.headerRight}>{right}</View> : null}
+        {right ? <View style={[styles.headerRight, stackRight && { alignSelf: "flex-start" }]}>{right}</View> : null}
       </View>
     </View>
   );

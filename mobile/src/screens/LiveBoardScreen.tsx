@@ -319,6 +319,7 @@ export function LiveBoardScreen() {
       <Screen>
         <AppHeader
           title="Live attendance"
+          stackRight={!wide}
           subtitle={cfg?.event.name || "Lahore Garrison University Convocation"}
           right={<StatusPill state="connecting" label="Connecting" />}
         />
@@ -359,6 +360,7 @@ export function LiveBoardScreen() {
         <View style={wide ? [styles.board, styles.boardWide] : styles.board}>
         <AppHeader
           title="Live attendance"
+          stackRight={!wide}
           subtitle={cfg?.event.name || "Lahore Garrison University Convocation"}
           crest
           onCrestPress={armExit}
