@@ -31,6 +31,7 @@ class AdminApiJsonTests(unittest.TestCase):
         self.app.config["TESTING"] = True
         self.client = self.app.test_client()
         review_support.authenticate(self.client)
+        self.client.environ_base["HTTP_X_ADMIN_PIN"] = str(config.ADMIN_PIN)
 
     def tearDown(self):
         config.DB_PATH = self.original_path
@@ -153,7 +154,7 @@ class AdminApiJsonTests(unittest.TestCase):
         guest = self.client.post(
             "/api/guests", json={
                 "name": "QA Guest", "phone": "03000000001",
-                "host_roll_no": "LGU-2024-104",
+                "host_roll_no": "LGU-2024-104", "payment_reference": "QA-RECEIPT-104", "payment_verified": True,
             },
         )
         self.assertEqual(guest.status_code, 200)

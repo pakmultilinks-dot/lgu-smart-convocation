@@ -197,8 +197,8 @@ export interface GuestPass {
 /** Phase 34 (Part C): revoke an unused guest pass (scanner-staff only). */
 export async function revokeGuestPass(gid: number): Promise<void> {
   const data = await request<{ ok: boolean; error?: string }>(
-    `/api/guests/${gid}/revoke`,
-    { method: "POST", headers: await scannerAuthHeaders() },
+    `/api/admin/guests/${gid}/revoke`,
+    { method: "POST", headers: { "X-Admin-Pin": (await getAdminPin()) ?? "" } },
   );
   if (!data.ok) {
     throw new ApiError(data.error ?? "Guest pass could not be revoked.", 400);
@@ -271,8 +271,8 @@ const REQUEST_TIMEOUT_MS = 20000;
 function networkError(timedOut: boolean): ApiError {
   return new ApiError(
     timedOut
-      ? "The connection is taking too long. Please check your Wi-Fi connection and try again."
-      : "Unable to connect. Please check your Wi-Fi connection or contact the system administrator.",
+      ? "The connection is taking too long. The server may be busy. Please retry."
+      : "Cannot reach the server right now. Check your internet connection and saved server address, then retry.",
     0,
   );
 }
@@ -511,35 +511,11 @@ export async function fetchGuests(): Promise<Guest[]> {
   return data.guests;
 }
 
-export async function registerGuest(input: {
-  name: string;
-  phone: string;
-  host_roll_no: string;
-}): Promise<GuestRegistration> {
-  const data = await request<GuestRegistration>("/api/guests", {
-    method: "POST",
-    body: JSON.stringify(input),
-  });
-  if (!data.ok) {
-    throw new ApiError(data.error ?? "Guest registration failed.", 400);
-  }
-  return data;
-}
-
 export async function fetchGuestPass(gid: number): Promise<GuestPass> {
-  // Phase 27 C3: the pass payload is a bearer credential, so reading one
-  // rides the scanner session like the roster — an anonymous caller gets 401
-  // instead of minting a pass from an enumerable gid. Mobile registration
-  // always runs signed-in; API/kiosk registrants read their own pass back
-  // with the print_token the POST response issued.
-  const data = await request<GuestPass & { ok: boolean; error?: string }>(
-    `/api/guest-pass/${gid}`,
-    { headers: await scannerAuthHeaders() },
-  );
-  if (!data.ok) {
-    throw new ApiError(data.error ?? "Guest pass not found.", 404);
-  }
-  return data;
+  const pin = await getAdminPin();
+  return request<GuestPass>(pin ? `/api/admin/guest-pass/${gid}` : `/api/guest-pass/${gid}`, {
+    headers: pin ? { "X-Admin-Pin": pin } : await scannerAuthHeaders(),
+  });
 }
 
 export async function fetchBroadcasts(): Promise<BroadcastEntry[]> {

@@ -1,9 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
 import { Tabs } from "expo-router/js-tabs";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import type { ColorValue } from "react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { STUDENT_PUBLIC_ROUTES } from "../../src/components/StudentRouteGate";
+import { getToken } from "../../src/store/studentSession";
 import { colors, fonts, radius } from "../../src/theme";
 
 /**
@@ -59,6 +62,15 @@ function tabIcon(name: keyof typeof Ionicons.glyphMap) {
 /** Paper tab bar mirroring the volunteer shell: filtered visible routes,
  *  PARENT_OF active mapping, safe-area bottom padding, a11y semantics. */
 function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarProps) {
+  const currentRoute = state.routes[state.index]?.name ?? "index";
+  const [hasSession, setHasSession] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getToken().then((token) => { if (active) setHasSession(!!token); })
+      .catch(() => { if (active) setHasSession(false); });
+    return () => { active = false; };
+  }, [currentRoute]);
+  if (STUDENT_PUBLIC_ROUTES.has(currentRoute) || !hasSession) return null;
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {state.routes
@@ -142,7 +154,7 @@ export default function StudentTabLayout() {
         options={{
           title: "My Registration",
           tabBarLabel: "Registration",
-          tabBarIcon: tabIcon("person"),
+          tabBarIcon: tabIcon("document-text"),
         }}
       />
       <Tabs.Screen
@@ -156,9 +168,9 @@ export default function StudentTabLayout() {
       <Tabs.Screen
         name="more"
         options={{
-          title: "More",
-          tabBarLabel: "More",
-          tabBarIcon: tabIcon("ellipsis-horizontal"),
+          title: "Account",
+          tabBarLabel: "Account",
+          tabBarIcon: tabIcon("person-circle"),
         }}
       />
       {/* Hidden secondary/auth routes — reached from Registration/More or
@@ -183,7 +195,7 @@ export default function StudentTabLayout() {
 const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
-    backgroundColor: colors.paper,
+    backgroundColor: "#FFFFFF",
     borderTopColor: colors.track,
     borderTopWidth: 1,
     paddingTop: 6,

@@ -1,0 +1,60 @@
+# Phone screenshot audit — 25 October 2026
+
+Reviewed all 46 supplied screenshots in their supplied order, including repeated views and scroll positions. This assessment precedes application changes. Screenshots establish visible behavior, not everything that occurred between captures. No screenshot containing the user's photograph is copied into this repository.
+
+## Findings by screenshot
+
+| Screenshots | Observation and assessment | Action |
+|---|---|---|
+| 1 | Search is idle and correctly requests two characters. No submitted query or failed response is visible. The test registration is separate from the legacy operational roster, so search coverage still needs an integration test. | Exercise searches with seeded operational attendees; do not label the idle state a failed search. |
+| 2, 4 | Guest list loads successfully with zero records. Add guest opens its form below a large empty-state card, leaving the first field below the initial viewport. | Put the opened form directly below its action, reduce competing empty content, and make opening/closing explicit. |
+| 3 | Form fields and registration action exist. No submission or validation error is shown. The hosted demo has a convocation registration but no corresponding operational host roster record. | Provide a distinct synthetic operational host for guest/search testing; preserve the separation between registration and operational identities. |
+| 5 | Save name is disabled because no change was made; this is correct. Settings are unnecessarily long and lose usable height above the tab bar. | Fix shared layout and retain dirty-state save behavior. |
+| 6, 7 | Confirmed layout defect: Volunteers wraps as “Volunteer / s” inside the three-way selector. | Fit control labels without splitting a word; retain full accessible names. |
+| 8 | Auditorium gate is truncated and the remaining composer extends beyond the viewport. No gate has been selected, so a disabled send/save action would be correct. | Allow gate names to wrap intelligibly, preserve scrolling to the message/action, and retain selection validation. |
+| 6–8 | Composer explicitly saves a legacy broadcast log; it is not the published student Updates feed. The API writes `broadcasts`, whereas student announcements use a separate publication model. | Distinguish saved operational logs from published student updates and expose the correct publishing workflow; never claim SMS/email delivery. |
+| 9 | Both event-tool settings initially show enabled. Large card spacing and duplicated bottom inset reduce reachability. | Compact layout; retain server-authoritative switches. |
+| 10, 17 | Disabled volunteer dashboard follows the administrator's action. Student/admin recovery actions remain available. This is expected restriction behavior. | Preserve it; verify re-enable and refresh behavior without silently undoing the user's settings. |
+| 11, 12 | Both switches are disabled and saving succeeded. These duplicate screenshots support successful persistence, not a server failure. | Preserve saved state and improve action/state clarity. |
+| 13, 14 | Connection succeeds. Long hostname wraps awkwardly in the description; the input is horizontally scrolled, which can hide its start. | Use readable connection presentation and avoid unnecessary connection instructions in normal account flows. |
+| 15, 16 | Unchanged settings correctly disable Save. Attendance target is unset (zero). A configured operational date does not publish student event details. | Expose event publication separately and explain its draft/published status. Do not invent a real ceremony date or attendance target. |
+| 18 | Password recovery promises email although the hosted preview has email disabled. No submitted request is shown. | Report email-service availability before promising delivery; preserve recovery security and account privacy. |
+| 19, 20 | Login progresses from Signing in to the authenticated profile. A single spinner capture is not evidence of a stuck login. Profile is 2/3 complete because a photo is missing. | Preserve working login and completion requirements. |
+| 20, 21 | Official record renders, but rows are oversized and the correction action is clipped at the bottom of the content viewport. | Compact record rows and fix shared bottom inset. Keep official identity fields read-only. |
+| 22, 26 | Photo upload succeeds and phone saving succeeds. These are working flows. The phone field currently has a general length constraint rather than meaningful phone validation. | Preserve upload and review phone validation without silently changing official identity fields. |
+| 23 | Entry pass is blocked because no student event snapshot was published. It also displays the old convocation name. | Fix event administration/data source consistency and prepare a clearly identified published demo event for pass testing. Never bypass eligibility. |
+| 24, 25 | Confirmed product-copy defect: a student sees internal legacy-roster architecture and a long paragraph instead of an actionable reason their QR is unavailable. | Show the actual eligibility/publication state and the next action. Keep technical diagnostics out of the student flow. |
+| 27, 29 | No published student announcements is a valid empty state. Old convocation name persists. The mobile operational composer does not populate this feed. | Unify naming and provide explicit student-update publishing, with truthful delivery wording. |
+| 28, 30 | Confirmed contradiction: Home says registration is “usable for entry,” while Pass/Readiness say entry is blocked. An active registration alone is insufficient. | Describe registration status separately from published-event/pass eligibility. |
+| 31 | Event page correctly reports no publication, despite an operational date appearing in Admin. This exposes two different event-data workflows, not a network outage. | Provide an accessible event publication workflow; do not automatically publish ordinary draft edits. |
+| 32, 36, 38 | Correction request form and empty request list are present; no submitted request failure is visible. Long explanatory content makes the form slow to reach. Old event name persists. | Compact guidance, preserve staff review, and verify create/read request behavior. |
+| 33, 34 | Readiness correctly identifies unpublished event as blocking, and reflects the uploaded photo. Old event name and excessive whitespace remain. “No reminders” is a valid empty state. | Align Home/Pass/Readiness messages; improve density. |
+| 35 | History loads one claimed event correctly, with the old event name. A missing ceremony date follows the missing publication. | Correct current event naming without overwriting historical published snapshots. |
+| 37 | Empty medalist board is expected because none were published. No loading or server failure is shown. Old event name persists. | Preserve honest empty state; provide separate synthetic content only where clearly identified. |
+| 39, 40 | Landing works and displays the correct app name. Staff access is below the initial phone viewport; it is secondary, but overall spacing still requires unnecessary scrolling. | Improve compactness without returning to large role-picker cards. |
+| 41 | Both staff tools are reported available and navigation actions render correctly. | Preserve enabled/disabled distinction and authenticated access. |
+| 42, 43 | Home receives real zero counters and seven gate records. Expected attendance is honestly unset. No scans means zero activity is correct. | Preserve truthful counters; provide operational test fixtures rather than fake live totals. |
+| 44, 46 | Confirmed layout defect: camera consumes the remaining viewport and Flash/manual controls are absent below it. A black screenshot alone does not establish camera failure; permission was active in 45. | Measure remaining camera slot instead of forcing an oversized minimum; ensure manual fallback and camera lifecycle are accessible. Physical QR capture still needs a device test. |
+| 45 | Confirmed interaction defect: gate selection overlays the scanner sign-in modal. Camera permission indicator is active behind unauthenticated overlays. All seven gates are offered before authorization, although the demo account is assigned only Gate 1. | Make sign-in/gate/name prompts mutually exclusive; pause camera behind prompts; show authorized gates after sign-in. Keep server-side gate authorization. |
+
+## Root causes confirmed in source
+
+1. `mobile/src/ui/index.tsx`: `Screen` applies the bottom safe-area inset even inside tab screens, while the custom tab bar already consumes the same system inset. This explains the repeated blank strip immediately above tabs. Non-scroll scanner content also receives generic scroll-container padding.
+2. `ScannerScreen.tsx`: camera sizing uses full window height plus a large minimum inside an already bounded tab content area. The gate sheet and sign-in modal have independent visibility conditions; camera pause only considers the gate sheet.
+3. `SegmentedControl`: equal-width segments use 15px labels and horizontal padding without a strategy for long labels. The volunteer audience label cannot fit at the supplied phone width.
+4. `GuestsScreen`: the opened form is deliberately rendered after the list and its large empty state.
+5. Operational settings and the `convocations`/`convocation_publications` records are separate. Editing `convocation_name` in system settings did not update the active registration event or publish it. Student pages read that active event and still show its seeded old name.
+6. Student Home/Registration label an active registration as usable for entry without checking publication/pass state. Backend Pass correctly requires a published event and other eligibility conditions.
+7. `convocation_pass.QR_BLOCKER` exposes a legacy implementation explanation even though the app already has a separate registration-backed QR issuance path.
+8. `/api/broadcasts` records operational broadcast logs only. Student Updates reads a different official publication workflow. The current admin UI makes these look like one announcement feature.
+9. The demo provisioning helper created a claimed student account but no published event or operational host attendee. This was enough for authentication checks but insufficient for an end-to-end pass/guest/search demo.
+
+## Repair order and verification
+
+First fix shared layout, scanner prompt sequencing, honest pass wording, and readable controls. Then expose/verify the correct event and student-announcement publication actions, reconcile current event naming without rewriting historical publications, and add isolated operational demo fixtures. Verify a real registration-backed QR through server scan/duplicate checks; do not substitute legacy roster identity matching. Verify at 360x700 and 390x744 usable content viewports. Larger font scaling and physical-device keyboard/camera behavior require separate device checks. Retain existing registration restrictions, administrator access, independent tool switches, and production startup migration protection.
+
+No actual campus database is needed. Preserve the user's current hosted switch state. Never publish user photos, phone values, credentials, or QR bearer tokens as public test evidence. Email delivery and physical camera operation must be reported separately from source/API/UI checks.
+
+## Implemented and verified
+
+Shared tab insets, scanner sizing and prompt sequencing, authorized gate choices, guest form ordering, audience labels, padded record cards, accurate pass wording and publication controls are repaired. Browser acceptance passed at 360x700 and 390x744, including explicit event publication, student update visibility, scanner authentication, gate filtering and visible manual controls. TypeScript, Expo lint and synthetic backend publication/QR/duplicate-admission integration passed. Hosted deployment and the replacement native APK are tracked separately; browser camera placeholders do not certify hardware capture.

@@ -19,6 +19,7 @@ jobs:
       CI: "1"
       EXPO_NO_TELEMETRY: "1"
       EXPO_NO_DEPLOY: "1"
+      APP_VARIANT: preview
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -65,7 +66,7 @@ jobs:
           if (!settings.expo.android.package.endsWith(".preview")) {
             throw new Error("Preview app package identity was not isolated");
           }
-          console.log("Preview build identity set; no server URL or secret embedded");
+          console.log("Preview build identity set; public test server configured, no credentials embedded");
           NODE
       - name: Generate native Android project without Expo account credentials
         working-directory: mobile

@@ -319,6 +319,7 @@ export function LiveBoardScreen() {
       <Screen>
         <AppHeader
           title="Live attendance"
+          stackRight={!wide}
           subtitle={cfg?.event.name || "Lahore Garrison University Convocation"}
           right={<StatusPill state="connecting" label="Connecting" />}
         />
@@ -359,6 +360,7 @@ export function LiveBoardScreen() {
         <View style={wide ? [styles.board, styles.boardWide] : styles.board}>
         <AppHeader
           title="Live attendance"
+          stackRight={!wide}
           subtitle={cfg?.event.name || "Lahore Garrison University Convocation"}
           crest
           onCrestPress={armExit}
@@ -661,6 +663,7 @@ export function LiveBoardScreen() {
 
 const styles = {
   board: {
+    gap: spacing.md,
     flex: 1,
   },
   // 35M R3: genuine vertical scrolling for the board content — a bounded
@@ -686,6 +689,7 @@ const styles = {
     alignItems: "flex-start" as const,
   },
   column: {
+    gap: spacing.md,
     flex: 1,
     minWidth: 0,
   },

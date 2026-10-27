@@ -105,7 +105,7 @@ const broadcast = read("mobile/src/screens/BroadcastScreen.tsx");
 check("header title is Announcements",
   has(broadcast, 'title="Announcements"'));
 check("subtitle is exact (35M R2 item 10 mandate)",
-  has(broadcast, 'subtitle="Log a message for students and volunteers"'));
+  has(broadcast, 'subtitle="Operational message log for event teams"'));
 check("stale copy is gone (old subtitle + pre-35G labels)",
   !has(broadcast, 'subtitle="Send a message to students and volunteers"') && !has(broadcast, "Send broadcast"));
 check("light header with back action to More",

@@ -46,6 +46,7 @@ const kit = read("src/ui/index.tsx");
 const typography = read("src/theme/typography.ts");
 const indexTs = read("app/index.tsx");
 const modePicker = read("app/mode-picker.tsx");
+const welcome = read("src/components/StudentWelcome.tsx");
 const appJson = read("app.json");
 const pkg = read("package.json");
 const sheet = read("src/scanner/ScannerSheet.tsx");
@@ -119,7 +120,7 @@ check("9: demo banner is a flat tinted strip (no border/radius)",
     !/demoBanner:\s*\{[^}]*borderRadius/.test(broadcast) &&
     has(broadcast, "Demo mode \u2014 announcements are saved only"));
 check("10: announcement subtitle is the mandated log-first copy",
-  has(broadcast, 'subtitle="Log a message for students and volunteers"') &&
+  has(broadcast, 'subtitle="Operational message log for event teams"') &&
     !has(broadcast, 'subtitle="Send a message to students and volunteers"'));
 
 // ---- 11–12. Home gate rows + sans eyebrow --------------------------------
@@ -140,10 +141,10 @@ check("13: university name is sans on both entry screens; footer hint gone",
   /university:\s*\{[^}]*fontFamily: fonts\.displayMedium/.test(indexTs) &&
     !/university:\s*\{[^}]*fonts\.mono/.test(indexTs) &&
     !has(indexTs, "letterSpacing: 0.6") &&
-    /university:\s*\{[^}]*fontFamily: fonts\.displayMedium/.test(modePicker) &&
-    !/university:\s*\{[^}]*fonts\.mono/.test(modePicker) &&
-    !has(modePicker, "Your selection is saved") &&
-    !has(modePicker, "hint: {"));
+    /university:\s*\{[^}]*fontFamily: fonts\.displayMedium/.test(indexTs) &&
+    has(modePicker, "StudentWelcome") &&
+    /caption:\s*\{[^}]*fontFamily: fonts\.displayMedium/.test(welcome) &&
+    !has(welcome, "Your selection is saved"));
 
 // ---- 14. Font loading architecture ----------------------------------------
 console.log("Item 14 — Font loading architecture");
@@ -202,17 +203,12 @@ check("21: mono only for status chips + identifiers; rule documented in AGENTS.m
     /offlineHint:\s*\{[^}]*fontFamily: fonts\.displayMedium/.test(bottombarT) &&
     has(agents, "Typography (35M item 18)") &&
     has(agents, "status chips"));
-check("22: entry screens consume server config for the event title",
+check("22: launch event stays server-driven; shared welcome uses approved product branding",
   has(indexTs, "cfg?.event.name || eventTitle()") &&
-    has(modePicker, "cfg?.event.name || eventTitle()") &&
-    /title:\s*\{[^}]*fontSize: 20/.test(indexTs) &&
-    /title:\s*\{[^}]*fontSize: 20/.test(modePicker));
-// 35M item 20 trace+fix: the splash university line consumed the local
-// UNIVERSITY_NAME constant even when the server value differed — it now
-// reads cfg.university like Home (L188) and Guest Pass (L201).
-check("23: splash university line consumes server cfg.university (35M item 20 fix)",
+  has(modePicker, "StudentWelcome") && has(welcome, ">LGU Convocation</Text>"));
+check("23: launch university remains server-driven; welcome identifies the university",
   has(indexTs, "cfg?.university || UNIVERSITY_NAME") &&
-    has(modePicker, "cfg?.university || UNIVERSITY_NAME"));
+  has(welcome, ">Lahore Garrison University</Text>"));
 
 console.log(`\nDone: ${passed} passed, ${failed} failed.`);
 process.exit(failed > 0 ? 1 : 0);

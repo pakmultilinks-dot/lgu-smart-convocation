@@ -1,9 +1,13 @@
+import { StudentRecordManagement } from "../components/StudentRecordManagement";
+import { DashboardGrid, DashboardTile } from "../components/DashboardWidgets";
+import { PaidGuestManagement } from "../components/PaidGuestManagement";
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { getSettings, updateSettings } from "../api/settingsApi";
 import { DashboardControls } from "../components/DashboardControls";
+import { StudentPublishingControls } from "../components/StudentPublishingControls";
 import { getQueue } from "../store/offlineQueue";
 import {
   getApiBaseUrl,
@@ -32,7 +36,7 @@ type ProbeState = "idle" | "probing" | "ok" | "fail";
     technical values never appear in operator-facing list UI). */
 async function probe(url: string): Promise<boolean> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch(`${url.replace(/\/$/, "")}/api/health`, {
       signal: controller.signal,
@@ -141,6 +145,7 @@ function calendarGrid(year: number, month: number): number[] {
  * stamped with the probe time (see probeNoteFor).
  */
 export function AdminScreen() {
+  const [section, setSection] = useState<"hub" | "availability" | "publishing" | "guests" | "advanced" | "registrations" | "roster">("hub");
   const [mode, setMode] = useState<"auto" | "custom">("auto");
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -346,11 +351,28 @@ export function AdminScreen() {
         }
         eyebrow="Admin"
         eyebrowSans
-        title="System configuration"
-        subtitle="Dashboard availability, server connection and convocation details"
+        title={section === "hub" ? "Administrator dashboard" : section === "registrations" ? "Student records" : section === "roster" ? "Gate roster" : section === "guests" ? "Paid guest passes" : section === "publishing" ? "Student publications" : section === "availability" ? "Tool availability" : "System configuration"}
+        subtitle="Manage records, paid passes and event operations"
       />
 
-      <DashboardControls />
+      {section !== "hub" ? <AppButton label="Back to admin dashboard" variant="secondary" onPress={() => setSection("hub")} /> : null}
+      {section === "hub" ? <>
+        <SectionEyebrow>Management</SectionEyebrow>
+        <DashboardGrid>
+          <DashboardTile title="Student records" detail="Official intake and corrections" icon="school-outline" onPress={() => setSection("registrations")} />
+          <DashboardTile title="Operational roster" detail="Add and edit gate students" icon="people-outline" onPress={() => setSection("roster")} />
+          <DashboardTile title="Paid guest passes" detail="Verify payment and issue" icon="ticket-outline" onPress={() => setSection("guests")} />
+          <DashboardTile title="Student publications" detail="Schedule and official Updates" icon="megaphone-outline" onPress={() => setSection("publishing")} />
+          <DashboardTile title="Operational message log" detail="Saved team messages" icon="chatbox-outline" onPress={() => router.push("/admin-messages")} />
+          <DashboardTile title="Tool availability" detail="Scanner and live display" icon="toggle-outline" onPress={() => setSection("availability")} />
+          <DashboardTile title="System configuration" detail="Server and operational settings" icon="settings-outline" onPress={() => setSection("advanced")} />
+        </DashboardGrid>
+      </> : null}
+      {section === "registrations" || section === "roster" ? <StudentRecordManagement key={section} kind={section} /> : null}
+      {section === "availability" ? <DashboardControls /> : null}
+      {section === "publishing" ? <StudentPublishingControls /> : null}
+      {section === "guests" ? <PaidGuestManagement /> : null}
+      {section === "advanced" ? <>
       {/* ------------------------------------------------- server connection */}
       <SectionCard>
         <SectionEyebrow>Server connection</SectionEyebrow>
@@ -371,8 +393,8 @@ export function AdminScreen() {
             {effectiveUrl ? (
               <Text style={styles.connBody}>
                 {mode === "custom"
-                  ? `Using: Custom (${effectiveUrl.replace(/^https?:\/\//, "")})`
-                  : "Using: Automatic (dynamic IP)"}
+                  ? "Using a custom HTTPS server"
+                  : "Using the automatic server setting"}
               </Text>
             ) : null}
           </View>
@@ -394,6 +416,8 @@ export function AdminScreen() {
             size="sm"
           />
         </View>
+
+        {effectiveUrl ? <Text style={styles.connBody} selectable>{effectiveUrl}</Text> : null}
 
         {/* 33-QA (P8-27): automatic mode shows the effective server in
             the placeholder — the field never hides which server the
@@ -565,7 +589,7 @@ export function AdminScreen() {
           label="Open announcements"
           icon="megaphone-outline"
           variant="secondary"
-          onPress={() => router.push("/(volunteer)/broadcast")}
+          onPress={() => router.push("/admin-messages")}
         />
       </SectionCard>
 
@@ -712,6 +736,7 @@ export function AdminScreen() {
           </View>
         </View>
       </Modal>
+      </> : null}
     </Screen>
   );
 }

@@ -140,6 +140,8 @@ def demo_secret_violation(startup=False):
 # Official product naming: "Lahore Garrison University Smart Convocation"
 # (full, in templates) / "LGU Smart Convocation" (short, in API + titles).
 APP_NAME = "LGU Smart Convocation"
+# Public-facing branding. APP_NAME remains the existing health-probe identifier.
+APP_DISPLAY_NAME = "LGU Convocation"
 UNIVERSITY = "Lahore Garrison University"
 MOTTO = "Nurturing the Future of Pakistan in an Excellent Environment"
 

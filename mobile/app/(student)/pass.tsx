@@ -44,6 +44,11 @@ const STATE_PILL: Record<passApi.PassState, "accept" | "queued" | "invalid" | "i
   no_convocation: "info",
 };
 
+function passTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Time unavailable" : date.toLocaleString("en-PK", { timeZone: "Asia/Karachi", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) + " PKT";
+}
+
 export default function PassScreen() {
   const [step, setStep] = useState<Step>({ kind: "loading" });
   const [qr, setQr] = useState<passApi.IssuedPass | null>(null);
@@ -156,64 +161,6 @@ export default function PassScreen() {
         <StatusPill state={STATE_PILL[pass.state]} label={pass.state_label} />
       </View>
 
-      <SectionCard>
-        <Text style={styles.title}>{pass.title}</Text>
-        <Text style={styles.detail}>{pass.detail}</Text>
-      </SectionCard>
-
-      {pass.registration ? (
-        <>
-          <SectionEyebrow>Registration</SectionEyebrow>
-          <SectionCard pad={false}>
-            <ListRow title="Student" subtitle={pass.registration.student_name} />
-            <ListRow
-              title="Registration number"
-              subtitle={pass.registration.registration_number}
-            />
-            <ListRow title="Roll number" subtitle={pass.registration.roll_number} />
-            <ListRow title="Department" subtitle={pass.registration.department} />
-          </SectionCard>
-        </>
-      ) : null}
-
-      {event ? (
-        <>
-          <SectionEyebrow>Official event details</SectionEyebrow>
-          <SectionCard pad={false}>
-            {/* Phase 33 Part F: the row names the ceremony date, so
-                "Confirmed <date>" can't be misread as a registration
-                confirmation — the label carries the meaning. */}
-            <ListRow
-              title="Ceremony date"
-              subtitle={
-                event.confirmed_date
-                  ? `Confirmed ${event.confirmed_date}`
-                  : event.expected_date
-                    ? `Expected ${event.expected_date} (provisional)`
-                    : "Not announced yet"
-              }
-              trailing={
-                <StatusPill
-                  state={event.date_state === "confirmed" ? "accept" : "queued"}
-                  label={event.date_state_label}
-                  size="sm"
-                />
-              }
-            />
-            {event.rehearsal ? (
-              <ListRow
-                title="Rehearsal"
-                subtitle={`${event.rehearsal.date}${event.rehearsal.time ? ` · ${event.rehearsal.time}` : ""}`}
-              />
-            ) : null}
-            <ListRow title="Venue" subtitle={event.venue || "Not published"} />
-            {event.instructions ? (
-              <ListRow title="Instructions" subtitle={event.instructions} />
-            ) : null}
-          </SectionCard>
-        </>
-      ) : null}
-
       <SectionEyebrow>Gate entry</SectionEyebrow>
       <SectionCard>
         {pass.state === "eligible" && qr ? (
@@ -234,9 +181,7 @@ export default function PassScreen() {
                 ? "both the rehearsal and the main convocation"
                 : "the main convocation"}
               . Show this QR at the entry gate. It carries no personal data — the
-              gate verifies it against your registration record. Issued{" "}
-              {qr.issued_at}
-              {qr.expires_at ? `, valid until ${qr.expires_at}` : ""}.
+              gate verifies it against your registration record. Issued {passTime(qr.issued_at)}{qr.expires_at ? `, valid until ${passTime(qr.expires_at)}` : ""}.
             </Text>
             <AppButton
               label="Refresh QR"
@@ -279,8 +224,61 @@ export default function PassScreen() {
         )}
       </SectionCard>
 
+      <SectionCard>
+        <Text style={styles.title}>{pass.title}</Text>
+        <Text style={styles.detail}>{pass.detail}</Text>
+      </SectionCard>
+
+      {pass.registration ? (
+        <>
+          <SectionEyebrow>Registration</SectionEyebrow>
+          <SectionCard>
+            <ListRow title="Student" subtitle={pass.registration.student_name} />
+            <ListRow
+              title="Registration number"
+              subtitle={pass.registration.registration_number}
+            />
+            <ListRow title="Roll number" subtitle={pass.registration.roll_number} />
+            <ListRow title="Department" subtitle={pass.registration.department} />
+          </SectionCard>
+        </>
+      ) : null}
+
+      {event ? (
+        <>
+          <SectionEyebrow>Official event details</SectionEyebrow>
+          <SectionCard>
+            {/* Phase 33 Part F: the row names the ceremony date, so
+                "Confirmed <date>" can't be misread as a registration
+                confirmation — the label carries the meaning. */}
+            <ListRow
+              title="Ceremony date"
+              subtitle={
+                event.confirmed_date
+                  ? `Confirmed ${event.confirmed_date}`
+                  : event.expected_date
+                    ? `Expected ${event.expected_date} (provisional)`
+                    : "Not announced yet"
+              }
+
+            />
+            {event.rehearsal ? (
+              <ListRow
+                title="Rehearsal"
+                subtitle={`${event.rehearsal.date}${event.rehearsal.time ? ` · ${event.rehearsal.time}` : ""}`}
+              />
+            ) : null}
+            <ListRow title="Venue" subtitle={event.venue || "Not published"} />
+            {event.instructions ? (
+              <ListRow title="Instructions" subtitle={event.instructions} />
+            ) : null}
+          </SectionCard>
+        </>
+      ) : null}
+
+
       <AppButton
-        label="Refresh"
+        label="Refresh invitation details"
         variant="ghost"
         icon="refresh"
         onPress={() => void refresh()}

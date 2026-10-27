@@ -10,6 +10,7 @@ import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Modal,
+  ScrollView,
   Platform,
   StyleSheet,
   Text,
@@ -184,11 +185,12 @@ export function ScannerScreen() {
   // requested — ask once, guarded against double-request while resolving.
   const requestedPermissionRef = useRef(false);
   useEffect(() => {
-    if (!permission && !requestedPermissionRef.current) {
+    if (session && !permission && !requestedPermissionRef.current) {
       requestedPermissionRef.current = true;
       void requestPermission();
     }
-  }, [permission, requestPermission]);
+  }, [session, permission, requestPermission]);
+
 
   // Race-safe result timeline: ~1.2s for scan results, 4s for sync/test
   // notices; timers are cancelled on a newer result and on unmount
@@ -228,11 +230,13 @@ export function ScannerScreen() {
       // it never silently defaults to the first gate, and the existing
       // gate-only sheet opens so the volunteer picks one explicitly.
       const saved = savedGateRef.current ?? (await getSelectedGate());
-      if (saved && list.some((g) => g.id === saved.id)) {
+      const authenticated = await getScannerSession();
+      if (saved && authenticated?.gates.includes(saved.id) && list.some((g) => g.id === saved.id)) {
         savedGateRef.current = saved;
         setGateId(saved.id);
-      } else if (list.length > 0) {
-        setSheetVisible(true);
+      } else {
+        setGateId(null);
+        if (list.length > 0 && authenticated) setSheetVisible(true);
       }
     } catch (e) {
       // Phase 38 (MOB-003): an HTTP answer (even a 500) proves the backend
@@ -681,6 +685,8 @@ export function ScannerScreen() {
       }
       setSession(sess);
       setLoginVisible(false);
+      setGateId(null);
+      setSheetVisible(true);
       setNamePromptVisible(volunteerRef.current.needsSetup);
       setLoginUser("");
       setLoginPin("");
@@ -796,8 +802,8 @@ export function ScannerScreen() {
   // the controls stay visible without blind scrolling; the Test panel
   // below the bar stays reachable by scroll.
   const cameraHeight = Math.max(
-    260,
-    Math.min(Math.round(windowH * 0.58), windowH - 330),
+    120,
+    Math.min(260, windowH - 600),
   );
 
   // No authenticated scanner session plus no reachable server is a setup
@@ -838,7 +844,7 @@ export function ScannerScreen() {
     );
   }
 
-  if (!permission) {
+  if (session && !permission) {
     return (
       <Screen scroll={false}>
         <LoadingState label="Checking camera permission..." />
@@ -846,7 +852,7 @@ export function ScannerScreen() {
     );
   }
 
-  if (!permission.granted) {
+  if (session && permission && !permission.granted) {
     // Issue 6 (Release blocker): REQUIRED and DENIED are distinct states
     // with distinct copy — never one generic card. 35L (C2): the recovery
     // path is never a dead screen — re-ask while the OS still allows it,
@@ -1001,7 +1007,12 @@ export function ScannerScreen() {
       {/* Issue 2 (Release blocker): the camera is refused until a gate is
           chosen — no viewfinder, no scan, no ambiguity. The gate sheet
           opens automatically so the volunteer picks one explicitly. */}
-      {gateId === null ? (
+      {!session || loginVisible ? (
+        <View style={[styles.cameraArea, styles.gateRequired]}>
+          <Text style={styles.gateRequiredTitle}>Sign in to scan</Text>
+          <Text style={styles.gateRequiredBody}>Camera scanning starts after your scanner account and gate are confirmed.</Text>
+        </View>
+      ) : gateId === null ? (
         <View style={[styles.cameraArea, { minHeight: cameraHeight }]}>
           <View style={styles.gateRequired}>
             <Ionicons name="location-outline" size={48} color={colors.muted} />
@@ -1024,7 +1035,7 @@ export function ScannerScreen() {
             zoom={zoom}
             torch={torch}
             torchSupported={torchSupported}
-            paused={sheetVisible}
+            paused={sheetVisible || loginVisible || namePromptVisible || modeSwitchPending !== null || occasionSwitchPending !== null}
             onBarcodeScanned={handleBarcode}
             onCameraLayout={onCameraLayout}
             onMountError={handleMountError}
@@ -1107,8 +1118,8 @@ export function ScannerScreen() {
       {/* Gate sheet — gate selection only (35I Q: direction lives in the
           top bar SegmentedControl, the ONE authoritative control). */}
       <ScannerSheet
-        visible={sheetVisible}
-        gates={gates}
+        visible={sheetVisible && session !== null && !loginVisible && !namePromptVisible}
+        gates={gates.filter((gate) => session?.gates.includes(gate.id))}
         gatesError={gatesError}
         gateId={gateId}
         onSelectGate={handleSelectGate}
@@ -1127,7 +1138,7 @@ export function ScannerScreen() {
         }}
       >
         <View style={styles.promptBackdrop}>
-          <View style={styles.promptCard}>
+          <ScrollView style={{ maxHeight: "100%" }} contentContainerStyle={styles.promptCard} keyboardShouldPersistTaps="handled">
             <Text style={styles.promptTitle}>Sign in to scan</Text>
             <Text style={styles.promptBody}>
               Use the scanner username and PIN issued by the administrator for
@@ -1189,7 +1200,7 @@ export function ScannerScreen() {
                 onPress={() => void signOut()}
               />
             ) : null}
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 

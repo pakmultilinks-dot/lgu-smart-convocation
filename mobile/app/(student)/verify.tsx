@@ -20,6 +20,15 @@ export default function StudentVerify() {
     setForm((f) => ({ ...f, [k]: v }));
 
   const submit = async () => {
+    if (busy) return;
+    if (Object.values(form).some(value => !value.trim())) {
+      setError("Enter your registration number, university email, roll number and full name.");
+      return;
+    }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(form.university_email.trim())) {
+      setError("Enter a valid university email address.");
+      return;
+    }
     setBusy(true);
     setError(null);
     try {
@@ -46,7 +55,7 @@ export default function StudentVerify() {
             ? "Email delivery is unavailable — no code was sent and no account was created. Contact the Examination Department."
             : e.status === 0
               ? "Could not reach the convocation system. Check your connection — nothing was checked."
-              : e.message
+              : e.message.replace(/registration_number/g, "Registration number").replace(/university_email/g, "University email").replace(/roll_number/g, "Roll number").replace(/student_name/g, "Student name")
           : "Verification failed. Check the connection and try again.",
       );
     } finally {

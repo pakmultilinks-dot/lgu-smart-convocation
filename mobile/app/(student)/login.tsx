@@ -1,6 +1,6 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as studentApi from "../../src/api/studentApi";
 import { colors, fonts, spacing } from "../../src/theme";
@@ -13,10 +13,14 @@ export default function StudentLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [needsConnection, setNeedsConnection] = useState(false);
 
   const submit = async () => {
+    if (busy) return;
+    if (!email.trim() || !password) { setError("Enter your university email and password."); return; }
     setBusy(true);
     setError(null);
+    setNeedsConnection(false);
     try {
       const session = await studentApi.login({
         email: email.trim(),
@@ -24,6 +28,7 @@ export default function StudentLogin() {
       });
       router.replace(studentApi.homePath(session));
     } catch (e) {
+      setNeedsConnection(e instanceof ApiError && e.status === 0);
       setError(
         e instanceof ApiError
           ? e.code === "locked"
@@ -42,7 +47,7 @@ export default function StudentLogin() {
     <Screen>
       <AppHeader
         title="Sign in"
-        subtitle="Your student account for the convocation"
+        subtitle="Continue with your university student account."
         onBack={() => router.back()}
       />
       {reset ? (
@@ -50,6 +55,7 @@ export default function StudentLogin() {
           Password changed. Sign in with your new password.
         </Text>
       ) : null}
+      <View style={styles.form}>
       <Field
         label="University email"
         value={email}
@@ -66,6 +72,8 @@ export default function StudentLogin() {
         secureTextEntry
         autoComplete="password"
         placeholder="Your password"
+        returnKeyType="done"
+        onSubmitEditing={() => void submit()}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <AppButton
@@ -74,6 +82,8 @@ export default function StudentLogin() {
         onPress={() => void submit()}
         style={styles.submit}
       />
+      </View>
+      {needsConnection ? <AppButton label="Connection settings" variant="secondary" onPress={() => router.push("/connect-server")} /> : null}
       <AppButton
         label="Forgot password?"
         variant="ghost"
@@ -84,6 +94,7 @@ export default function StudentLogin() {
 }
 
 const styles = StyleSheet.create({
+  form: { backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: colors.track, padding: 20, gap: 18 },
   submit: { marginTop: spacing.md },
   note: {
     color: colors.valid,

@@ -107,10 +107,12 @@ export default function StudentProfile() {
   // <Image> cannot resolve the relative photo route — resolve it against the
   // backend host. Only the async callback writes state; the render gates on
   // me.profile.photo, so a cached URI is never shown for a missing photo.
+  const photoAccountToken = load.kind === "ready" && load.me.profile.photo ? load.token : null;
+  const photoVersion = load.kind === "ready" ? load.me.profile.photo_updated_at : null;
   useEffect(() => {
-    if (load.kind !== "ready" || !load.me.profile.photo) return;
+    if (!photoAccountToken) return;
     let live = true;
-    void studentApi.photoSource(load.token)
+    void studentApi.photoSource(photoAccountToken)
       .then((s) => {
         if (!live) return;
         setPhoto(s);
@@ -120,7 +122,7 @@ export default function StudentProfile() {
     return () => {
       live = false;
     };
-  }, [load]);
+  }, [photoAccountToken, photoVersion]);
 
   const savePhone = async (ready: Extract<Load, { kind: "ready" }>) => {
     if (saving) return; // one save at a time — no duplicate submits
@@ -278,7 +280,7 @@ export default function StudentProfile() {
       </View>
 
       <SectionEyebrow>Official record</SectionEyebrow>
-      <SectionCard pad={false}>
+      <SectionCard>
         <ListRow title="Registration number" subtitle={reg.registration_number} />
         <ListRow title="Student name" subtitle={reg.student_name} />
         <ListRow title="Roll number" subtitle={reg.roll_number} />
@@ -299,14 +301,17 @@ export default function StudentProfile() {
 
       <SectionEyebrow>Photo</SectionEyebrow>
       <View style={styles.photoRow}>
-        {preview || photo ? (
+        {me.profile.photo && (preview || photo) && !photoFailed ? (
           <Image
             key={preview ?? me.profile.photo_updated_at ?? "photo"}
             source={preview ? { uri: preview } : photo!}
             style={styles.photo}
+            accessibilityLabel="Profile photo"
+            onError={() => setPhotoFailed(true)}
+            onLoad={() => setPhotoFailed(false)}
           />
         ) : (
-          <View style={[styles.photo, styles.photoEmpty]} />
+          <View style={[styles.photo, styles.photoEmpty]}><Ionicons name="person-outline" size={28} color={colors.muted} /></View>
         )}
         <View style={styles.photoActions}>
           <AppButton
@@ -335,6 +340,7 @@ export default function StudentProfile() {
             : "No photo on file yet — staff need one to identify you at convocation."}
       </Text>
 
+      {photoFailed ? <AppButton label="Retry photo preview" variant="secondary" onPress={() => { setPhoto(null); setPhotoFailed(false); void studentApi.photoSource(load.token).then(setPhoto).catch(() => setPhotoFailed(true)); }} /> : null}
       <SectionEyebrow>Contact</SectionEyebrow>
       <Field
         label="Phone number"
@@ -408,7 +414,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   photo: { width: 88, height: 88, borderRadius: radius.md },
-  photoEmpty: { backgroundColor: colors.track },
+  photoEmpty: { backgroundColor: colors.track, justifyContent: "center", alignItems: "center" },
   photoActions: { flex: 1, gap: spacing.xs },
   submit: { marginTop: spacing.md },
   note: {

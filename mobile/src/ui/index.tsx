@@ -1,9 +1,9 @@
-// Phase 35C institutional UI kit (Order #3).
-// Design law: paper/ink dominance, whitespace + thin/dashed rules instead of
-// card stacks, Bricolage Grotesque + DM Mono, at most one raised element per
-// screen. Status is ALWAYS carried by text (+ dot); color reinforces only.
+// Shared university UI: cool backgrounds, white groups, green actions.
+// Status always carries text; color reinforces meaning.
 
-import type { ReactNode } from "react";
+import { useContext, type ReactNode } from "react";
+import { useSegments } from "expo-router";
+import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import {
   ActivityIndicator,
   Image,
@@ -53,6 +53,12 @@ export function Screen({
   statusBar?: "light" | "dark";
   style?: StyleProp<ViewStyle>;
 }) {
+  // Tabs already reserve the device's bottom inset; applying it twice
+  // creates an unusable strip above the tab bar on Android.
+  const tabHeight = useContext(BottomTabBarHeightContext);
+  const segments: readonly string[] = useSegments();
+  // The student navigator exists on auth screens, but its custom tab bar is hidden.
+  const publicStudentScreen = segments.includes("(student)") && ["index", "welcome", "login", "verify", "code", "recovery"].includes(segments[segments.length - 1] ?? "index");
   const body = scroll ? (
     <ScrollView
       // 35M R3: explicit flex — the scroll container always has a bounded
@@ -73,12 +79,12 @@ export function Screen({
       {children}
     </ScrollView>
   ) : (
-    <View style={[styles.screenScroll, styles.flex1]}>{children}</View>
+    <View style={[styles.screenScroll, styles.screenFixed, styles.flex1]}>{children}</View>
   );
   return (
     <SafeAreaView
       style={[styles.screen, dark ? styles.screenDark : styles.screenLight, style]}
-      edges={["top", "left", "right", "bottom"]}
+      edges={tabHeight && !publicStudentScreen ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}
     >
       {/* One status-bar system: dark icons on paper, light on ink. */}
       <StatusBar style={statusBar ?? (dark ? "light" : "dark")} />
@@ -91,11 +97,12 @@ export function Screen({
 
 export function AppHeader({
   eyebrow,
-  eyebrowSans = false,
+  eyebrowSans = true,
   title,
   titleSize,
   subtitle,
   right,
+  stackRight = false,
   dark = false,
   crest = false,
   onBack,
@@ -111,6 +118,8 @@ export function AppHeader({
   title: string;
   subtitle?: string;
   right?: ReactNode;
+  /** Keep long status labels from squeezing a phone heading. */
+  stackRight?: boolean;
   dark?: boolean;
   crest?: boolean;
   /** Pushed admin routes (Phase 35G): a visible in-screen back action on
@@ -150,7 +159,7 @@ export function AppHeader({
           <Text style={[styles.backLabel, dark && styles.textOnDark]}>Back</Text>
         </Pressable>
       ) : null}
-      <View style={styles.headerMain}>
+      <View style={[styles.headerMain, stackRight && { flexDirection: "column", alignItems: "stretch" }]}>
         {/* Left zone: eyebrow/title/subtitle. flex:1 + minWidth:0 lets the
             text shrink and wrap INSIDE its own zone (Phase 35A bugs 6 + 10). */}
         <View style={styles.headerLeft}>
@@ -202,7 +211,7 @@ export function AppHeader({
             </Text>
           ) : null}
         </View>
-        {right ? <View style={styles.headerRight}>{right}</View> : null}
+        {right ? <View style={[styles.headerRight, stackRight && { alignSelf: "flex-start" }]}>{right}</View> : null}
       </View>
     </View>
   );
@@ -365,7 +374,7 @@ export function SegmentedControl<T extends string>({
               active && activeColor ? { backgroundColor: activeColor } : null,
             ]}
           >
-            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
+            <Text numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.8} style={[styles.segmentLabel, active && styles.segmentLabelActive]}>
               {option.label}
             </Text>
           </Pressable>
@@ -457,6 +466,7 @@ export function Field({
     <View style={[styles.fieldWrap, style]}>
       {label ? <Text style={styles.fieldLabel}>{label}</Text> : null}
       <TextInput
+          accessibilityLabel={label}
         placeholderTextColor={colors.muted}
         {...inputProps}
         style={[styles.input, !!error && styles.inputError]}
@@ -774,6 +784,7 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.xxl,
     gap: spacing.lg,
   },
+  screenFixed: { paddingBottom: spacing.sm, gap: spacing.sm },
 
   header: {
     gap: spacing.xs,
@@ -917,12 +928,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     borderRadius: radius.sm - 1,
-    paddingHorizontal: spacing.sm,
+    paddingHorizontal: 4,
   },
   segmentItemActive: {
     backgroundColor: colors.ink,
   },
   segmentLabel: {
+    flexShrink: 1,
     // 35I (P) + Scanner Fix Round 1 (item 4): control text — active =
     // bold paper on ink (clearly selected), inactive = ink on track
     // (fully readable, visibly unfilled). Entry/Exit are never
@@ -988,7 +1000,8 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.md,
-    paddingVertical: spacing.md,
+    minHeight: 48,
+    paddingVertical: spacing.sm,
   },
   rowPressed: { opacity: 0.7 },
   rowTitle: {
@@ -1004,21 +1017,21 @@ const styles = StyleSheet.create({
   },
 
   sectionCard: {
-    backgroundColor: "transparent",
+    backgroundColor: colors.card,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colors.track,
     gap: spacing.sm,
   },
   sectionCardTint: {
-    borderTopWidth: 1,
-    borderTopColor: colors.track,
-    borderStyle: "dashed",
-    paddingTop: spacing.lg,
+    backgroundColor: colors.card,
   },
   sectionCardDark: {
     backgroundColor: colors.ink,
     borderRadius: radius.md,
   },
   sectionPad: {
-    paddingVertical: spacing.xs,
+    padding: spacing.md,
   },
 
   track: {

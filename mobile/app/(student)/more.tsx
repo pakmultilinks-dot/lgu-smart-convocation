@@ -1,63 +1,58 @@
+import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { StyleSheet, View } from "react-native";
+import { useState } from "react";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as studentApi from "../../src/api/studentApi";
 import { getToken } from "../../src/store/studentSession";
-import { colors } from "../../src/theme";
-import { AppHeader, ListRow, Screen, SectionCard, SectionEyebrow } from "../../src/ui";
+import { colors, fonts } from "../../src/theme";
+import { AppHeader, Screen } from "../../src/ui";
+import { StudentRouteGate } from "../../src/components/StudentRouteGate";
 
-/**
- * More — the fifth student tab (Phase 31 Part A): the full directory of
- * less-frequent destinations (event details, readiness, history,
- * medalists, help) plus session controls, so Home stays a focused
- * dashboard instead of a long button list. No staff-only operations.
- */
+type Destination = Parameters<typeof router.push>[0];
 export default function StudentMore() {
+  const [signingOut, setSigningOut] = useState(false);
   const signOut = async () => {
-    const token = await getToken();
-    if (token) await studentApi.logout(token);
-    router.replace("/(student)/welcome");
+    if (signingOut) return;
+    setSigningOut(true);
+    try { const token = await getToken(); if (token) await studentApi.logout(token); }
+    catch { /* logout clears the local session even if the service is offline */ }
+    finally { router.replace("/(student)/welcome"); setSigningOut(false); }
   };
-
-  const row = (title: string, subtitle: string, path: Parameters<typeof router.push>[0]) => (
-    <ListRow title={title} subtitle={subtitle} onPress={() => router.push(path)} />
-  );
-
-  return (
-    <Screen>
-      <AppHeader title="More" subtitle="Event, records and help" eyebrow="Student Portal" />
-
-      <SectionCard tone="tint">
-        <SectionEyebrow>Convocation</SectionEyebrow>
-        {row("Event details", "Rehearsal and ceremony schedule", "/(student)/event")}
-        <View style={styles.divider} />
-        {row("Readiness", "What is still needed before the day", "/(student)/readiness")}
-        <View style={styles.divider} />
-        {row("Convocation history", "Past ceremonies and your record", "/(student)/history")}
-        <View style={styles.divider} />
-        {row("Medalist board", "Published medalists and photos", "/(student)/medalists")}
-      </SectionCard>
-
-      <SectionCard tone="tint">
-        <SectionEyebrow>Account</SectionEyebrow>
-        {row("Profile", "Photo and contact details", "/(student)/profile")}
-        <View style={styles.divider} />
-        {row("Help & corrections", "Ask for a registration correction", "/(student)/support")}
-      </SectionCard>
-
-      <SectionCard tone="tint">
-        <SectionEyebrow>Device</SectionEyebrow>
-        <ListRow
-          title="Change device mode"
-          subtitle="Switch between student, volunteer and scanner"
-          onPress={() => router.replace("/mode-picker")}
-        />
-        <View style={styles.divider} />
-        <ListRow title="Sign out" subtitle="End the session on this device" onPress={() => void signOut()} />
-      </SectionCard>
-    </Screen>
-  );
+  const row = (title: string, icon: keyof typeof Ionicons.glyphMap, path: Destination) =>
+    <Pressable accessibilityRole="button" accessibilityLabel={title} key={title} onPress={() => router.push(path)} style={styles.row}>
+      <View style={styles.icon}><Ionicons name={icon} size={20} color={colors.ink} /></View>
+      <Text style={styles.label}>{title}</Text><Ionicons name="chevron-forward" size={17} color={colors.muted} />
+    </Pressable>;
+  return <StudentRouteGate><Screen>
+    <AppHeader title="Account & services" subtitle="Manage your details and prepare for the day." />
+    <Text style={styles.section}>YOUR ACCOUNT</Text>
+    <View style={styles.group}>
+      {row("Profile & contact details", "person-outline", "/(student)/profile")}
+      {row("Help & corrections", "help-circle-outline", "/(student)/support")}
+    </View>
+    <Text style={styles.section}>CONVOCATION</Text>
+    <View style={styles.group}>
+      {row("Event schedule", "calendar-outline", "/(student)/event")}
+      {row("Readiness checklist", "checkbox-outline", "/(student)/readiness")}
+      {row("Convocation history", "time-outline", "/(student)/history")}
+      {row("Medalists", "medal-outline", "/(student)/medalists")}
+    </View>
+    <Text style={styles.section}>APP SETTINGS</Text>
+    <View style={styles.group}>
+      {row("Connection settings", "settings-outline", "/connect-server")}
+      {row("Staff & event access", "people-outline", "/event-tools")}
+    </View>
+    <Pressable accessibilityRole="button" accessibilityLabel="Sign out" disabled={signingOut} onPress={() => void signOut()} style={styles.signout}>
+      <Ionicons name="log-out-outline" size={20} color={colors.invalid} /><Text style={styles.signoutText}>{signingOut ? "Signing out..." : "Sign out"}</Text>
+    </Pressable>
+  </Screen></StudentRouteGate>;
 }
-
 const styles = StyleSheet.create({
-  divider: { height: 1, backgroundColor: colors.track },
+  section: { fontFamily: fonts.displayMedium, fontSize: 11, letterSpacing: 0.8, color: colors.muted, marginBottom: -12 },
+  group: { backgroundColor: "#FFFFFF", borderRadius: 16, borderWidth: 1, borderColor: colors.track, overflow: "hidden" },
+  row: { minHeight: 60, flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 14, paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: "#EDF1EE" },
+  icon: { backgroundColor: "#EDF4EF", width: 34, height: 34, borderRadius: 10, alignItems: "center", justifyContent: "center" },
+  label: { flex: 1, fontFamily: fonts.displayMedium, fontSize: 13, color: colors.ink },
+  signout: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, minHeight: 48 },
+  signoutText: { fontFamily: fonts.displayMedium, fontSize: 13, color: colors.invalid },
 });

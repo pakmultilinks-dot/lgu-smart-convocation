@@ -94,8 +94,8 @@ const scanner = read("src/screens/ScannerScreen.tsx");
 // (0.58) and a chrome budget reserves room for the top bar + bottom bar
 // + banners, so Flash + Find manually stay above the fold on device.
 check("camera window-driven share + chrome budget (35I N, 35M item 7)",
-  has(scanner, "windowH * 0.58") &&
-    has(scanner, "windowH - 330") &&
+  has(scanner, "Math.min(260, windowH - 600)") &&
+    has(scanner, "windowH - 600") &&
     has(scanner, "Math.max("));
 // ---- end of scanner layer pins (camera pin lives at the read above) ----
 check(
@@ -142,7 +142,7 @@ check("offline after 30s, values retained (35I L)", has(liveboard, "Math.max(300
 console.log("Guests screen");
 const guests = read("src/screens/GuestsScreen.tsx");
 check("subtitle exact (35I T.5)", has(guests, "Single-use passes, tied to a host."));
-check("Add guest is primary, no icon (35I T.3)", has(guests, 'label="+ Add guest"') && has(guests, 'variant="primary"'));
+check("Add guest is primary, no icon (35I T.3)", has(guests, 'formOpen ? "Cancel guest registration" : "+ Add guest"') && has(guests, 'variant="primary"'));
 check("phone single-line, never ellipsised (35I T.2)", has(guests, 'style={styles.guestMeta} numberOfLines={1}'));
 check("used line is date-aware (35I T.4)", has(guests, "function usedStamp(") && has(guests, "usedStamp(guest.used_at)"));
 check("search field unlabeled (35I T.6)", !has(guests, 'label="Search"'));
@@ -161,7 +161,7 @@ check(
 console.log("Admin screen");
 const admin = read("src/screens/AdminScreen.tsx");
 check("section renamed Server connection (35I W.1)", has(admin, "<SectionEyebrow>Server connection</SectionEyebrow>"));
-check("subtitle Server + Convocation details (35I W.1)", has(admin, "Server connection and convocation details"));
+check("subtitle Server + Convocation details (35I W.1)", has(admin, "Dashboard availability, server connection and convocation details"));
 check("operator copy says Server (35I W.2)", has(admin, "Server is reachable.") && has(admin, 'label="Server address"'));
 check("no Backend operator copy (35I W.2)", !has(admin, "Backend connection") && !has(admin, "Backend address") && !has(admin, "Backend is reachable"));
 check("pill labels Connected / Can't reach server / Checking (35I W.3)", has(admin, '"Connected"') && has(admin, '"Can\'t reach server"') && has(admin, '"Checking"'));

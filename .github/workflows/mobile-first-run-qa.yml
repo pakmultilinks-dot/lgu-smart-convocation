@@ -30,7 +30,9 @@ jobs:
         run: npm ci
       - name: Check first-run UX and EAS profile
         working-directory: mobile
-        run: node scripts/first-run-connect-test.mjs
+        run: |
+          node scripts/first-run-connect-test.mjs
+          node scripts/configured-backend-test.mjs
       - name: Verify EAS preview package identity without Expo credentials
         working-directory: mobile
         env:
