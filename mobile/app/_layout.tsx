@@ -67,6 +67,7 @@ export default function RootLayout() {
         <Stack.Screen name="mode-picker" options={{ headerShown: false }} />
         <Stack.Screen name="event-tools" options={{ headerShown: false }} />
         <Stack.Screen name="administration" options={{ headerShown: false }} />
+        <Stack.Screen name="admin-messages" options={{ headerShown: false }} />
         <Stack.Screen name="connect-server" options={{ headerShown: false }} />
         <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />
         <Stack.Screen name="(liveboard)" options={{ headerShown: false }} />
