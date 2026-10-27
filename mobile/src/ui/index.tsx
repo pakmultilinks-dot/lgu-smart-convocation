@@ -2,6 +2,7 @@
 // Status always carries text; color reinforces meaning.
 
 import { useContext, type ReactNode } from "react";
+import { useSegments } from "expo-router";
 import { BottomTabBarHeightContext } from "expo-router/js-tabs";
 import {
   ActivityIndicator,
@@ -55,6 +56,9 @@ export function Screen({
   // Tabs already reserve the device's bottom inset; applying it twice
   // creates an unusable strip above the tab bar on Android.
   const tabHeight = useContext(BottomTabBarHeightContext);
+  const segments: readonly string[] = useSegments();
+  // The student navigator exists on auth screens, but its custom tab bar is hidden.
+  const publicStudentScreen = segments.includes("(student)") && ["index", "welcome", "login", "verify", "code", "recovery"].includes(segments[segments.length - 1] ?? "index");
   const body = scroll ? (
     <ScrollView
       // 35M R3: explicit flex — the scroll container always has a bounded
@@ -80,7 +84,7 @@ export function Screen({
   return (
     <SafeAreaView
       style={[styles.screen, dark ? styles.screenDark : styles.screenLight, style]}
-      edges={tabHeight ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}
+      edges={tabHeight && !publicStudentScreen ? ["top", "left", "right"] : ["top", "left", "right", "bottom"]}
     >
       {/* One status-bar system: dark icons on paper, light on ink. */}
       <StatusBar style={statusBar ?? (dark ? "light" : "dark")} />

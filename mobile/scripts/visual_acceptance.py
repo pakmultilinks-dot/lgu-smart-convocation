@@ -106,6 +106,18 @@ try:
                 page.get_by_role("button", name="Unlock", exact=True).click()
                 expect(page.get_by_text("Administrator dashboard", exact=True)).to_be_visible(timeout=30000)
                 page.screenshot(path=str(OUT / ("admin-dashboard-%d.png" % width)), full_page=True)
+                # Student administration stays in the app, using the unlocked PIN.
+                before_pages = len(context.pages)
+                for tile in ("Student records", "Operational roster"):
+                    page.get_by_role("button", name=tile, exact=True).click()
+                    expect(page.get_by_role("button", name="Add student", exact=True)).to_be_enabled(timeout=30000)
+                    assert len(context.pages) == before_pages, "Admin tile opened an external browser"
+                    page.get_by_role("button", name="Add student", exact=True).click()
+                    expect(page.get_by_label("Student name", exact=True)).to_be_visible()
+                    expect(page.get_by_role("button", name="Review student record", exact=True)).to_be_disabled()
+                    page.screenshot(path=str(OUT / ("native-admin-%s-%d.png" % (tile.replace(" ", "-"), width))), full_page=True)
+                    page.get_by_role("button", name="Cancel editing", exact=True).click()
+                    page.get_by_role("button", name="Back to admin dashboard", exact=True).click()
                 page.get_by_role("button", name="Paid guest passes", exact=True).click()
                 expect(page.get_by_role("button", name="Review paid guest pass", exact=True)).to_be_disabled()
                 page.get_by_label("Guest name", exact=True).fill("Synthetic UI Guest")

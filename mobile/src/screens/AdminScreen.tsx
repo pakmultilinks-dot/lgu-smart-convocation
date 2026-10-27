@@ -1,4 +1,4 @@
-import * as Linking from "expo-linking";
+import { StudentRecordManagement } from "../components/StudentRecordManagement";
 import { DashboardGrid, DashboardTile } from "../components/DashboardWidgets";
 import { PaidGuestManagement } from "../components/PaidGuestManagement";
 import { Ionicons } from "@expo/vector-icons";
@@ -36,7 +36,7 @@ type ProbeState = "idle" | "probing" | "ok" | "fail";
     technical values never appear in operator-facing list UI). */
 async function probe(url: string): Promise<boolean> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 5000);
+  const timer = setTimeout(() => controller.abort(), 20000);
   try {
     const res = await fetch(`${url.replace(/\/$/, "")}/api/health`, {
       signal: controller.signal,
@@ -145,12 +145,7 @@ function calendarGrid(year: number, month: number): number[] {
  * stamped with the probe time (see probeNoteFor).
  */
 export function AdminScreen() {
-  const [section, setSection] = useState<"hub" | "availability" | "publishing" | "guests" | "advanced">("hub");
-  const [portalError, setPortalError] = useState<string | null>(null);
-  const openPortal = async (path: string) => {
-    try { const base = await getApiBaseUrl(); if (!base) throw new Error("Connect to the server first."); await Linking.openURL(base + path); }
-    catch (e) { setPortalError(e instanceof Error ? e.message : "Could not open administrator portal."); }
-  };
+  const [section, setSection] = useState<"hub" | "availability" | "publishing" | "guests" | "advanced" | "registrations" | "roster">("hub");
   const [mode, setMode] = useState<"auto" | "custom">("auto");
   const [url, setUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
@@ -356,7 +351,7 @@ export function AdminScreen() {
         }
         eyebrow="Admin"
         eyebrowSans
-        title={section === "hub" ? "Administrator dashboard" : section === "guests" ? "Paid guest passes" : section === "publishing" ? "Student publications" : section === "availability" ? "Tool availability" : "System configuration"}
+        title={section === "hub" ? "Administrator dashboard" : section === "registrations" ? "Student records" : section === "roster" ? "Gate roster" : section === "guests" ? "Paid guest passes" : section === "publishing" ? "Student publications" : section === "availability" ? "Tool availability" : "System configuration"}
         subtitle="Manage records, paid passes and event operations"
       />
 
@@ -364,17 +359,16 @@ export function AdminScreen() {
       {section === "hub" ? <>
         <SectionEyebrow>Management</SectionEyebrow>
         <DashboardGrid>
-          <DashboardTile title="Student records" detail="Official intake and corrections" icon="school-outline" onPress={() => void openPortal("/exam/")} />
-          <DashboardTile title="Operational roster" detail="Administrator student import" icon="people-outline" onPress={() => void openPortal("/admin")} />
+          <DashboardTile title="Student records" detail="Official intake and corrections" icon="school-outline" onPress={() => setSection("registrations")} />
+          <DashboardTile title="Operational roster" detail="Add and edit gate students" icon="people-outline" onPress={() => setSection("roster")} />
           <DashboardTile title="Paid guest passes" detail="Verify payment and issue" icon="ticket-outline" onPress={() => setSection("guests")} />
           <DashboardTile title="Student publications" detail="Schedule and official Updates" icon="megaphone-outline" onPress={() => setSection("publishing")} />
-          <DashboardTile title="Operational message log" detail="Saved team messages" icon="chatbox-outline" onPress={() => router.push("/(volunteer)/broadcast")} />
+          <DashboardTile title="Operational message log" detail="Saved team messages" icon="chatbox-outline" onPress={() => router.push("/admin-messages")} />
           <DashboardTile title="Tool availability" detail="Scanner and live display" icon="toggle-outline" onPress={() => setSection("availability")} />
           <DashboardTile title="System configuration" detail="Server and operational settings" icon="settings-outline" onPress={() => setSection("advanced")} />
         </DashboardGrid>
-        <Text style={{ fontFamily: fonts.displayMedium, fontSize: 13, color: colors.muted }}>Student management opens the protected server portal and requires its administrator or Examination Department sign-in. No credentials are passed in links.</Text>
-        {portalError ? <Text accessibilityRole="alert">{portalError}</Text> : null}
       </> : null}
+      {section === "registrations" || section === "roster" ? <StudentRecordManagement key={section} kind={section} /> : null}
       {section === "availability" ? <DashboardControls /> : null}
       {section === "publishing" ? <StudentPublishingControls /> : null}
       {section === "guests" ? <PaidGuestManagement /> : null}
@@ -595,7 +589,7 @@ export function AdminScreen() {
           label="Open announcements"
           icon="megaphone-outline"
           variant="secondary"
-          onPress={() => router.push("/(volunteer)/broadcast")}
+          onPress={() => router.push("/admin-messages")}
         />
       </SectionCard>
 

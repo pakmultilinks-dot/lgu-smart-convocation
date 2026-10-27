@@ -3,6 +3,7 @@
 import csv
 import hmac
 import io
+import json
 import os
 import re
 import secrets
@@ -1743,3 +1744,90 @@ def create_app():
                 "MOTTO": config.MOTTO}
 
     return app
+
+
+# Native administrator record management. Never redirects to a web session.
+@bp.route("/api/admin/records/<kind>", methods=["GET", "POST"])
+@bp.route("/api/admin/records/<kind>/<int:record_id>", methods=["PUT"])
+def api_admin_records(kind, record_id=None):
+    denied = _require_admin_pin()
+    if denied is not None:
+        return denied
+    if kind not in ("registrations", "roster"):
+        return jsonify(error="Unknown record type."), 404
+    import exam_registrations as reg
+    official = kind == "registrations"
+    fields = reg.REG_FIELDS if official else ("roll_no", "name", "gender", "program")
+    labels = {"registration_number": "Registration number", "university_email": "University email",
+              "roll_number": "Roll number", "student_name": "Student name", "department": "Department",
+              "roll_no": "Roll number", "name": "Student name", "gender": "Gender", "program": "Program"}
+    with database.connection() as db:
+        cycle = reg.active_convocation(db) if official else None
+        if official and cycle is None:
+            return jsonify(error="No active convocation is configured."), 409
+        if request.method == "GET":
+            query = request.args.get("q", "").strip()[:120]
+            try:
+                offset = max(0, int(request.args.get("offset", "0")))
+            except ValueError:
+                return jsonify(error="Invalid page."), 400
+            if official:
+                rows = reg.search(db, cycle["id"], query, "", 51, offset)
+            else:
+                like = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                rows = db.execute("SELECT id,roll_no,name,gender,program FROM students WHERE roll_no LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' ORDER BY roll_no LIMIT 51 OFFSET ?", (like, like, offset)).fetchall()
+            return jsonify(records=[{k: row[k] for k in ("id", *fields, *(("status",) if official else ()))} for row in rows[:50]], has_more=len(rows)>50)
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or set(data) - set(fields):
+            return jsonify(error="Submit only the fields shown on the form."), 400
+        clean = {}
+        for field in fields:
+            value = data.get(field, "")
+            if not isinstance(value, str):
+                return jsonify(error=labels[field] + " must be text."), 400
+            if official:
+                value, err = reg.validate_field(field, value)
+                if err:
+                    return jsonify(error=err.replace(field, labels[field])), 400
+            else:
+                value = value.strip()
+                cap = {"roll_no":32,"name":120,"gender":6,"program":120}[field]
+                if not value or len(value)>cap or any(ord(c)<32 for c in value):
+                    return jsonify(error=labels[field] + " is required and must be valid text."), 400
+                if field == "gender" and value not in ("Male", "Female"):
+                    return jsonify(error="Choose Male or Female for the operational roster."), 400
+            clean[field] = value
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            before = None
+            if record_id is not None:
+                table = "convocation_registrations" if official else "students"
+                before = db.execute("SELECT * FROM " + table + " WHERE id=?", (record_id,)).fetchone()
+                if before is None or (official and before["convocation_id"] != cycle["id"]):
+                    return jsonify(error="Record not found."), 404
+            if official:
+                if before:
+                    # Identity is immutable in this intake editor. Other corrections retain the existing audit trail.
+                    if clean["registration_number"] != before["registration_number"]:
+                        return jsonify(error="Registration number cannot be changed."), 400
+                    reg.correct(db, dict(before), clean, "mobile-administrator")
+                else:
+                    record_id = reg.insert(db, cycle["id"], clean, None, "mobile-administrator")
+                    db.commit()
+            else:
+                if before:
+                    if clean["roll_no"] != before["roll_no"]:
+                        return jsonify(error="Roll number cannot be changed after intake."), 400
+                    db.execute("UPDATE students SET name=?,gender=?,program=? WHERE id=?", (clean["name"],clean["gender"],clean["program"],record_id))
+                else:
+                    cur = db.execute("INSERT INTO students (roll_no,name,gender,program,qr_id,created_at) VALUES (?,?,?,?,?,?)", (*clean.values(),ids.generate_id(),models.now_str()))
+                    record_id = cur.lastrowid
+                db.execute("INSERT INTO audit_log (actor,action,detail,created_at) VALUES (?,?,?,?)", ("mobile-administrator", "roster_corrected" if before else "roster_added", json.dumps({"record_id":record_id,"before":{k:before[k] for k in fields} if before else None,"after":clean}), models.now_str()))
+                db.commit()
+        except sqlite3.IntegrityError:
+            db.rollback()
+            return jsonify(error="A record already uses that registration number, roll number or email."), 409
+        except ValueError as exc:
+            db.rollback()
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, id=record_id)
