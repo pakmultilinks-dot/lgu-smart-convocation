@@ -1,9 +1,11 @@
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as studentApi from "../../src/api/studentApi";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
+import { rememberStudentTab } from "../../src/store/studentTab";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { clearToken, getToken } from "../../src/store/studentSession";
 import { colors, fonts, spacing } from "../../src/theme";
 import {
@@ -59,15 +61,18 @@ type Step =
  * timestamp, and none is fabricated here.
  */
 export default function MyRegistration() {
+  // Detail screens opened from Registration return here (last-tab memory).
+  useFocusEffect(useCallback(() => { rememberStudentTab("/(student)/registration"); }, []));
   const [step, setStep] = useState<Step>({ kind: "loading" });
 
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
     if (!token) {
-      router.replace("/(student)/welcome");
-      return;
-    }
-    if (!silent) setStep({ kind: "loading" });
+          rememberPendingReturn("/(student)/registration");
+          router.replace("/(student)/welcome");
+          return;
+        }
+        if (!silent) setStep({ kind: "loading" });
     try {
       const me = await studentApi.me(token);
       if (!me.registration) {
@@ -78,9 +83,10 @@ export default function MyRegistration() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await clearToken();
-        router.replace("/(student)/welcome");
-        return;
-      }
+              rememberPendingReturn("/(student)/registration");
+              router.replace("/(student)/welcome");
+              return;
+            }
       setStep((prev) =>
         prev.kind === "ready"
           ? { ...prev, stale: true }
@@ -137,7 +143,7 @@ export default function MyRegistration() {
           title="Official convocation list"
           subtitle={
             reg.status === "active"
-              ? "Included — this record comes from the official Examination Department list."
+              ? "Included — this record came from the official Examination Department list; current roster freshness is unknown."
               : "Not usable for entry while this registration is not active."
           }
         />
@@ -145,9 +151,13 @@ export default function MyRegistration() {
           title="Claim date"
           subtitle={me.claimed_at ? me.claimed_at.slice(0, 10) : "Not claimed yet"}
         />
+        <ListRow
+          title="Roster freshness"
+          subtitle="Last-checked time, roster version and source are not provided by the system."
+        />
         <Text style={styles.hint}>
-          Status shown as last returned by the server; the API does not report a
-          separate last-checked time.
+          Claim date is account history, not a roster check. The server does not
+          provide the official-list last-checked time or roster version/source.
         </Text>
         {stale ? (
           <Text style={styles.stale}>

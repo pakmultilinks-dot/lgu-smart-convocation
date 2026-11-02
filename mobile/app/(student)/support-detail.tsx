@@ -8,6 +8,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { getToken } from "../../src/store/studentSession";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { ApiError } from "../../src/api/client";
 import * as supportApi from "../../src/api/supportApi";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
@@ -45,15 +46,19 @@ export default function SupportDetailScreen() {
   const load = useCallback(
     async (silent = false) => {
       const token = await getToken();
-      if (!token) return router.replace("/(student)/welcome");
-      if (!silent) setStep({ kind: "loading" });
+            if (!token) {
+              rememberPendingReturn(`/(student)/support-detail?id=${requestId}`);
+              return router.replace("/(student)/welcome");
+            }
+            if (!silent) setStep({ kind: "loading" });
       try {
         const data = await supportApi.detail(token, requestId);
         setStep({ kind: "ready", data, stale: false });
       } catch (e) {
         if (e instanceof ApiError && e.status === 401) {
-          return router.replace("/(student)/welcome");
-        }
+                  rememberPendingReturn(`/(student)/support-detail?id=${requestId}`);
+                  return router.replace("/(student)/welcome");
+                }
         setStep((prev) =>
           prev.kind === "ready"
             ? { ...prev, stale: true }
@@ -101,7 +106,7 @@ export default function SupportDetailScreen() {
         eyebrow="Support request"
         title={r.reference}
         subtitle={r.category_label}
-        onBack={() => router.back()}
+        onBack={() => router.replace("/(student)/support")}
       />
       <View style={styles.statusRow}>
         <StatusPill state={supportApi.pillState(r.status)} label={r.status_label} />

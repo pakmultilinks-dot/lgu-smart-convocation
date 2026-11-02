@@ -173,7 +173,7 @@ check("migrations.migrate() completed without error", migrated_ok,
 # ------------------------------------------- 4. post-migration verification
 step(4, "Schema integrity on the migrated copy")
 mv = db.execute("PRAGMA user_version").fetchone()[0]
-check("user_version == 14 (latest supported)", mv == 14, mv)
+check("user_version == 15 (latest supported)", mv == 15, mv)
 integrity = db.execute("PRAGMA integrity_check").fetchone()[0]
 check("PRAGMA integrity_check == ok", integrity == "ok", integrity)
 post_tables, post_counts, post_digests = snapshot(db)
@@ -214,9 +214,9 @@ step(7, "Migrator idempotency and refusal contract on the copy")
 try:
     migrations.migrate(db)
     again = db.execute("PRAGMA user_version").fetchone()[0]
-    check("re-running migrate() is a no-op at v14", again == 14, again)
+    check("re-running migrate() is a no-op at v15", again == 15, again)
 except Exception as exc:  # noqa: BLE001
-    check("re-running migrate() is a no-op at v14", False, repr(exc))
+    check("re-running migrate() is a no-op at v15", False, repr(exc))
 db.execute("PRAGMA user_version = 99")
 db.commit()
 try:

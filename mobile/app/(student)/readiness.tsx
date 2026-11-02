@@ -11,6 +11,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as readinessApi from "../../src/api/readinessApi";
 import { getToken } from "../../src/store/studentSession";
+import { lastStudentTab } from "../../src/store/studentTab";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
 import { colors, fonts, spacing } from "../../src/theme";
 import {
@@ -51,23 +53,26 @@ export default function ReadinessScreen() {
   // reminder so the two buttons on that row cannot double-submit.
   const [acting, setActing] = useState<string | null>(null);
   const [actError, setActError] = useState<string | null>(null);
+  const [routeError, setRouteError] = useState<string | null>(null);
 
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
     if (!token) {
-      router.replace("/(student)/welcome");
-      return;
-    }
-    if (!silent) setStep({ kind: "loading" });
+          rememberPendingReturn("/(student)/readiness");
+          router.replace("/(student)/welcome");
+          return;
+        }
+        if (!silent) setStep({ kind: "loading" });
     try {
       const res = await readinessApi.get(token);
       setStep({ kind: "ready", data: res.readiness, stale: false });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace("/(student)/welcome");
-        return;
-      }
-      // Network/server failure keeps the last data on screen (stale) — it is
+              rememberPendingReturn("/(student)/readiness");
+              router.replace("/(student)/welcome");
+              return;
+            }
+            // Network/server failure keeps the last data on screen (stale) — it is
       // never rendered as "you have no registration".
       setStep((prev) =>
         prev.kind === "ready"
@@ -87,14 +92,22 @@ export default function ReadinessScreen() {
 
   const go = (action: readinessApi.NavAction | null) => {
     const route = readinessApi.routeOf(action);
-    if (route) router.push(route as never);
+    if (!route) {
+      setRouteError("This task has no available destination. Refresh the checklist or use Help & corrections.");
+      return;
+    }
+    setRouteError(null);
+    router.push(route);
   };
 
   const act = async (key: string, action: "read" | "dismiss") => {
     if (acting) return; // one reminder at a time — no duplicate submits
     const token = await getToken();
-    if (!token) return router.replace("/(student)/welcome");
-    setActing(key);
+        if (!token) {
+          rememberPendingReturn("/(student)/readiness");
+          return router.replace("/(student)/welcome");
+        }
+        setActing(key);
     setActError(null);
     try {
       await readinessApi.mark(token, key, action);
@@ -103,10 +116,11 @@ export default function ReadinessScreen() {
       await load(true);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace("/(student)/welcome");
-        return;
-      }
-      // Truthful failure: the reminder is still on the list and the server
+              rememberPendingReturn("/(student)/readiness");
+              router.replace("/(student)/welcome");
+              return;
+            }
+            // Truthful failure: the reminder is still on the list and the server
       // did not record the change.
       setActError(
         e instanceof ApiError
@@ -140,17 +154,25 @@ export default function ReadinessScreen() {
   const { data, stale } = step;
   const required = data.items.filter((i) => i.kind === "required");
   const outstanding = required.filter((i) => i.status !== "done");
-  // Two checklists from the flat server list: profile items (registration,
-  // profile_photo) and event readiness (everything else). The entry pass
-  // gets its own callout while it is not done, so its reason and action
-  // are stated once — never repeated as a warning.
-  const PROFILE_KEYS = new Set(["registration", "profile_photo"]);
-  const entryPass = data.items.find((i) => i.key === "entry_pass");
-  const passCallout = entryPass && entryPass.status !== "done" ? entryPass : null;
-  const profileItems = data.items.filter((i) => PROFILE_KEYS.has(i.key));
-  const eventRequired = required.filter(
-    (i) => !PROFILE_KEYS.has(i.key) && !(passCallout && i.key === "entry_pass"),
-  );
+  // Three checklists from the flat server list: registration approval
+    // (the official record), profile setup (profile_photo) and event
+    // readiness (everything else). Profile completion is never approval —
+    // they get separate sections with their own counts. The entry pass
+    // gets its own callout while it is not done, so its reason and action
+    // are stated once — never repeated as a warning.
+    const PROFILE_KEYS = new Set(["registration", "profile_photo"]);
+    const APPROVAL_KEYS = new Set(["registration"]);
+    const entryPass = data.items.find((i) => i.key === "entry_pass");
+    const passCallout = entryPass && entryPass.status !== "done" ? entryPass : null;
+    const approvalItems = data.items.filter((i) => APPROVAL_KEYS.has(i.key));
+    const profileItems = data.items.filter(
+      (i) => PROFILE_KEYS.has(i.key) && !APPROVAL_KEYS.has(i.key),
+    );
+    const eventRequired = required.filter(
+      (i) => !PROFILE_KEYS.has(i.key) && !(passCallout && i.key === "entry_pass"),
+    );
+    const countLine = (items: readinessApi.ChecklistItem[]) =>
+      `${items.filter((i) => i.status === "done").length} of ${items.length} done`;
   const info = data.items.filter((i) => i.kind === "info");
   const reminders = data.reminders;
 
@@ -160,7 +182,7 @@ export default function ReadinessScreen() {
         title="Convocation readiness"
         subtitle={data.convocation ? data.convocation.name : "No convocation open"}
         eyebrow="Prepare"
-        onBack={() => router.back()}
+        onBack={() => router.replace(lastStudentTab("/(student)/more"))}
       />
 
       {stale ? (
@@ -168,6 +190,7 @@ export default function ReadinessScreen() {
           Offline — showing your last loaded readiness. Retrying automatically.
         </Text>
       ) : null}
+      {routeError ? <Text style={styles.actError}>{routeError}</Text> : null}
 
       <SectionEyebrow>
         {data.summary.required_done} of {data.summary.required_total} required done
@@ -203,9 +226,28 @@ export default function ReadinessScreen() {
         </>
       ) : null}
 
-      <SectionEyebrow>Profile setup</SectionEyebrow>
-      <SectionCard pad={false}>
-        {profileItems.map((item) => (
+      {approvalItems.length > 0 ? (
+              <>
+                <SectionEyebrow>Registration approval</SectionEyebrow>
+                <Text style={styles.sectionCount}>{countLine(approvalItems)}</Text>
+                <SectionCard pad={false}>
+                  {approvalItems.map((item) => (
+                    <ListRow
+                      key={item.key}
+                      title={item.title}
+                      subtitle={item.detail}
+                      trailing={<StatusPill state={STATUS_PILL[item.status]} label={ITEM_LABEL[item.status]} size="sm" />}
+                      onPress={() => go(item.action)}
+                    />
+                  ))}
+                </SectionCard>
+              </>
+            ) : null}
+
+            <SectionEyebrow>Profile setup</SectionEyebrow>
+            <Text style={styles.sectionCount}>{countLine(profileItems)}</Text>
+            <SectionCard pad={false}>
+              {profileItems.map((item) => (
           <ListRow
             key={item.key}
             title={item.title}
@@ -217,8 +259,9 @@ export default function ReadinessScreen() {
       </SectionCard>
 
       <SectionEyebrow>Event readiness</SectionEyebrow>
-      <SectionCard pad={false}>
-        {eventRequired.map((item) => (
+            <Text style={styles.sectionCount}>{countLine(eventRequired)}</Text>
+            <SectionCard pad={false}>
+              {eventRequired.map((item) => (
           <ListRow
             key={item.key}
             title={item.title}
@@ -345,11 +388,18 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingHorizontal: spacing.sm,
   },
-  actError: {
-    color: colors.invalid,
+  sectionCount: {
+      color: colors.muted,
     fontFamily: fonts.displayMedium,
     fontSize: 13,
-    marginBottom: spacing.sm,
+      marginTop: spacing.xs,
+      marginBottom: spacing.sm,
+    },
+    actError: {
+      color: colors.invalid,
+      fontFamily: fonts.displayMedium,
+      fontSize: 13,
+      marginBottom: spacing.sm,
   },
   refresh: { marginTop: spacing.lg },
 });

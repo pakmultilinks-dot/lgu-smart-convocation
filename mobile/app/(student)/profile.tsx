@@ -1,12 +1,14 @@
 import * as ImagePicker from "expo-image-picker";
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as studentApi from "../../src/api/studentApi";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
 import { clearToken, getToken } from "../../src/store/studentSession";
+import { lastStudentTab } from "../../src/store/studentTab";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { colors, fonts, radius, spacing } from "../../src/theme";
 import {
   AppButton,
@@ -33,6 +35,7 @@ type Load =
  *  WITHOUT clobbering a half-typed phone number or a running photo
  *  upload — an in-progress edit always wins over a background poll. */
 export default function StudentProfile() {
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const [load, setLoad] = useState<Load>({ kind: "loading" });
   const [phone, setPhone] = useState("");
   const [saving, setSaving] = useState<"phone" | "photo" | null>(null);
@@ -52,16 +55,20 @@ export default function StudentProfile() {
     const token = await getToken();
     if (!token) {
       setLoad({ kind: "loading" });
-      router.replace("/(student)/welcome");
-      return;
-    }
+          rememberPendingReturn("/(student)/profile");
+          router.replace("/(student)/welcome");
+          return;
+        }
     // Never interrupt an upload/save with a background refresh.
     if (silent && savingRef.current) return;
     if (!silent) setLoad({ kind: "loading" });
     try {
       const me = await studentApi.me(token);
       if (!me.registration) {
-        router.replace("/(student)/verify");
+        router.replace({
+          pathname: "/(student)/verify",
+          params: returnTo ? { returnTo } : undefined,
+        });
         return;
       }
       const serverPhone = me.profile.phone ?? "";
@@ -82,10 +89,11 @@ export default function StudentProfile() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await clearToken();
-        router.replace("/(student)/welcome");
-        return;
-      }
-      // Keep the last data on a failed background refresh — a network
+              rememberPendingReturn("/(student)/profile");
+              router.replace("/(student)/welcome");
+              return;
+            }
+            // Keep the last data on a failed background refresh — a network
       // failure is never rendered as an authoritative rejection.
       if (silent && hasDataRef.current) {
         setStale(true);
@@ -99,7 +107,7 @@ export default function StudentProfile() {
             : "The profile could not be loaded. Check the connection.",
       });
     }
-  }, []);
+  }, [returnTo]);
 
   // Focus / resume / manual / ≤30s cadence — one shared rule.
   useFreshServerData(() => reload(true));
@@ -239,7 +247,10 @@ export default function StudentProfile() {
   ];
   const runStep = (k: "verify" | "photo") => {
     if (k === "photo") void pickPhoto(load, false);
-    else router.push("/(student)/verify");
+    else router.push({
+      pathname: "/(student)/verify",
+      params: returnTo ? { returnTo } : undefined,
+    });
   };
 
   return (
@@ -247,7 +258,7 @@ export default function StudentProfile() {
       <AppHeader
         title={complete ? "Profile complete" : "Complete your profile"}
         subtitle={reg.student_name}
-        onBack={() => router.back()}
+        onBack={() => router.replace(lastStudentTab("/(student)/registration"))}
       />
       {stale ? (
         <Text style={styles.stale}>
@@ -372,9 +383,9 @@ export default function StudentProfile() {
       />
       {complete ? (
         <AppButton
-          label="Go to home"
+          label={studentApi.studentReturnPath(returnTo) ? "Continue" : "Go to home"}
           variant="secondary"
-          onPress={() => router.replace("/(student)/home")}
+          onPress={() => router.replace(studentApi.postAuthPath(me, returnTo))}
         />
       ) : null}
       <AppButton

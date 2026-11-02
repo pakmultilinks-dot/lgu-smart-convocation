@@ -3,6 +3,7 @@ import { router } from "expo-router";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { setAppMode } from "../store/appMode";
+import { takePendingReturn } from "../store/pendingReturn";
 import { colors, fonts } from "../theme";
 import { DashboardGrid, DashboardTile } from "./DashboardWidgets";
 import { AppButton, LguMark, Screen, SectionEyebrow } from "../ui";
@@ -13,8 +14,21 @@ export function StudentWelcome() {
   const open = async (path: "/(student)/login" | "/(student)/verify") => {
     if (busy) return;
     setBusy(true); setError(null);
-    try { await setAppMode("student"); router.push(path); }
-    catch { setError("Could not open your account. Please try again."); }
+    try {
+          await setAppMode("student");
+          // A signed-out redirect recorded where the student was going — carry
+          // it through sign-in so login returns there instead of Home.
+          const pending = takePendingReturn();
+          router.push(pending ? { pathname: path, params: { returnTo: pending } } : path);
+        }
+        catch { setError("Could not open your account. Please try again."); }
+    finally { setBusy(false); }
+  };
+  const openPass = async () => {
+    if (busy) return;
+    setBusy(true); setError(null);
+    try { await setAppMode("student"); router.push("/(student)/pass"); }
+    catch { setError("Could not open your entry pass. Please try again."); }
     finally { setBusy(false); }
   };
   return <Screen>
@@ -29,16 +43,16 @@ export function StudentWelcome() {
       <AppButton label="Sign in" icon="arrow-forward" disabled={busy} onPress={() => void open("/(student)/login")} />
     <DashboardGrid>
       <DashboardTile title="Registration" detail="Activate or view your record" icon="document-text-outline" onPress={() => void open("/(student)/verify")} />
-      <DashboardTile title="Entry pass" detail="Sign in to view your QR" icon="qr-code-outline" onPress={() => void open("/(student)/login")} />
-      <DashboardTile title="Event schedule" detail="Published ceremony details" icon="calendar-outline" onPress={() => router.push("/(student)/event")} />
-      <DashboardTile title="Updates" detail="Published university notices" icon="megaphone-outline" onPress={() => router.push("/(student)/announcements")} />
+      <DashboardTile title="Entry pass" detail="Sign in to view your QR" icon="qr-code-outline" onPress={() => void openPass()} />
+      <DashboardTile title="Event schedule" detail="View current ceremony status and dates" icon="calendar-outline" onPress={() => { void setAppMode("student").then(() => router.push("/(student)/event")); }} />
+            <DashboardTile title="Updates" detail="Published university notices" icon="megaphone-outline" onPress={() => { void setAppMode("student").then(() => router.push("/(student)/announcements")); }} />
     </DashboardGrid>
     <SectionEyebrow>Your account</SectionEyebrow>
     <View style={styles.account}>
       <AppButton label="Create student account" variant="secondary" disabled={busy} onPress={() => void open("/(student)/verify")} />
       <Text style={styles.note}>Only students on the official university registration list can create an account.</Text>
       {error ? <Text accessibilityRole="alert" style={styles.error}>{error}</Text> : null}
-      <Pressable accessibilityRole="button" onPress={() => router.push("/(student)/recovery")} style={styles.link}><Text style={styles.linkText}>Forgot your password?</Text></Pressable>
+      <Pressable accessibilityRole="button" onPress={() => { void setAppMode("student").then(() => router.push("/(student)/recovery")); }} style={styles.link}><Text style={styles.linkText}>Forgot your password?</Text></Pressable>
     </View>
     <Pressable accessibilityRole="button" accessibilityLabel="Staff & event access" onPress={() => router.push("/event-tools")} style={styles.staff}>
       <Ionicons name="people-outline" size={20} color={colors.ink} /><Text style={styles.staffText}>Staff & event access</Text><Ionicons name="chevron-forward" size={18} color={colors.muted} />

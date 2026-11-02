@@ -726,12 +726,8 @@ export function ScannerScreen() {
   const handleCameraReady = useCallback(() => setCameraReady(true), []);
 
   const handleCameraBack = useCallback(() => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(volunteer)/home");
-    }
-  }, []);
+      router.replace("/(volunteer)/more");
+    }, []);
 
   const handleSelectGate = useCallback((gate: Gate) => {
     void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => {});
@@ -837,7 +833,7 @@ export function ScannerScreen() {
           <AppButton
             label="Back to home"
             variant="ghost"
-            onPress={() => router.replace("/(volunteer)/home")}
+                      onPress={() => router.replace("/(volunteer)/more")}
           />
         </SectionCard>
       </Screen>
@@ -847,10 +843,30 @@ export function ScannerScreen() {
   if (session && !permission) {
     return (
       <Screen scroll={false}>
-        <LoadingState label="Checking camera permission..." />
-      </Screen>
-    );
-  }
+          <ScannerTopBar
+            gateLabel={gateLabel}
+            mode={mode}
+            occasion={occasion}
+            online={online}
+            onModeChange={requestModeChange}
+            onOccasionChange={requestOccasionChange}
+            onOpenSheet={() => setSheetVisible(true)}
+          />
+          <LoadingState label="Checking camera permission..." />
+          {/* The gate chip stays operable in every state — the sheet must
+              exist wherever the top bar does. */}
+          <ScannerSheet
+            visible={sheetVisible && !loginVisible && !namePromptVisible}
+            gates={gates.filter((gate) => session?.gates.includes(gate.id))}
+            gatesError={gatesError}
+            gateId={gateId}
+            onSelectGate={handleSelectGate}
+            onClose={() => setSheetVisible(false)}
+            onDone={() => setSheetVisible(false)}
+          />
+        </Screen>
+      );
+    }
 
   if (session && permission && !permission.granted) {
     // Issue 6 (Release blocker): REQUIRED and DENIED are distinct states
@@ -861,8 +877,19 @@ export function ScannerScreen() {
     const canAsk = permission.canAskAgain;
     return (
       <Screen>
-        <AppHeader title="Scanner" />
-        <SectionCard>
+            <AppHeader title="Scanner" />
+                {/* Gate · movement · event stay visible in every scanner state —
+                    a permission problem must not hide the operational context. */}
+                <ScannerTopBar
+              gateLabel={gateLabel}
+              mode={mode}
+              occasion={occasion}
+              online={online}
+              onModeChange={requestModeChange}
+              onOccasionChange={requestOccasionChange}
+              onOpenSheet={() => setSheetVisible(true)}
+            />
+            <SectionCard>
           <Text style={styles.permissionTitle}>
             {canAsk ? "Camera access needed" : "Camera permission is off"}
           </Text>
@@ -895,9 +922,19 @@ export function ScannerScreen() {
             onPress={() => router.push("/(volunteer)/search")}
           />
         </SectionCard>
-      </Screen>
-    );
-  }
+                  {/* Gate selection must work even without camera permission. */}
+                  <ScannerSheet
+                    visible={sheetVisible && !loginVisible && !namePromptVisible}
+                    gates={gates.filter((gate) => session?.gates.includes(gate.id))}
+                    gatesError={gatesError}
+                    gateId={gateId}
+                    onSelectGate={handleSelectGate}
+                    onClose={() => setSheetVisible(false)}
+                    onDone={() => setSheetVisible(false)}
+                  />
+                </Screen>
+              );
+            }
 
   return (
     // 33-QA (I14): bounded camera frame — the main scanner column no
@@ -1124,6 +1161,7 @@ export function ScannerScreen() {
         gateId={gateId}
         onSelectGate={handleSelectGate}
         onClose={() => setSheetVisible(false)}
+        onDone={() => setSheetVisible(false)}
       />
 
       {/* Scanner sign-in (Phase 14): required before any scan is sent.
@@ -1190,7 +1228,7 @@ export function ScannerScreen() {
               variant="ghost"
               onPress={() => {
                 setLoginVisible(false);
-                router.replace("/(volunteer)/home");
+                            router.replace("/(volunteer)/more");
               }}
             />
             {session ? (

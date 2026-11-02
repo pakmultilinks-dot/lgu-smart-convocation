@@ -72,9 +72,9 @@ def one(sql, args=()):
 
 # ------------------------------------------------------------------ world
 import database  # noqa: E402
-database.init_db()  # applies base SCHEMA then migrations (-> latest, v14)
+database.init_db()  # applies base SCHEMA then migrations (-> latest, v15)
 _ver = database.get_db().execute("PRAGMA user_version").fetchone()[0]
-check("migration applied through v14 (guest status column)", _ver == 14, _ver)
+check("migration applied through v15 (scan event context)", _ver == 15, _ver)
 cols = [r["name"] for r in raw("PRAGMA table_info(guests)")]
 check("guests table exposes status column", "status" in cols, cols)
 
@@ -111,6 +111,7 @@ check("guest defaults to status=active", g_a["status"] == "active", g_a["status"
 guest_payload = ids.make_payload(g_a["qr_id"])
 
 H = scanner_headers(client, gate_ids=[1, 2, 3, 4, 5, 6, 7])
+ADMIN = {"X-Admin-Pin": str(config.ADMIN_PIN)}
 
 
 def scan(payload, gate=1, mode="entry", headers=None, occasion=None):
@@ -199,9 +200,9 @@ check("second guest registered", err is None and GID_B, err)
 g_b = models.guest_by_id(GID_B)
 rb = ids.make_payload(g_b["qr_id"])
 before = one("SELECT COUNT(*) c FROM scans WHERE qr_id=?", (g_b["qr_id"],))["c"]
-check("revocation requires a scanner session",
+check("revocation requires administrator access",
       client.post("/api/guests/%d/revoke" % GID_B).status_code == 401)
-rr = client.post("/api/guests/%d/revoke" % GID_B, headers=H)
+rr = client.post("/api/guests/%d/revoke" % GID_B, headers=ADMIN)
 rb_json = rr.get_json()
 check("scanner can revoke an active guest pass",
       rr.status_code == 200 and rb_json.get("status") == "revoked", rb_json)
@@ -212,10 +213,10 @@ check("revoked pass refused at gate -> GUEST PASS REVOKED",
       b["status"] == "error" and b["title"] == "GUEST PASS REVOKED", b)
 check("revoked scan recorded NOTHING",
       one("SELECT COUNT(*) c FROM scans WHERE qr_id=?", (g_b["qr_id"],))["c"] == before)
-rr2 = client.post("/api/guests/%d/revoke" % GID_B, headers=H).get_json()
+rr2 = client.post("/api/guests/%d/revoke" % GID_B, headers=ADMIN).get_json()
 check("re-revoke is idempotent (no error)", rr2.get("ok") is True, rr2)
 # A used pass cannot be revoked (lifecycle states stay distinct).
-rr3 = client.post("/api/guests/%d/revoke" % GID_A, headers=H)
+rr3 = client.post("/api/guests/%d/revoke" % GID_A, headers=ADMIN)
 check("used pass cannot be revoked -> 409", rr3.status_code == 409, rr3.status_code)
 # Directory + pass read surface the status.
 dirrow = [g for g in models.guest_directory() if g["id"] == GID_B][0]

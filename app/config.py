@@ -161,6 +161,9 @@ MESSAGE_CHAR_LIMIT = positive_int("LGU_MESSAGE_LIMIT", 160)
 BROADCAST_MODE = (os.environ.get("LGU_BROADCAST_MODE", "demo") or "demo").strip().lower()
 if BROADCAST_MODE not in ("demo", "real"):
     BROADCAST_MODE = "demo"
+DATA_MODE = (os.environ.get("LGU_DATA_MODE", "demo") or "demo").strip().lower()
+if DATA_MODE not in ("demo", "live"):
+    DATA_MODE = "demo"
 
 # --- PIN attempt rate limiting (master audit V-AUTH-01/02) ----------------
 # Per client IP, in-process. Isolated test backends can raise these via

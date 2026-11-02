@@ -48,7 +48,7 @@ for line in PRIVATE_CONFIG.read_text(encoding="utf-8").splitlines():
 if set(values) != required:
     raise RuntimeError("Synthetic preview credentials have not been provisioned.")
 
-# Always require the existing v14 schema read-only. Never migrate the DB
+# Always require the existing v15 schema read-only. Never migrate the DB
 # at web worker startup; never seed synthetic identities on each request.
 os.environ.update(values)
 os.environ.update({

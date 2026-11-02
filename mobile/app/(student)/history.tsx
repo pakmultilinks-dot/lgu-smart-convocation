@@ -14,6 +14,8 @@ import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as passApi from "../../src/api/passApi";
 import { getToken } from "../../src/store/studentSession";
+import { lastStudentTab } from "../../src/store/studentTab";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
 import { colors, fonts, spacing } from "../../src/theme";
 import { convocationLine } from "../../src/utils/convocation";
@@ -59,17 +61,21 @@ export default function HistoryScreen() {
 
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
-    if (!token) return router.replace("/(student)/welcome");
+        if (!token) {
+          rememberPendingReturn("/(student)/history");
+          return router.replace("/(student)/welcome");
+        }
     if (!silent) setStep({ kind: "loading" });
     try {
       const res = await passApi.getHistory(token);
       setStep({ kind: "ready", history: res.history, stale: false });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace("/(student)/welcome");
-        return;
-      }
-      // Network/server failure keeps the last ledger on screen (stale) — it
+              rememberPendingReturn("/(student)/history");
+              router.replace("/(student)/welcome");
+              return;
+            }
+            // Network/server failure keeps the last ledger on screen (stale) — it
       // is never rendered as "you have no history".
       setStep((prev) =>
         prev.kind === "ready"
@@ -170,7 +176,7 @@ export default function HistoryScreen() {
         title="Convocation history"
         subtitle={`${history.length} convocation${history.length === 1 ? "" : "s"} on your records`}
         eyebrow="Your record"
-        onBack={() => router.back()}
+        onBack={() => router.replace(lastStudentTab("/(student)/more"))}
       />
       {stale ? (
         <Text style={styles.stale}>

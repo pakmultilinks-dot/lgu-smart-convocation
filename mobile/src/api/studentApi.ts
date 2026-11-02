@@ -101,6 +101,39 @@ export function homePath(s: SessionBody): Href {
   return s.completion.complete ? "/(student)/home" : "/(student)/profile";
 }
 
+const RETURN_PATHS: Record<string, Href> = {
+  "/(student)/pass": "/(student)/pass",
+  "/(student)/event": "/(student)/event",
+  "/(student)/registration": "/(student)/registration",
+  "/(student)/announcements": "/(student)/announcements",
+  "/(student)/support": "/(student)/support",
+  "/(student)/profile": "/(student)/profile",
+  "/(student)/readiness": "/(student)/readiness",
+  "/(student)/history": "/(student)/history",
+  "/(student)/medalists": "/(student)/medalists",
+  "/(student)/support-detail": "/(student)/support-detail",
+};
+
+export function studentReturnPath(value?: string | string[]): Href | null {
+  const path = Array.isArray(value) ? value[0] : value;
+  if (!path) return null;
+  // Match on the pathname so query-carrying hrefs (support-detail?id=N)
+  // survive; return the full href with its query intact.
+  const pathname = path.split("?")[0];
+  const base = RETURN_PATHS[pathname];
+  if (!base) return null;
+  const query = path.slice(pathname.length);
+  return (query ? `${base}${query}` : base) as Href;
+}
+
+export function postAuthPath(
+  session: SessionBody,
+  returnTo?: string | string[],
+): Href {
+  const destination = studentReturnPath(returnTo);
+  return destination ?? homePath(session);
+}
+
 async function withSession<T extends SessionBody>(
   path: string,
   body: Record<string, unknown>,

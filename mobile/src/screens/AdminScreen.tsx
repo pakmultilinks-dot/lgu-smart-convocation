@@ -2,7 +2,7 @@ import { StudentRecordManagement } from "../components/StudentRecordManagement";
 import { DashboardGrid, DashboardTile } from "../components/DashboardWidgets";
 import { PaidGuestManagement } from "../components/PaidGuestManagement";
 import { Ionicons } from "@expo/vector-icons";
-import { router, useFocusEffect } from "expo-router";
+import { router, useFocusEffect, usePathname } from "expo-router";
 import { useCallback, useState } from "react";
 import { Modal, Pressable, ScrollView, Text, View } from "react-native";
 import { getSettings, updateSettings } from "../api/settingsApi";
@@ -145,6 +145,7 @@ function calendarGrid(year: number, month: number): number[] {
  * stamped with the probe time (see probeNoteFor).
  */
 export function AdminScreen() {
+  const pathname = usePathname();
   const [section, setSection] = useState<"hub" | "availability" | "publishing" | "guests" | "advanced" | "registrations" | "roster">("hub");
   const [mode, setMode] = useState<"auto" | "custom">("auto");
   const [url, setUrl] = useState("");
@@ -346,10 +347,21 @@ export function AdminScreen() {
       {/* 35M item 16: the eyebrow "Admin" is a plain sans label —
           the shared eyebrowSans family, not DM Mono. */}
       <AppHeader
-        onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/mode-picker")
-        }
-        eyebrow="Admin"
+        onBack={() => {
+                if (pathname === "/admin") {
+                  router.replace("/(volunteer)/more");
+                  return;
+                }
+                // Root admin dashboard: return to the tools hub that opened it;
+                // with no history, remain on the admin dashboard — never the
+                // student Home. Deterministic replace, never a history pop.
+                if (router.canGoBack()) {
+                  router.replace("/event-tools");
+                  return;
+                }
+                router.replace("/administration");
+              }}
+              eyebrow="Admin"
         eyebrowSans
         title={section === "hub" ? "Administrator dashboard" : section === "registrations" ? "Student records" : section === "roster" ? "Gate roster" : section === "guests" ? "Paid guest passes" : section === "publishing" ? "Student publications" : section === "availability" ? "Tool availability" : "System configuration"}
         subtitle="Manage records, paid passes and event operations"

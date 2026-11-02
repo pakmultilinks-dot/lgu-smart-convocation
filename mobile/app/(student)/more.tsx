@@ -1,15 +1,18 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import { router, useFocusEffect } from "expo-router";
+import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import * as studentApi from "../../src/api/studentApi";
 import { getToken } from "../../src/store/studentSession";
+import { rememberStudentTab } from "../../src/store/studentTab";
 import { colors, fonts } from "../../src/theme";
 import { AppHeader, Screen } from "../../src/ui";
 import { StudentRouteGate } from "../../src/components/StudentRouteGate";
 
 type Destination = Parameters<typeof router.push>[0];
 export default function StudentMore() {
+  // Detail screens opened from More return here (last-tab memory).
+  useFocusEffect(useCallback(() => { rememberStudentTab("/(student)/more"); }, []));
   const [signingOut, setSigningOut] = useState(false);
   const signOut = async () => {
     if (signingOut) return;
@@ -35,7 +38,7 @@ export default function StudentMore() {
       {row("Event schedule", "calendar-outline", "/(student)/event")}
       {row("Readiness checklist", "checkbox-outline", "/(student)/readiness")}
       {row("Convocation history", "time-outline", "/(student)/history")}
-      {row("Medalists", "medal-outline", "/(student)/medalists")}
+      {row("Medalist board", "medal-outline", "/(student)/medalists")}
     </View>
     <Text style={styles.section}>APP SETTINGS</Text>
     <View style={styles.group}>

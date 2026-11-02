@@ -27,7 +27,7 @@ export function PaidGuestManagement() {
       const result = await admin<{ gid: number }>("POST", { name: name.trim(), phone: phone.trim(), host_roll_no: host.trim(), payment_reference: reference.trim(), payment_verified: true });
       setNote("Paid guest pass issued. Payment verification recorded.");
       setName(""); setPhone(""); setHost(""); setReference(""); setVerified(false); setReview(false);
-      await load(); router.push({ pathname: "/guest-pass", params: { gid: String(result.gid) } });
+      await load(); router.push({ pathname: "/guest-pass", params: { gid: String(result.gid), from: "/administration" } });
     } catch (e) { setError(e instanceof Error ? e.message : "Could not issue pass."); }
     finally { setBusy(false); }
   };
@@ -54,7 +54,7 @@ export function PaidGuestManagement() {
       {note ? <Text accessibilityLiveRegion="polite" style={body}>{note}</Text> : null}
     </SectionCard>
     <SectionCard><SectionEyebrow>Existing guest passes</SectionEyebrow><Text style={body}>Existing passes retain their recorded status. Historical passes are not automatically labelled payment-verified.</Text>
-      {guests.length ? guests.map(g => <SectionCard key={g.id}><Text style={body}>{g.name} · Host {g.host_roll_no} · {g.status === "revoked" ? "Revoked" : g.used ? "Used" : "Ready"}</Text><AppButton label={`Open pass for ${g.name}`} variant="secondary" onPress={() => router.push({ pathname: "/guest-pass", params: { gid: String(g.id) } })} />{!g.used && g.status !== "revoked" ? <AppButton label={`Revoke pass for ${g.name}`} variant="ghost" onPress={() => setRevoking(g)} /> : null}</SectionCard>) : <Text style={body}>No guest passes issued.</Text>}
+      {guests.length ? guests.map(g => <SectionCard key={g.id}><Text style={body}>{g.name} · Host {g.host_roll_no} · {g.status === "revoked" ? "Revoked" : g.used ? "Used" : "Ready"}</Text><AppButton label={`Open pass for ${g.name}`} variant="secondary" onPress={() => router.push({ pathname: "/guest-pass", params: { gid: String(g.id), from: "/administration" } })} />{!g.used && g.status !== "revoked" ? <AppButton label={`Revoke pass for ${g.name}`} variant="ghost" onPress={() => setRevoking(g)} /> : null}</SectionCard>) : <Text style={body}>No guest passes issued.</Text>}
       {revoking ? <><Text style={body}>Revoke {revoking.name} unused pass? It will be refused at the gate.</Text><AppButton label="Confirm guest revocation" variant="danger" loading={busy} onPress={() => void revoke()} /><AppButton label="Cancel revocation" variant="ghost" onPress={() => setRevoking(null)} /></> : null}
     </SectionCard>
   </>;

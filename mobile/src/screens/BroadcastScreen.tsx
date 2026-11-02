@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import {
@@ -46,6 +46,7 @@ const MESSAGE_LIMIT_FALLBACK = 160;
  */
 export function BroadcastScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const [audience, setAudience] = useState<Audience>("all");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -290,9 +291,13 @@ export function BroadcastScreen() {
     // Light in-screen header (Phase 35G: dark native header removed).
     <Screen>
       <AppHeader
-        onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
-        }
+        onBack={() => {
+                  if (pathname === "/admin-messages") {
+                    router.replace("/administration");
+                    return;
+                  }
+                  router.replace("/(volunteer)/more");
+                }}
         title="Operational message log"
         // 35M R2 (item 10): mandated subtitle copy — announcement is a log,
         // not a delivery.

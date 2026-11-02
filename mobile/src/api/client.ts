@@ -114,6 +114,7 @@ export async function fetchDashboardAccess(): Promise<DashboardAccess> {
 
 export interface AppConfig {
   dashboard_access?: DashboardAccess;
+  data_mode: "demo" | "live";
   app_name: string;
   university: string;
   motto: string;
@@ -167,10 +168,12 @@ export interface Guest {
   /** Lifecycle state (Phase 34 Part C): "active" | "revoked". */
   status: string;
   used: boolean;
-  /** Latest guest scan time (server PKT wall clock) when used, else null. */
+  inside?: boolean;
+  /** Latest attendance scan time (server PKT wall clock), else null. */
   used_at?: string | null;
-  /** Gate label of the latest guest scan when used, else null. */
+  /** Gate label of the latest attendance scan, else null. */
   used_gate?: string | null;
+  last_mode?: ScanMode | null;
 }
 
 export interface GuestRegistration {
@@ -191,6 +194,10 @@ export interface GuestPass {
   /** Lifecycle state (Phase 34 Part C): "active" | "revoked". */
   status: string;
   used: boolean;
+  inside: boolean;
+  used_at: string | null;
+  used_gate: string | null;
+  last_mode: ScanMode | null;
   payload: string;
 }
 
@@ -426,6 +433,22 @@ export async function postScan(input: {
   });
 }
 
+export async function postManualAttendance(input: {
+  type: "student" | "guest";
+  roll_no?: string;
+  gid?: number;
+  gate_id: number;
+  mode: ScanMode;
+  occasion: Occasion;
+}): Promise<ScanResult> {
+  const headers = await scannerAuthHeaders();
+  return request<ScanResult>("/api/manual-attendance", {
+    method: "POST",
+    body: JSON.stringify(input),
+    headers,
+  });
+}
+
 export async function postSync(
   items: QueuedScan[],
 ): Promise<{ synced: number; results: { payload: string; result: ScanResult }[] }> {
@@ -579,11 +602,11 @@ export interface SearchResult {
   phone?: string;
   /** Guest only: lifecycle state "active" | "revoked" (Phase 34 Part C). */
   status?: string;
-  /** Student: latest scan is an entry. Guest: any scan exists (single-use). */
+  /** Latest attendance state is an entry. */
   inside: boolean;
-  /** Guest only: the pass has already been used. */
+  /** Guest only: the one-entry pass has previously been used. */
   used: boolean;
-  /** Last scan context when inside/used (gate label + time), else null. */
+  /** Last attendance context (gate label + time), else null. */
   last_scan: { gate: string; time: string; mode: string } | null;
 }
 

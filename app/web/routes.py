@@ -623,7 +623,7 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
     unnecessary in-process write contention. The authoritative state check
     and INSERT in models.record_scan also use BEGIN IMMEDIATE, protecting
     admissions across multiple processes (PR #7). Their roster path is
-    operational check-in only; the occasion argument does not apply to it.
+    operational check-in only; the occasion is retained as scan context.
 
     Convocation passes (LGU2) deliberately do NOT take that lock. Their
     exactly-once guarantee is the UNIQUE (convocation_id, registration_id,
@@ -646,7 +646,7 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
         try:
             with _SCAN_LOCK:
                 result = _process_scan(payload, gate_id, mode, volunteer,
-                                       scanned_at, source)
+                                       scanned_at, source, occasion)
         except sqlite3.OperationalError as exc:
             # Same contract as the convocation path: contention is retryable,
             # not a verdict and not an unhandled 500. No scan was recorded —
@@ -702,31 +702,33 @@ def _process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
                     "detail": "%s: this guest pass was revoked and cannot"
                               " be used to enter." % person["name"],
                     "name": person["name"]}
-        if models.guest_used(qr_id):
-            ls = models.last_scan(qr_id)
-            g = next((x for x in _gates() if ls and x["id"] == ls["gate_id"]), {})
-            return {"status": "error", "level": "red", "title": "ALREADY USED",
-                    "detail": "%s: this guest pass was already used. One entry per guest."
-                    % person["name"],
-                    # Structured fields so the app can show name / previous
-                    # gate / time without parsing the detail string.
+        ls = models.last_scan(qr_id)
+        inside = bool(ls and ls["mode"] == "entry")
+        if mode == "entry" and ls:
+            gate_before = next((x for x in _gates() if x["id"] == ls["gate_id"]), {})
+            return {"status": "error", "level": "red",
+                    "title": "ALREADY USED",
+                    "detail": ("%s is already checked in." if inside else
+                               "%s has exited; this single-entry pass cannot be used again.")
+                              % person["name"],
                     "name": person["name"],
-                    "gate": g.get("label"),
-                    "time": (ls or {}).get("scanned_at")}
-        if mode == "exit":
-            return {"status": "error", "level": "amber", "title": "GUEST PASS IS ENTRY ONLY",
-                    "detail": "Guest passes are single-use entry passes."}
+                    "gate": gate_before.get("label"),
+                    "time": ls["scanned_at"]}
+        if mode == "exit" and not inside:
+            return {"status": "error", "level": "amber",
+                    "title": "GUEST PASS IS ENTRY ONLY" if ls is None else "GUEST NOT INSIDE",
+                    "detail": "%s has no active guest entry to close." % person["name"]}
         accepted = models.record_scan(
-            qr_id, "guest", person["name"], gate_id, "entry",
-            volunteer, scanned_at, source
+            qr_id, "guest", person["name"], gate_id, mode,
+            volunteer, scanned_at, source, occasion
         )
         if not accepted:
-            return {"status": "error", "level": "red", "title": "ALREADY USED",
-                    "detail": "%s: this guest pass was already used. One entry per guest."
-                    % person["name"]}
-        return {"status": "ok", "level": "green", "title": "GUEST ENTRY RECORDED",
-                "name": person["name"], "sub": "Guest of %s (%s)" % (
-                    person["host_roll_no"], person["phone"]),
+            return {"status": "error", "level": "red",
+                    "title": "GUEST ALREADY CHECKED IN" if mode == "entry" else "GUEST NOT INSIDE",
+                    "detail": "The guest attendance state changed. Refresh the lookup and retry."}
+        return {"status": "ok", "level": "green",
+                "title": "GUEST ENTRY RECORDED" if mode == "entry" else "GUEST EXIT RECORDED",
+                "name": person["name"], "sub": "Guest of %s" % person["host_roll_no"],
                 "gate": gate["label"], "time": scanned_at or models.now_str()}
 
     if mode == "entry" and models.student_inside(qr_id):
@@ -748,7 +750,7 @@ def _process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
 
     accepted = models.record_scan(
         qr_id, "student", person["name"], gate_id, mode,
-        volunteer, scanned_at, source
+        volunteer, scanned_at, source, occasion
     )
     if not accepted:
         if mode == "entry":
@@ -919,6 +921,74 @@ def api_scan():
     try:
         result = process_scan(data.get("payload"), gate_id, data.get("mode"),
                               auth["display_name"], occasion=occasion)
+    except sqlite3.OperationalError as exc:
+        if database.is_busy_error(exc):
+            return _transient_busy_response()
+        raise
+    if result.get("status") == database.BUSY_STATUS:
+        return _transient_busy_response()
+    return jsonify(result)
+
+
+@bp.route("/api/manual-attendance", methods=["POST"])
+def api_manual_attendance():
+    """Deliberately record an attendee found through authenticated search.
+
+    The client sends only the visible roster identity (roll number or guest
+    id). The server resolves the private QR id and builds the signed payload
+    internally, then runs the exact same admission checks as a camera scan.
+    """
+    auth = _require_scanner()
+    if not isinstance(auth, dict):
+        return auth
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "Request must be a JSON object."}), 400
+
+    person_type = data.get("type")
+    gate_id = _coerce_gate(data.get("gate_id"))
+    mode = data.get("mode")
+    occasion = _coerce_occasion(data.get("occasion"))
+    if person_type not in ("student", "guest"):
+        return jsonify({"ok": False, "error": "Choose a valid attendee."}), 400
+    if gate_id is None:
+        return jsonify({"ok": False, "error": "Choose a gate before recording attendance."}), 400
+    if mode not in ("entry", "exit"):
+        return jsonify({"ok": False, "error": "Choose Entry or Exit mode."}), 400
+    if occasion is None:
+        return jsonify({"ok": False, "error": "Choose Rehearsal or Main convocation."}), 400
+
+    gates = {g["id"] for g in _gates()}
+    if gate_id not in gates:
+        return jsonify({"ok": False, "error": "The selected gate does not exist."}), 400
+    if gate_id not in auth["gates"]:
+        models.record_scan_rejection(gate_id, mode, occasion, "GATE NOT AUTHORIZED", "manual")
+        return jsonify({"ok": False, "error": "This scanner is not authorized for that gate."}), 403
+
+    with database.connection() as db:
+        if person_type == "student":
+            roll_no = data.get("roll_no")
+            if not isinstance(roll_no, str) or not roll_no.strip():
+                return jsonify({"ok": False, "error": "Student roll number is required."}), 400
+            row = db.execute(
+                "SELECT qr_id FROM students WHERE roll_no = ?",
+                (roll_no.strip(),)).fetchone()
+        else:
+            gid = data.get("gid")
+            if isinstance(gid, bool) or not isinstance(gid, int) or gid < 1:
+                return jsonify({"ok": False, "error": "Guest pass reference is required."}), 400
+            row = db.execute(
+                "SELECT qr_id FROM guests WHERE id = ?",
+                (gid,)).fetchone()
+
+    if not row or not row["qr_id"]:
+        return jsonify({"ok": False,
+                        "error": "This attendee has no operational gate code. No attendance was recorded."}), 404
+
+    try:
+        result = process_scan(
+            ids.make_payload(row["qr_id"]), gate_id, mode,
+            auth["display_name"], source="manual", occasion=occasion)
     except sqlite3.OperationalError as exc:
         if database.is_busy_error(exc):
             return _transient_busy_response()
@@ -1441,6 +1511,9 @@ def api_guest_pass(gid):
     g = models.guest_by_id(gid)
     if not g:
         return jsonify({"ok": False, "error": "Guest not found."}), 404
+    last = models.last_scan(g["qr_id"])
+    gate = next((gate["label"] for gate in _gates()
+                 if last and gate["id"] == last["gate_id"]), None)
     return jsonify({"ok": True, "gid": gid, "name": g["name"],
                     "phone": g["phone"], "host_roll_no": g["host_roll_no"],
                     # 33-QA (I23): host name travels with the pass payload.
@@ -1449,6 +1522,10 @@ def api_guest_pass(gid):
                     # can show Ready / Used / Revoked from the server truth.
                     "status": g.get("status", "active"),
                     "used": models.guest_used(g["qr_id"]),
+                    "inside": bool(last and last["mode"] == "entry"),
+                    "used_at": last["scanned_at"] if last else None,
+                    "used_gate": gate,
+                    "last_mode": last["mode"] if last else None,
                     "payload": ids.make_payload(g["qr_id"])})
 
 
@@ -1640,7 +1717,9 @@ def api_search():
                 "type": "guest", "name": g["name"], "gid": g["id"],
                 "host_roll_no": g["host_roll_no"],
                 "host_name": g["host_name"], "phone": g["phone"],
-                "status": g["status"], "inside": used, "used": used,
+                "status": g["status"],
+                "inside": bool(last and last["mode"] == "entry"),
+                "used": used,
                 "last_scan": {
                     "gate": gate_by_id.get(last["gate_id"], ""),
                     "time": last["scanned_at"], "mode": last["mode"],

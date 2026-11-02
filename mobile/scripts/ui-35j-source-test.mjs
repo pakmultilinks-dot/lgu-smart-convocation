@@ -296,12 +296,12 @@ check("Pass action has a 48px touch target (minHeight + minWidth)",
     (/passLink:\s*\{[^}]*minWidth: 48[^}]*minHeight: 48/s.test(guests)));
 check("Pass aligned with the guest-name row (flex-start)",
   /passLink:\s*\{[^}]*alignSelf: "flex-start"/s.test(guests));
-check("Used guests still show no Pass action",
-  has(guests, "{guest.used ? null : ("));
+check("Used guests show View status, not a pass action",
+  has(guests, '{guest.used ? "View status" : "Show pass"}'));
 check("used-stamp is date-aware (today → time; other days → date + time)",
   has(guests, "function usedStamp(") && has(guests, "MONTHS_SHORT"));
-check("Entered line composes usedStamp + gate",
-  has(guests, "Entered {usedStamp(guest.used_at)}"));
+check("Attendance line distinguishes Checked in / Exited with usedStamp",
+  has(guests, '{guest.inside ? "Checked in" : "Exited"} {usedStamp(guest.used_at)}'));
 check("phone masked + single-line",
   has(guests, "maskPhone") && has(guests, "numberOfLines={1}"));
 

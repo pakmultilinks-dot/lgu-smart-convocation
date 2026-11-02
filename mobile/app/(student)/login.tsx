@@ -3,12 +3,16 @@ import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as studentApi from "../../src/api/studentApi";
+import { takePendingReturn, peekPendingReturn } from "../../src/store/pendingReturn";
 import { colors, fonts, spacing } from "../../src/theme";
 import { AppButton, AppHeader, Field, Screen } from "../../src/ui";
 
 /** Email + password sign-in for existing student accounts. */
 export default function StudentLogin() {
-  const { reset } = useLocalSearchParams<{ reset?: string }>();
+  const { reset, returnTo: rawReturn } = useLocalSearchParams<{ reset?: string; returnTo?: string | string[] }>();
+  // Explicit ?returnTo= wins; otherwise resume the destination a signed-out
+  // redirect recorded, so sign-in returns there instead of Home.
+    const returnTo = rawReturn ?? peekPendingReturn() ?? undefined;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -26,7 +30,10 @@ export default function StudentLogin() {
         email: email.trim(),
         password,
       });
-      router.replace(studentApi.homePath(session));
+      // Destination resolved above — discard the pending record so a later
+      // unrelated sign-in cannot inherit it.
+      takePendingReturn();
+      router.replace(studentApi.postAuthPath(session, returnTo));
     } catch (e) {
       setNeedsConnection(e instanceof ApiError && e.status === 0);
       setError(
@@ -48,7 +55,7 @@ export default function StudentLogin() {
       <AppHeader
         title="Sign in"
         subtitle="Continue with your university student account."
-        onBack={() => router.back()}
+        onBack={() => router.replace("/(student)/welcome")}
       />
       {reset ? (
         <Text style={styles.note}>
@@ -87,7 +94,18 @@ export default function StudentLogin() {
       <AppButton
         label="Forgot password?"
         variant="ghost"
-        onPress={() => router.push("/(student)/recovery")}
+        onPress={() => router.push({
+          pathname: "/(student)/recovery",
+          params: returnTo ? { returnTo } : undefined,
+        })}
+      />
+      <AppButton
+        label="Create student account"
+        variant="ghost"
+        onPress={() => router.push({
+          pathname: "/(student)/verify",
+          params: returnTo ? { returnTo } : undefined,
+        })}
       />
     </Screen>
   );

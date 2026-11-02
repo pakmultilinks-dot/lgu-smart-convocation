@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
+import type { RelativePathString } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, Pressable, Text, View } from "react-native";
 import { searchAttendees, ApiError, type SearchResult } from "../api/client";
 import { addRecentSearch, getRecentSearches } from "../store/settings";
 import { colors, fonts, spacing } from "../theme";
+import { maskPhone } from "../utils/phone";
 import {
   AppHeader,
   EmptyState,
@@ -22,13 +24,10 @@ type StatusTone = "info" | "nodata" | "accept" | "duplicate";
 
 function stateForHit(hit: SearchResult): { state: StatusTone; label: string } {
   if (hit.type === "guest") {
-    // Phase 34 (Part C): a revoked pass is refused at the gate, so it is
-    // neither Ready nor Used — it gets its own truthful state.
     if (hit.status === "revoked") return { state: "nodata", label: "Revoked" };
-    // QA fix cycle 2: sentence-case pills, same as the guest list.
-    return hit.used
-      ? { state: "duplicate", label: "Used" }
-      : { state: "accept", label: "Ready" };
+    if (hit.inside) return { state: "duplicate", label: "Checked in" };
+    if (hit.used) return { state: "info", label: "Exited" };
+    return { state: "accept", label: "Valid unused" };
   }
   return hit.inside
     ? { state: "info", label: "Inside" }
@@ -198,13 +197,18 @@ export function SearchScreen() {
                 key={hitKey}
                 accessibilityRole="button"
                 accessibilityLabel={`${hit.name}, ${hit.roll_no ?? "guest"}, ${s.label}`}
-                onPress={() => {
-                  if (hit.type === "guest" && hit.gid) {
-                    router.push(`/guest-pass?gid=${hit.gid}`);
-                  } else {
-                    router.push("/(volunteer)/scanner");
-                  }
-                }}
+                onPress={() => router.push({
+                  pathname: "/(volunteer)/attendee" as RelativePathString,
+                  params: {
+                    type: hit.type,
+                    name: hit.name,
+                    ...(hit.roll_no ? { roll_no: hit.roll_no } : {}),
+                    ...(hit.program ? { program: hit.program } : {}),
+                    ...(hit.gid ? { gid: String(hit.gid) } : {}),
+                    ...(hit.host_roll_no ? { host_roll_no: hit.host_roll_no } : {}),
+                    ...(hit.host_name ? { host_name: hit.host_name } : {}),
+                  },
+                })}
                 style={({ pressed }) => [
                   styles.hitRow,
                   index > 0 && styles.hitDivider,
@@ -229,7 +233,7 @@ export function SearchScreen() {
                     </Text>
                   ) : null}
                   {hit.phone ? (
-                    <Text style={styles.hitMeta}>{hit.phone}</Text>
+                    <Text style={styles.hitMeta}>{maskPhone(hit.phone)}</Text>
                   ) : null}
                   {hit.last_scan ? (
                     <Text style={styles.hitMeta}>
@@ -239,28 +243,16 @@ export function SearchScreen() {
                 </View>
                 <View style={styles.hitStatus}>
                   <StatusPill state={s.state} label={s.label} size="sm" />
-                  {hit.type === "guest" && hit.gid ? (
-                    <View style={styles.passLink}>
-                      <Ionicons
-                        name="ticket-outline"
-                        size={14}
-                        color={colors.ink}
-                      />
-                      <Text style={styles.passLinkText}>Guest pass</Text>
-                    </View>
-                  ) : (
-                    <Ionicons
-                      name="scan-outline"
-                      size={16}
-                      color={colors.muted}
-                    />
-                  )}
+                  <View style={styles.passLink}>
+                    <Ionicons name="chevron-forward" size={14} color={colors.ink} />
+                    <Text style={styles.passLinkText}>Details</Text>
+                  </View>
                 </View>
               </Pressable>
             );
           })}
           <Text style={styles.footerNote}>
-            Search reads the live roster · tap a guest to open the pass
+            Tap a result for details; attendance is recorded only after confirmation
           </Text>
         </SectionCard>
       ) : null}

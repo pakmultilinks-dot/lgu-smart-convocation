@@ -180,7 +180,12 @@ def readiness_for(db, account):
     if conv is not None and claim is not None and claim["status"] == "active":
         invitation = cp.pass_for_account(db, account, conv)
         live = _live_pass(db, conv["id"], claim["id"])
-        if live is not None:
+        # A live pass row alone is NOT proof of validity: an open
+        # registration-affecting support request puts the invitation into
+        # pending_review and the pass screen reports qr_available=False.
+        # Readiness must mirror that state - never claim "issued and valid"
+        # while the pass screen says the QR is unavailable.
+        if live is not None and invitation["state"] == "eligible":
             items.append(_item(
                 "entry_pass", "required", "done",
                 "Entry pass issued",

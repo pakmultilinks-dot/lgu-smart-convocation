@@ -17,6 +17,7 @@ import { ApiError } from "../../src/api/client";
 import * as eventApi from "../../src/api/eventApi";
 import { EventCountdown } from "../../src/components/EventCountdown";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
+import { lastStudentTab } from "../../src/store/studentTab";
 import { colors, fonts, spacing } from "../../src/theme";
 import { convocationLine } from "../../src/utils/convocation";
 import {
@@ -100,7 +101,7 @@ export default function EventScreen() {
         eyebrow="Official Information"
         title="Convocation Event"
         subtitle={convocationLine(convocation)}
-        onBack={() => router.back()}
+        onBack={() => router.replace(lastStudentTab("/(student)/more"))}
       />
       {/* Offline keeps whatever was last loaded — including the unpublished
           state — visible with an honest badge (never a silent empty swap). */}
@@ -179,6 +180,8 @@ export default function EventScreen() {
                   <Text style={styles.cardLine}>
                     {o.venue || "Venue not published"}
                   </Text>
+                  <Text style={styles.cardLine}>Reporting time: Not announced</Text>
+                  <Text style={styles.cardLine}>Attendance requirement: Not published</Text>
                 </SectionCard>
               ))}
             </>

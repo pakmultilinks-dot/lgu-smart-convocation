@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
 import { StyleSheet, Text } from "react-native";
 import { ApiError } from "../../src/api/client";
@@ -10,6 +10,7 @@ import { AppButton, AppHeader, Field, Screen } from "../../src/ui";
 /** Password recovery (Phase 5, §2): request a code, set a new password.
  *  The request step NEVER reveals whether the email has an account. */
 export default function StudentRecovery() {
+  const { returnTo } = useLocalSearchParams<{ returnTo?: string | string[] }>();
   const [step, setStep] = useState<"email" | "code">("email");
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
@@ -54,7 +55,11 @@ export default function StudentRecovery() {
       });
       // Password changed → the old session (if any) is dead. Sign out.
       await clearToken();
-      router.replace({ pathname: "/(student)/login", params: { reset: "1" } });
+            router.replace(
+              returnTo
+                ? { pathname: "/(student)/login", params: { reset: "1", returnTo } }
+                : { pathname: "/(student)/login", params: { reset: "1" } },
+            );
     });
 
   return (
@@ -62,7 +67,7 @@ export default function StudentRecovery() {
       <AppHeader
         title="Reset password"
         subtitle="Recover access to your student account"
-        onBack={() => (step === "code" ? setStep("email") : router.back())}
+        onBack={() => (step === "code" ? setStep("email") : router.replace("/(student)/welcome"))}
       />
       <Field
         label="University email"

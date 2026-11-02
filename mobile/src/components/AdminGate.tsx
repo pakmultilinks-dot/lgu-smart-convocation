@@ -1,8 +1,10 @@
-import { router } from "expo-router";
+import { router, usePathname } from "expo-router";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { Text } from "react-native";
 import { verifyAdminPin, ApiError } from "../api/client";
 import { getAdminPin, setAdminPin, WRONG_PIN } from "../store/adminAccess";
+import { getAppMode } from "../store/appMode";
+import { getToken } from "../store/studentSession";
 import {
   initialLockState,
   isLocked,
@@ -30,6 +32,7 @@ import {
  * to admin POSTs as the X-Admin-Pin header.
  */
 export function AdminGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const [ready, setReady] = useState(false);
   const [unlocked, setUnlocked] = useState(false);
   const [pin, setPin] = useState("");
@@ -113,7 +116,44 @@ export function AdminGate({ children }: { children: ReactNode }) {
     }
   }, [pin]);
 
-  if (!ready) {
+      // Role-aware back on the locked PIN screen: the gate wraps admin routes
+      // at both /administration (root) and /(volunteer)/admin (in-group), so the
+      // destination is chosen from the current pathname and the stored role —
+      // never a generic Home shared across roles.
+      const handleBack = useCallback(async () => {
+        try {
+          if (pathname === "/admin") {
+            router.replace("/(volunteer)/more");
+            return;
+          }
+          if (pathname === "/admin-messages") {
+            router.replace("/administration");
+            return;
+          }
+          if (pathname === "/administration") {
+            router.replace("/event-tools");
+            return;
+          }
+          const mode = await getAppMode();
+          if (mode === "student") {
+            router.replace((await getToken()) ? "/(student)/more" : "/(student)/welcome");
+            return;
+          }
+          if (mode === "volunteer") {
+            router.replace("/(volunteer)/more");
+            return;
+          }
+          if (mode === "liveboard") {
+            router.replace("/(liveboard)");
+            return;
+          }
+        } catch {
+          // fall through to the mode picker below
+        }
+        router.replace("/mode-picker");
+      }, [pathname]);
+
+      if (!ready) {
     return (
       <Screen>
         <LoadingState label="Checking administrator access..." />
@@ -128,7 +168,8 @@ export function AdminGate({ children }: { children: ReactNode }) {
       <AppHeader
         title="Administrator access"
         subtitle="Enter the administrator PIN to continue."
-      />
+              onBack={() => void handleBack()}
+            />
       <SectionCard>
         <Field
           label="Administrator PIN"

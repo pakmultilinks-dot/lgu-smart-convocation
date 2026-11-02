@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router, useLocalSearchParams } from "expo-router";
+import type { Href, RelativePathString } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Platform, ScrollView, Share, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
@@ -25,8 +26,10 @@ import {
  * stays high-contrast for the gate scanners.
  */
 export function GuestPassScreen() {
-  const params = useLocalSearchParams<{ gid?: string }>();
+  const params = useLocalSearchParams<{ gid?: string; from?: string }>();
   const gid = typeof params.gid === "string" ? params.gid : "";
+    // Entry screen for Back: guests list, attendee detail or the admin hub.
+    const from = typeof params.from === "string" && params.from ? params.from : null;
   const gidNum = Number(gid);
   const gidValid = !!gid && Number.isInteger(gidNum);
 
@@ -83,7 +86,7 @@ export function GuestPassScreen() {
   // the QR payload. No pass ID line (35M R2 item 5) — the QR itself is
   // the gate's identity check.
   const sharePass = useCallback(async () => {
-    if (!pass) return;
+    if (!pass || pass.used || pass.status === "revoked") return;
     const message = [
       "LGU Convocation — Guest Pass",
       `Name: ${pass.name}`,
@@ -104,7 +107,7 @@ export function GuestPassScreen() {
   // quiet zone) to the device photo library. Android-first; web gets an
   // honest note instead of a broken flow.
   const saveAsImage = useCallback(async () => {
-    if (!pass) return;
+    if (!pass || pass.used || pass.status === "revoked") return;
     if (Platform.OS === "web") {
       setActionNote("Saving an image is available in the phone app.");
       return;
@@ -164,9 +167,7 @@ export function GuestPassScreen() {
     // carries the host reference only.
     <Screen scroll={false}>
       <AppHeader
-        onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/mode-picker")
-        }
+        onBack={() => (from ? router.replace(from as Href) : router.replace("/mode-picker"))}
         title="Guest Pass"
         right={
           pass ? (
@@ -174,12 +175,20 @@ export function GuestPassScreen() {
               state={
                 pass.status === "revoked"
                   ? "duplicate"
-                  : pass.used
-                    ? "nodata"
+                  : pass.inside
+                    ? "info"
+                    : pass.used
+                      ? "nodata"
                     : "accept"
               }
               label={
-                pass.status === "revoked" ? "Revoked" : pass.used ? "Used" : "Ready"
+                pass.status === "revoked"
+                  ? "Revoked"
+                  : pass.inside
+                    ? "Checked in"
+                    : pass.used
+                      ? "Exited"
+                      : "Valid unused"
               }
               size="sm"
             />
@@ -232,12 +241,18 @@ export function GuestPassScreen() {
                     quiet zone — never cream/tinted — so any gate scanner
                     reads it at full contrast. */}
                 <View style={styles.qrPlate}>
-                  <QRCode
-                    value={pass.payload}
-                    size={200}
-                    backgroundColor="#FFFFFF"
-                    color={colors.ink}
-                  />
+                  {pass.status !== "revoked" && !pass.used ? (
+                    <QRCode
+                      value={pass.payload}
+                      size={200}
+                      backgroundColor="#FFFFFF"
+                      color={colors.ink}
+                    />
+                  ) : (
+                    <Text style={styles.passMetaText}>
+                      {pass.status === "revoked" ? "PASS REVOKED" : pass.inside ? "GUEST CHECKED IN" : "GUEST EXITED"}
+                    </Text>
+                  )}
                 </View>
                 {/* QA fix cycle 3 (Issue 3): stacked sans rows — Host /
                     ID / Phone / Valid — each a single line (never a
@@ -266,8 +281,17 @@ export function GuestPassScreen() {
               <Ionicons name="information-circle" size={18} color={colors.ink} />
               {/* 35M R2 (item 7): exact mandated copy. */}
               <Text style={styles.rulesText}>
-                Single-use. Shows as used after the first scan.
+                {pass.status === "revoked"
+                  ? "Revoked — this pass cannot be used."
+                  : pass.inside
+                    ? `Checked in${pass.used_gate ? ` at ${pass.used_gate}` : ""}. Record an exit before the guest leaves.`
+                    : pass.used
+                      ? "Exited — this single-entry pass cannot be used to enter again."
+                      : "Valid unused — one entry and one exit are recorded separately."}
               </Text>
+                            <Text style={styles.rulesText}>
+                              Single-use. Shows as used after the first scan.
+                            </Text>
             </View>
           </ScrollView>
           {/* 35M item 14 → 33-QA (I11) → QA fix cycle 2: bottom action
@@ -275,23 +299,43 @@ export function GuestPassScreen() {
               guests" button is gone; the header back arrow is the
               navigation path (one clear way back). */}
           <View style={styles.bottomActions}>
-            {/* 35L (A): share through the OS sheet + save as image. */}
-            <View style={styles.actionRow}>
+            {pass.status !== "revoked" && (pass.inside || !pass.used) ? (
               <AppButton
-                label="Share pass"
-                icon="share-outline"
-                onPress={() => void sharePass()}
-                style={styles.actionBtn}
-              />
-              <AppButton
-                label={savingImage ? "Saving..." : "Save as image"}
-                icon="image-outline"
+                label="Open attendance details"
                 variant="secondary"
-                loading={savingImage}
-                onPress={() => void saveAsImage()}
-                style={styles.actionBtn}
+                onPress={() => router.push({
+                  pathname: "/(volunteer)/attendee" as RelativePathString,
+                  params: {
+                    type: "guest",
+                    gid: String(pass.gid),
+                    name: pass.name,
+                    ...(pass.host_roll_no ? { host_roll_no: pass.host_roll_no } : {}),
+                    ...(pass.host_name ? { host_name: pass.host_name } : {}),
+                  },
+                })}
               />
-            </View>
+            ) : null}
+            {/* 35L (A): share through the OS sheet + save as image. */}
+            {pass.status !== "revoked" && !pass.used ? (
+              <View style={styles.actionRow}>
+                <AppButton
+                  label="Share pass"
+                  icon="share-outline"
+                  onPress={() => void sharePass()}
+                  style={styles.actionBtn}
+                />
+                <AppButton
+                  label={savingImage ? "Saving..." : "Save as image"}
+                  icon="image-outline"
+                  variant="secondary"
+                  loading={savingImage}
+                  onPress={() => void saveAsImage()}
+                  style={styles.actionBtn}
+                />
+              </View>
+            ) : (
+              <Text style={styles.actionNote}>This pass is not available to share or save.</Text>
+            )}
             {actionNote ? <Text style={styles.actionNote}>{actionNote}</Text> : null}
           </View>
         </>

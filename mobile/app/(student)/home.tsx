@@ -1,4 +1,4 @@
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
@@ -7,6 +7,8 @@ import * as readinessApi from "../../src/api/readinessApi";
 import * as studentApi from "../../src/api/studentApi";
 import { DashboardGrid, DashboardStat, DashboardTile } from "../../src/components/DashboardWidgets";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
+import { rememberStudentTab } from "../../src/store/studentTab";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { clearToken, getToken } from "../../src/store/studentSession";
 import { colors, fonts } from "../../src/theme";
 import {
@@ -18,7 +20,6 @@ import {
   Screen,
   SectionCard,
   SectionEyebrow,
-  StatusPill,
 } from "../../src/ui";
 
 type Step =
@@ -66,15 +67,18 @@ const REG_STATUS: Record<
  *  data on screen (stale badge) instead of treating a failure as a
  *  rejection; only a real 401 ends the session. */
 export default function StudentHome() {
+  // Detail screens opened from Home return here (last-tab memory).
+  useFocusEffect(useCallback(() => { rememberStudentTab("/(student)/home"); }, []));
   const [step, setStep] = useState<Step>({ kind: "loading" });
 
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
     if (!token) {
       setStep({ kind: "loading" });
-      router.replace("/(student)/welcome");
-      return;
-    }
+          rememberPendingReturn("/(student)/home");
+          router.replace("/(student)/welcome");
+          return;
+        }
     if (!silent) setStep({ kind: "loading" });
     try {
       const [me, event, ready, att] = await Promise.all([
@@ -102,9 +106,10 @@ export default function StudentHome() {
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
         await clearToken();
-        router.replace("/(student)/welcome");
-        return;
-      }
+              rememberPendingReturn("/(student)/home");
+              router.replace("/(student)/welcome");
+              return;
+            }
       // Network failure (status 0) or server hiccup: keep the last data
       // visible and mark it stale — never a rejection, never a blank screen.
       setStep((prev) =>
@@ -159,15 +164,47 @@ export default function StudentHome() {
 
   const passItem = ready?.readiness.items.find((item) => item.key === "entry_pass");
   const entryReady = reg.status === "active" && passItem?.status === "done";
+  const ceremonyStatus = ceremony?.state === "confirmed"
+    ? "Confirmed"
+    : ceremony?.state === "expected"
+      ? "Provisional"
+      : ceremony?.state === "announced"
+        ? "Announced"
+        : "Not announced";
+  const rehearsalStatus = rehearsal?.state === "confirmed"
+    ? "Confirmed"
+    : rehearsal?.state === "expected"
+      ? "Provisional"
+      : rehearsal?.state === "announced"
+        ? "Announced"
+        : "Not announced";
+  const nextAction = reg.status !== "active"
+    ? { label: "Request a correction", path: "/(student)/support" as const }
+    : !me.completion.complete
+      ? { label: "Complete missing profile steps", path: "/(student)/profile" as const }
+      : { label: "View pass", path: "/(student)/pass" as const };
   return <Screen>
     <AppHeader title="My dashboard" subtitle={eventInfo?.convocation?.name ?? "LGU Convocation"} titleSize={24} />
-    <View style={styles.identity}><Text style={styles.name}>{reg.student_name}</Text><Text style={styles.meta}>{reg.registration_number}</Text><StatusPill state={status.state} label={status.label} size="sm" /></View>
+    <View style={styles.identity}><Text style={styles.name}>{reg.student_name}</Text><Text style={styles.meta}>{reg.registration_number}</Text></View>
     {stale ? <Text style={styles.notice}>Offline - showing your last loaded details.</Text> : null}
     <SectionCard>
-      <SectionEyebrow>Gate entry</SectionEyebrow>
-      <Text style={styles.name}>{entryReady ? "Your entry pass is ready" : "Check your entry pass"}</Text>
-      <Text style={styles.meta}>{passItem?.detail ?? status.meaning}</Text>
-      <AppButton label="View Entry Pass" icon="qr-code-outline" onPress={() => router.push("/(student)/pass")} />
+      <SectionEyebrow>Convocation status</SectionEyebrow>
+      <ListRow title="Registration" subtitle={status.label} />
+      <ListRow
+        title="Official-list inclusion"
+        subtitle={reg.status === "active"
+          ? "Included; roster freshness is not available from the system."
+          : "Not confirmed for entry; request a correction if this is wrong."}
+      />
+      <ListRow
+        title="Entry pass"
+        subtitle={entryReady ? "Available to view" : passItem?.detail ?? "Not yet available"}
+      />
+      <AppButton
+        label={nextAction.label}
+        icon={nextAction.path === "/(student)/pass" ? "qr-code-outline" : undefined}
+        onPress={() => router.push(nextAction.path)}
+      />
     </SectionCard>
     <DashboardGrid>
       <DashboardStat label="Profile" value={`${me.completion.done}/${me.completion.total}`} detail={me.completion.complete ? "Complete" : "Action needed"} />
@@ -184,8 +221,8 @@ export default function StudentHome() {
     </DashboardGrid>
     <SectionCard><SectionEyebrow>Convocation schedule</SectionEyebrow>
       {eventInfo === null ? <Text style={styles.notice}>Event schedule unavailable. Refresh to retry.</Text> : <>
-        <ListRow title="Main convocation" subtitle={ceremony?.date ? `${ceremony.date}${ceremony.time ? ` · ${ceremony.time}` : ""}${ceremony.state === "expected" ? " · Provisional" : ""}` : "Not announced"} onPress={() => router.push("/(student)/event")} />
-        <ListRow title="Rehearsal" subtitle={rehearsal?.date ?? "Not announced"} onPress={() => router.push("/(student)/event")} />
+        <ListRow title="Main convocation" subtitle={`${ceremony?.date ?? "Date not announced"} · ${ceremonyStatus}${ceremony?.time ? ` · ${ceremony.time}` : ""}`} onPress={() => router.push("/(student)/event")} />
+        <ListRow title="Rehearsal" subtitle={`${rehearsal?.date ?? "Date not announced"} · ${rehearsalStatus}${rehearsal?.time ? ` · ${rehearsal.time}` : ""}`} onPress={() => router.push("/(student)/event")} />
         <Text style={styles.meta}>{ceremony?.venue ?? "Venue not published"}</Text>
       </>}
     </SectionCard>

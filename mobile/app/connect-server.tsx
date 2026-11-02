@@ -1,5 +1,5 @@
-import { router } from "expo-router";
-import { useEffect, useState } from "react";
+import { router, usePathname } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import {
   getApiBaseUrl,
@@ -7,6 +7,8 @@ import {
   probeBackend,
   setApiBaseUrl,
 } from "../src/store/settings";
+import { getAppMode } from "../src/store/appMode";
+import { getToken } from "../src/store/studentSession";
 import { colors, fonts, spacing } from "../src/theme";
 import { AppButton, AppHeader, Field, Screen, SectionCard } from "../src/ui";
 
@@ -16,6 +18,11 @@ import { AppButton, AppHeader, Field, Screen, SectionCard } from "../src/ui";
  * Admin, scanning and student APIs remain authenticated by the backend.
  */
 export default function ConnectServerScreen() {
+  const pathname = usePathname();
+  const pathRef = useRef(pathname);
+    useEffect(() => {
+      pathRef.current = pathname;
+    }, [pathname]);
   const [url, setUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -30,6 +37,35 @@ export default function ConnectServerScreen() {
       active = false;
     };
   }, []);
+
+  // Role-aware back: this root utility screen is reachable from every role —
+  // return to the caller's own role home, never a generic Home shared across
+  // roles, and never strand the user on the launch screen.
+  const handleBack = async () => {
+    try {
+      const mode = await getAppMode();
+      const path = pathRef.current;
+      if (/admin|administration|liveboard/i.test(path)) {
+        router.replace("/administration");
+        return;
+      }
+      if (mode === "student") {
+        router.replace((await getToken()) ? "/(student)/more" : "/(student)/welcome");
+        return;
+      }
+      if (mode === "liveboard") {
+        router.replace("/(liveboard)");
+        return;
+      }
+      if (mode === "volunteer") {
+        router.replace("/(volunteer)/more");
+        return;
+      }
+    } catch {
+      // fall through to the mode picker below
+    }
+    router.replace("/mode-picker");
+  };
 
   const save = async () => {
     if (busy) return;
@@ -71,7 +107,7 @@ export default function ConnectServerScreen() {
         eyebrow="Getting started"
         title="Connect to server"
         subtitle="Connect once before signing in as a student, volunteer, or admin."
-        onBack={() => router.back()}
+                onBack={() => void handleBack()}
       />
       <SectionCard>
         <Text style={styles.helper}>
@@ -110,7 +146,7 @@ export default function ConnectServerScreen() {
               <AppButton
                 label="Continue"
                 variant="secondary"
-                onPress={() => router.back()}
+                              onPress={() => void handleBack()}
               />
             </>
           ) : null}

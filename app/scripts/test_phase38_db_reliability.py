@@ -97,7 +97,7 @@ idx = [r["name"] for r in db.execute(
 tables = {r[0] for r in db.execute(
     "SELECT name FROM sqlite_master WHERE type='table'").fetchall()}
 db.close()
-check("user_version advanced to 14", ver == 14 and again == 14, (ver, again))
+check("user_version advanced to latest", ver == 15 and again == 15, (ver, again))
 check("idx_guests_host_once exists and is unique", "idx_guests_host_once" in idx, idx)
 check("scan_rejections table exists", "scan_rejections" in tables, tables)
 db = database.connect()
@@ -112,7 +112,7 @@ except Exception:                   # noqa: BLE001
     log_ok = False
     db.rollback()
 db.close()
-check("re-run is a no-op at version 14", ver2 == 14, ver2)
+check("re-run is a no-op at latest version", ver2 == 15, ver2)
 check("scan_rejections accepts an event row", log_ok)
 
 # ------------------------------------- 3. host uniqueness + concurrency

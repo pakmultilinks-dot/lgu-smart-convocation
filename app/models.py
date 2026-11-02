@@ -70,7 +70,7 @@ def guest_used(qr_id):
 
 
 def record_scan(qr_id, person_type, person_name, gate_id, mode, volunteer,
-                scanned_at=None, source="online"):
+                scanned_at=None, source="online", occasion="ceremony"):
     """Record an admission only if its pass state is still valid.
 
     The authoritative duplicate check happens *after* BEGIN IMMEDIATE, which
@@ -82,10 +82,12 @@ def record_scan(qr_id, person_type, person_name, gate_id, mode, volunteer,
     try:
         db.execute("BEGIN IMMEDIATE")
         if person_type == "guest":
-            already_used = db.execute(
-                "SELECT 1 FROM scans WHERE qr_id = ? LIMIT 1", (qr_id,)
+            latest = db.execute(
+                "SELECT mode FROM scans WHERE qr_id = ?"
+                " ORDER BY id DESC LIMIT 1", (qr_id,)
             ).fetchone()
-            if already_used or mode != "entry":
+            inside = bool(latest and latest["mode"] == "entry")
+            if (mode == "entry" and latest) or (mode == "exit" and not inside):
                 db.rollback()
                 return False
         elif person_type == "student":
@@ -100,9 +102,10 @@ def record_scan(qr_id, person_type, person_name, gate_id, mode, volunteer,
 
         db.execute(
             "INSERT INTO scans (qr_id, person_type, person_name, gate_id, mode,"
-            " volunteer, scanned_at, source) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            " volunteer, scanned_at, source, occasion)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (qr_id, person_type, person_name, gate_id, mode, volunteer,
-             scanned_at or now_str(), source),
+             scanned_at or now_str(), source, occasion),
         )
         db.commit()
         return True
@@ -281,14 +284,14 @@ def revoke_guest(gid, *, actor=None):
 
 
 def all_guests():
-    """All guests with single-use state + latest entry details (Phase 35H)."""
+    """All guests with pass lifecycle + latest attendance details."""
     db = get_db()
     rows = db.execute(
         "SELECT g.*, st.name AS host_name,"
         " CASE WHEN u.qr_id IS NULL THEN 0 ELSE 1 END AS used,"
-        " u.scanned_at AS used_at, gt.label AS used_gate"
+        " u.scanned_at AS used_at, u.mode AS last_mode, gt.label AS used_gate"
         " FROM guests g LEFT JOIN"
-        " (SELECT s.qr_id, s.scanned_at, s.gate_id FROM scans s"
+        " (SELECT s.qr_id, s.scanned_at, s.gate_id, s.mode FROM scans s"
         "  JOIN (SELECT qr_id, MAX(id) AS mid FROM scans"
         "        WHERE person_type = 'guest' GROUP BY qr_id) m ON m.mid = s.id) u"
         " ON u.qr_id = g.qr_id LEFT JOIN gates gt ON gt.id = u.gate_id"
@@ -301,6 +304,7 @@ def all_guests():
         d["used"] = bool(d["used"])
         d["used_at"] = d.get("used_at")
         d["used_gate"] = d.get("used_gate")
+        d["inside"] = d.get("last_mode") == "entry"
         out.append(d)
     return out
 
@@ -323,9 +327,9 @@ def guest_directory():
         "SELECT g.id, g.name, g.phone, g.host_roll_no, g.status,"
         " st.name AS host_name,"
         " CASE WHEN u.qr_id IS NULL THEN 0 ELSE 1 END AS used,"
-        " u.scanned_at AS used_at, gt.label AS used_gate"
+        " u.scanned_at AS used_at, u.mode AS last_mode, gt.label AS used_gate"
         " FROM guests g LEFT JOIN"
-        " (SELECT s.qr_id, s.scanned_at, s.gate_id FROM scans s"
+        " (SELECT s.qr_id, s.scanned_at, s.gate_id, s.mode FROM scans s"
         "  JOIN (SELECT qr_id, MAX(id) AS mid FROM scans"
         "        WHERE person_type = 'guest' GROUP BY qr_id) m ON m.mid = s.id) u"
         " ON u.qr_id = g.qr_id LEFT JOIN gates gt ON gt.id = u.gate_id"
@@ -336,6 +340,7 @@ def guest_directory():
     for r in rows:
         d = dict(r)
         d["used"] = bool(d["used"])
+        d["inside"] = d.get("last_mode") == "entry"
         out.append(d)
     return out
 
@@ -527,6 +532,7 @@ def app_config_payload():
         "gates": [{"id": g["id"], "code": g["code"], "label": g["label"]}
                   for g in gate_list],
         "broadcast_mode": config.BROADCAST_MODE,
+        "data_mode": config.DATA_MODE,
         "gate_activity_window_minutes": config.GATE_ACTIVITY_WINDOW_MINUTES,
         "message_char_limit": config.MESSAGE_CHAR_LIMIT,
     }
@@ -551,10 +557,13 @@ def _inside_by_gender(db):
 
 
 def _guests_inside(db):
-    # Guest passes are single-use entry only, so any scan means inside.
+    # The latest entry/exit state, not the existence of an old entry, defines
+    # whether a guest is currently inside.
     return db.execute(
-        "SELECT COUNT(*) c FROM guests WHERE qr_id IN"
-        " (SELECT DISTINCT qr_id FROM scans WHERE person_type = 'guest')"
+        "SELECT COUNT(*) c FROM scans s JOIN"
+        " (SELECT qr_id, MAX(id) AS mid FROM scans"
+        "  WHERE person_type = 'guest' GROUP BY qr_id) latest ON latest.mid = s.id"
+        " WHERE s.mode = 'entry'"
     ).fetchone()["c"]
 
 

@@ -68,12 +68,12 @@ check(
   // Phase 31 Part B: Home keeps the pass as its primary action; the history
   // entry point moved to the More tab (secondary destination).
   "R2: home offers the pass entry point; history lives on More",
-  has(homeScreen, 'label="View Entry Pass"') &&
+  has(homeScreen, 'path: "/(student)/pass"') &&
     has(read("app/(student)/more.tsx"), '"/(student)/history"'),
 );
 check(
   "R3: home pushes the pass route; More pushes history",
-  has(homeScreen, 'router.push("/(student)/pass")') &&
+  has(homeScreen, 'router.push(nextAction.path)') &&
     has(read("app/(student)/more.tsx"), '"/(student)/history"'),
 );
 
@@ -113,8 +113,12 @@ for (const [name, code] of [
   );
   check(
     `${name} screen has no uncontrolled polling`,
-    !has(code, "setInterval") && !has(code, "setTimeout"),
-  );
+      // A local UI clock (e.g. QR-expiry countdown calling setNow) is fine;
+      // a timer that triggers a data refetch is not.
+      !/set(?:Interval|Timeout)\s*\(\s*(?:function[^{]*\{|\([^)]*\)\s*=>)[^}]*\b(?:load|reload|fetch)\s*\(/.test(
+        code,
+      ),
+    );
 }
 check("history screen renders an empty state", has(histCode, "<EmptyState"));
 check(

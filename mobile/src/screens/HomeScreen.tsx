@@ -49,8 +49,8 @@ import { ScannerSheet } from "../scanner/ScannerSheet";
  * (all gates, tinted selected row, one ink marker) → last scan + queue.
  * 33-QA (I19): no Find attendee button here — attendee lookup lives on
  * the Search tab in the bottom bar; Home never duplicated it.
- * Gate selection reuses the EXISTING ScannerSheet flow — never navigates
- * to the Scanner to pick a gate. Fetches ONLY the summary (audit P-03).
+ * Gate selection reuses the ScannerSheet flow; confirming a selected gate
+ * opens Scan with that assignment retained. Fetches ONLY the summary (audit P-03).
  */
 export function HomeScreen() {
   const [scanner, setScanner] = useState<ScannerSession | null>(null);
@@ -190,10 +190,9 @@ export function HomeScreen() {
         : "All scans synced";
 
   const handleSelectGate = useCallback((gate: Gate) => {
-    void setSelectedGate({ id: gate.id, label: gate.label });
+    void     setSelectedGate({ id: gate.id, label: gate.label });
     setGateId(gate.id);
     setGateLabel(gate.label);
-    setSheetVisible(false);
   }, []);
 
   // Phase 28 (concern 2): a direction change is confirmed by the shared
@@ -491,6 +490,10 @@ export function HomeScreen() {
         gateId={gateId}
         onSelectGate={handleSelectGate}
         onClose={() => setSheetVisible(false)}
+        onDone={() => {
+          setSheetVisible(false);
+          router.push("/(volunteer)/scanner");
+        }}
       />
     </Screen>
   );
@@ -535,7 +538,7 @@ const styles = {
     flex: 1,
     minWidth: 0,
     fontFamily: fonts.display,
-    fontSize: 24,
+        fontSize: 32,
     letterSpacing: -0.6,
     color: colors.ink,
   },

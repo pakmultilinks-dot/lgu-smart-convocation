@@ -114,10 +114,8 @@ export function SettingsScreen() {
   return (
     <Screen>
       <AppHeader
-        onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
-        }
-        title="Settings"
+              onBack={() => router.replace("/(volunteer)/more")}
+              title="Settings"
         subtitle="Device and operator preferences"
       />
 

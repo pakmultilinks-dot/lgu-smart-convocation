@@ -20,6 +20,7 @@ export function ScannerSheet({
   gateId,
   onSelectGate,
   onClose,
+  onDone,
 }: {
   visible: boolean;
   gates: Gate[];
@@ -27,6 +28,7 @@ export function ScannerSheet({
   gateId: number | null;
   onSelectGate: (gate: Gate) => void;
   onClose: () => void;
+  onDone: () => void;
 }) {
   const insets = useSafeAreaInsets();
   // 35M R2 (item 15): this sheet is an RN Modal. On Expo Go (SDK 57) the
@@ -94,7 +96,7 @@ export function ScannerSheet({
             label="Done"
             icon="checkmark"
             disabled={gateId === null}
-            onPress={onClose}
+            onPress={onDone}
           />
         </View>
         <View style={styles.grabZone} />

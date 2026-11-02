@@ -24,6 +24,7 @@ const PARENT_OF: Record<string, string> = {
   settings: "more",
   admin: "more",
   broadcast: "more",
+  attendee: "search",
 };
 
 function tabIcon(name: keyof typeof Ionicons.glyphMap) {
@@ -130,9 +131,10 @@ export default function VolunteerTabLayout() {
   return (
     <DashboardAccessGate mode="volunteer">
     <Tabs
-      tabBar={(props) => (
-        <InstitutionalTabBar {...props} insets={insets} />
-      )}
+          backBehavior="history"
+          tabBar={(props) => (
+            <InstitutionalTabBar {...props} insets={insets} />
+          )}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.ink,
@@ -186,6 +188,10 @@ export default function VolunteerTabLayout() {
       <Tabs.Screen
         name="broadcast"
         options={{ title: "Announcement", href: null, headerShown: false }}
+      />
+      <Tabs.Screen
+        name="attendee"
+        options={{ title: "Attendee details", href: null, headerShown: false }}
       />
     </Tabs>
     </DashboardAccessGate>

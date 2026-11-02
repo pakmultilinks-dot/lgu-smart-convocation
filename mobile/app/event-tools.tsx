@@ -1,18 +1,52 @@
 import { Ionicons } from "@expo/vector-icons";
-import { router } from "expo-router";
-import { useState } from "react";
+import { router, usePathname } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import { fetchDashboardAccess } from "../src/api/client";
 import { useDashboardAvailability } from "../src/hooks/useDashboardAvailability";
 import { getAppMode, needsModeConfirmation, setAppMode, type AppMode } from "../src/store/appMode";
+import { getToken } from "../src/store/studentSession";
 import { colors, fonts } from "../src/theme";
 import { AppButton, AppHeader, Screen } from "../src/ui";
 
 export default function EventTools() {
   const { access, state, refresh } = useDashboardAvailability();
+  const pathname = usePathname();
+  const pathRef = useRef(pathname);
+  useEffect(() => {
+    pathRef.current = pathname;
+  }, [pathname]);
   const [pending, setPending] = useState<AppMode | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Role-aware back: this root utility screen is reachable from student,
+  // volunteer and admin surfaces — return to the caller's own role home,
+  // never a generic Home shared across roles.
+  const handleBack = async () => {
+    try {
+      const mode = await getAppMode();
+      const path = pathRef.current;
+      if (/admin|administration|liveboard/i.test(path)) {
+        router.replace("/administration");
+        return;
+      }
+      if (mode === "student") {
+        router.replace((await getToken()) ? "/(student)/more" : "/(student)/welcome");
+        return;
+      }
+      if (mode === "liveboard") {
+        router.replace("/(liveboard)");
+        return;
+      }
+      if (mode === "volunteer") {
+        router.replace("/(volunteer)/more");
+        return;
+      }
+    } catch {
+      // fall through to the mode picker below
+    }
+    router.replace("/mode-picker");
+  };
   const commit = async (mode: AppMode) => {
     if (mode === "student" || busy) return;
     setBusy(true); setPending(null); setError(null);
@@ -31,7 +65,7 @@ export default function EventTools() {
     } catch { setError("Could not open this dashboard. Please try again."); }
   };
   return <Screen>
-    <AppHeader title="Staff & event access" subtitle="Tools for authorized event teams." onBack={() => router.canGoBack() ? router.back() : router.replace("/mode-picker")} />
+    <AppHeader title="Staff & event access" subtitle="Tools for authorized event teams." onBack={() => void handleBack()} />
     <View style={styles.group}>
       {([{ mode: "volunteer", title: "Volunteer Operations", detail: "Scan passes and manage gate entry", icon: "scan-outline" },
         { mode: "liveboard", title: "Live Dashboard", detail: "Attendance for venue displays", icon: "tv-outline" }] as const).map((item) => {

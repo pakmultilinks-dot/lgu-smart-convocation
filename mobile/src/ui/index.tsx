@@ -30,6 +30,7 @@ import {
   text,
 } from "../theme";
 import { safePercent } from "../utils/progress";
+import { useDataMode } from "../store/dataMode";
 
 // ------------------------------------------------------------------ Screen
 
@@ -53,6 +54,7 @@ export function Screen({
   statusBar?: "light" | "dark";
   style?: StyleProp<ViewStyle>;
 }) {
+  const dataMode = useDataMode();
   // Tabs already reserve the device's bottom inset; applying it twice
   // creates an unusable strip above the tab bar on Android.
   const tabHeight = useContext(BottomTabBarHeightContext);
@@ -88,6 +90,18 @@ export function Screen({
     >
       {/* One status-bar system: dark icons on paper, light on ink. */}
       <StatusBar style={statusBar ?? (dark ? "light" : "dark")} />
+      <View style={[
+        styles.dataModeBanner,
+        dataMode === "live" ? styles.dataModeLive : styles.dataModeDemo,
+      ]}>
+        <Text style={styles.dataModeText}>
+          {dataMode === "live"
+            ? "LIVE DATA"
+            : dataMode === "demo"
+              ? "DEMO / PREVIEW DATA — not an official live record"
+              : "DATA MODE UNKNOWN — verify connection before operations"}
+        </Text>
+      </View>
       {body}
     </SafeAreaView>
   );
@@ -778,6 +792,21 @@ const styles = StyleSheet.create({
   screen: { flex: 1 },
   screenLight: { backgroundColor: colors.paper },
   screenDark: { backgroundColor: colors.ink },
+  dataModeBanner: {
+    minHeight: 24,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  dataModeDemo: { backgroundColor: "#F5E3B2" },
+  dataModeLive: { backgroundColor: "#DCE9E1" },
+  dataModeText: {
+    color: colors.ink,
+    fontFamily: fonts.displayMedium,
+    fontSize: 10,
+    letterSpacing: 0.3,
+    textAlign: "center",
+  },
   screenScroll: {
     paddingHorizontal: spacing.screen,
     paddingTop: spacing.md,
