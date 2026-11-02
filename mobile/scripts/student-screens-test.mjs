@@ -230,9 +230,9 @@ check(
 check(
   "A8: screens navigate only through typed hrefs (all four core routes)",
   has(home, "/(student)/profile") &&
-    has(profile, "/(student)/home") &&
-    has(login, "studentApi.homePath(session)") &&
-    has(codeScreen, "studentApi.homePath(session)"),
+    has(profile, "studentApi.postAuthPath(me, returnTo)") &&
+    has(login, "studentApi.postAuthPath(session, returnTo)") &&
+    has(codeScreen, "studentApi.postAuthPath(session, p.returnTo)"),
 );
 
 // E — email fail-closed ---------------------------------------------------

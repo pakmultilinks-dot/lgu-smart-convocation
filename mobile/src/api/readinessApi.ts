@@ -5,6 +5,7 @@
 // response and reports the student's read/dismiss intent back to the server,
 // which re-validates it before persisting.
 
+import type { Href } from "expo-router";
 import { request } from "./client";
 
 const BASE = "/api/student/readiness";
@@ -83,10 +84,21 @@ export function mark(
   });
 }
 
-/** Map a backend route string to something the router can push. Routes the
- *  server names are always internal student paths; anything unrecognized
- *  falls back to home so a stray value can never navigate off-app. */
-export function routeOf(action: NavAction | null): string {
-  if (!action || !action.route) return "/(student)/home";
-  return action.route;
+/** Map only known student destinations; an unknown action must not silently
+ * send a student to Home or navigate to an arbitrary deep link. */
+export function routeOf(action: NavAction | null): Href | null {
+  if (!action?.route) return null;
+  const routes: Record<string, Href> = {
+    "/(student)/home": "/(student)/home",
+    "/(student)/profile": "/(student)/profile",
+    "/(student)/event": "/(student)/event",
+    "/(student)/announcements": "/(student)/announcements",
+    "/(student)/support": "/(student)/support",
+    "/(student)/pass": "/(student)/pass",
+  };
+  if (routes[action.route]) return routes[action.route];
+  const detail = /^\/\(student\)\/support-detail\?id=([1-9]\d*)$/.exec(action.route);
+  return detail
+    ? { pathname: "/(student)/support-detail", params: { id: detail[1] } }
+    : null;
 }

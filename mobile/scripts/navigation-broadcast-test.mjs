@@ -68,6 +68,69 @@ check("BackHeaderButton removed with its router import",
 check("back styles removed from the stylesheet",
   !has(layout, "backPressed") && !has(layout, "backText"));
 
+// ---- student destinations + auth interruption ----
+console.log("Student route intent");
+const studentLayout = read("mobile/app/(student)/_layout.tsx");
+const welcome = read("mobile/src/components/StudentWelcome.tsx");
+const studentApi = read("mobile/src/api/studentApi.ts");
+const readinessApi = read("mobile/src/api/readinessApi.ts");
+const readiness = read("mobile/app/(student)/readiness.tsx");
+const notFound = read("mobile/app/+not-found.tsx");
+check("student tab allow-list names five distinct student destinations",
+  has(studentLayout, 'const VISIBLE_TABS = ["home", "registration", "pass", "announcements", "more"];'));
+check("student hidden details map to their parent tab",
+  has(studentLayout, 'profile: "registration"') &&
+  has(studentLayout, 'event: "more"') &&
+  has(studentLayout, '"support-detail": "more"'));
+check("public Entry pass opens its own route",
+  has(welcome, 'router.push("/(student)/pass")'));
+check("public event and update tiles open their matching student pages",
+  has(welcome, 'router.push("/(student)/event")') &&
+  has(welcome, 'router.push("/(student)/announcements")'));
+check("signed-out Entry pass carries a return destination through auth",
+  has(studentApi, '"/(student)/pass": "/(student)/pass"') &&
+  has(studentApi, "postAuthPath(") &&
+  has(studentApi, "returnTo?: string | string[]"));
+check("readiness route mapper rejects missing/unknown destinations",
+  has(readinessApi, "if (!action?.route) return null;") &&
+  has(readiness, "if (!route)") &&
+  has(readiness, "This task has no available destination") &&
+  !has(readinessApi, 'return "/(student)/home"'));
+check("unknown route shows a recovery screen instead of redirecting silently",
+  has(notFound, 'title="Page not found"') &&
+  has(notFound, "This destination is not available.") &&
+  has(notFound, "Return to your workspace"));
+
+// ---- volunteer attendee/detail navigation ----
+console.log("Volunteer detail route");
+const attendeeRoute = read("mobile/app/(volunteer)/attendee.tsx");
+const searchScreen = read("mobile/src/screens/SearchScreen.tsx");
+const homeScreen = read("mobile/src/screens/HomeScreen.tsx");
+const scannerScreen = read("mobile/src/screens/ScannerScreen.tsx");
+const scannerSheet = read("mobile/src/scanner/ScannerSheet.tsx");
+check("manual-search results open the hidden attendee detail route",
+  has(searchScreen, 'pathname: "/(volunteer)/attendee"') &&
+  has(attendeeRoute, "AttendeeDetailScreen"));
+check("hidden attendee detail retains Search as its selected tab",
+  has(layout, 'attendee: "search"'));
+check("Home gate selection stays open until Done and Done opens Scan",
+  has(scannerSheet, "onPress={onDone}") &&
+  has(homeScreen, 'router.push("/(volunteer)/scanner")') &&
+  has(homeScreen, "onDone={() => {"));
+check("gate selection inside Scan closes in place",
+  has(scannerScreen, "onDone={() => setSheetVisible(false)}"));
+
+// ---- role-aware admin recovery ----
+console.log("Admin return destinations");
+const liveBoard = read("mobile/src/screens/LiveBoardScreen.tsx");
+const adminScreen = read("mobile/src/screens/AdminScreen.tsx");
+check("leaving the live display returns to authenticated administration",
+  has(liveBoard, 'router.replace("/administration")'));
+check("admin back with no history returns to administration, not student Home",
+  has(adminScreen, 'router.canGoBack()') &&
+  has(adminScreen, 'router.replace("/administration")') &&
+  !has(adminScreen, 'router.replace("/(student)/home")'));
+
 // ---- More destination ----
 console.log("More destination");
 const moreRoute = read("mobile/app/(volunteer)/more.tsx");
@@ -102,10 +165,10 @@ check("admin route is wrapped in AdminGate",
 // ---- broadcast screen copy and safety ----
 console.log("Broadcast screen");
 const broadcast = read("mobile/src/screens/BroadcastScreen.tsx");
-check("header title is Announcements",
-  has(broadcast, 'title="Announcements"'));
+check("header title identifies the operational message log",
+  has(broadcast, 'title="Operational message log"'));
 check("subtitle is exact (35M R2 item 10 mandate)",
-  has(broadcast, 'subtitle="Log a message for students and volunteers"'));
+  has(broadcast, 'subtitle="Operational message log for event teams"'));
 check("stale copy is gone (old subtitle + pre-35G labels)",
   !has(broadcast, 'subtitle="Send a message to students and volunteers"') && !has(broadcast, "Send broadcast"));
 check("light header with back action to More",

@@ -72,7 +72,7 @@ check(
 );
 check(
   "P5: reissue is an explicit user action, not the freshness refresh",
-  has(passCode, 'label="Refresh QR"') &&
+    has(passCode, '"Refresh QR"') &&
     has(passCode, "void issue()") &&
     has(passCode, "useFreshServerData(() => load(true))"),
 );

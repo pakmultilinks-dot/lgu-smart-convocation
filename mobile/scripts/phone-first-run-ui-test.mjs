@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const read = (p) => readFileSync(resolve(root, p), "utf8").replace(/\r\n/g, "\n");
-const picker = read("app/mode-picker.tsx");
+const picker = read("app/event-tools.tsx");
 const scanner = read("src/screens/ScannerScreen.tsx");
 const home = read("src/screens/HomeScreen.tsx");
 const client = read("src/api/client.ts");

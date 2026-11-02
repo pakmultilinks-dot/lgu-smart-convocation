@@ -65,9 +65,9 @@ Record the full output in the release evidence folder. A preflight that reports
 ## 4. Step 2 — Rehearse the migration on a copy (never production)
 
 The historical production baseline was reported as schema v6. The current
-migration ladder ends at **v14**; the actual production version is NOT
+migration ladder ends at **v15**; the actual production version is NOT
 verified by this source-only review. The operator must verify the source
-version independently before proceeding. The expected path is **v6→v14**.
+version independently before proceeding. The expected path is **v6→v15**.
 
 Run the existing synthetic-only regression script (its old filename mentions
 v11, but its `LATEST` variable uses the current migration target):
@@ -109,9 +109,9 @@ and credential hashes. Do not proceed without verified recovery evidence.
 > This review adds a refusal guard, not an authorization to migrate.
 
 1. Keep the live service stopped and independently verify the database
-   version, integrity, owner and intended migration target (v14).
+   version, integrity, owner and intended migration target (v15).
 2. Obtain operator and institution sign-off, a verified backup, and a
-   successful v6→v14 rehearsal on a separate disposable copy.
+   successful v6→v15 rehearsal on a separate disposable copy.
 3. Execute the migration only through a separately reviewed and explicitly
    operator-invoked offline procedure. There is NO approved automatic
    production migration command in this PR. Until that procedure exists,
@@ -126,9 +126,9 @@ Do not attempt live validation in an unapproved review workflow.
 
 | Check | Expected |
 | --- | --- |
-| `PRAGMA user_version` | `14` |
+| `PRAGMA user_version` | `15` |
 | `PRAGMA integrity_check` | `ok` |
-| tables and indexes | match the tested v14 fixture and migration plan |
+| tables and indexes | match the tested v15 fixture and migration plan |
 | preserved data | row counts / integrity evidence compared privately with the verified backup |
 | preflight schema version | `PASS (current)` |
 
@@ -161,7 +161,7 @@ application build; record the rollback decision and approval.
 
 | Gate | Required verification | Owner |
 | --- | --- | --- |
-| Production backup/migration | verified backup + approved v6→v14 offline procedure | Institution + migration operator |
+| Production backup/migration | verified backup + approved v6→v15 offline procedure | Institution + migration operator |
 | HTTPS and session cookies | trusted HTTPS from client devices, `LGU_COOKIE_SECURE=1`, reachable backend | Hosting |
 | Real SMTP delivery | received signup and recovery emails at controlled real mailboxes | Institution + hosting |
 | Signed Android preview APK | installed and scanned on physical phone; offline/online sync with synthetic staging records | Institution |
@@ -176,7 +176,7 @@ is comparable across phases. A GO requires **every** gate closed.
 | # | Gate | Evidence | Status | Owner | Next action |
 | --- | --- | --- | --- | --- | --- |
 | 1 | Automated regression (Python + mobile + tsc + eslint) | full battery, 0 failures | | Release operator | |
-| 2 | Migration rehearsal on disposable DBs | v6→v14 suite, all checks pass | | Release operator | |
+| 2 | Migration rehearsal on disposable DBs | v6→v15 suite, all checks pass | | Release operator | |
 | 3 | Backup / restore workflow | backup suite, 40/40 | | Release operator | |
 | 4 | Runtime configuration audit + preflight | config audit 84/84; `preflight.py` | | Release operator | |
 | 5 | Authorization matrix closed or classified | authz matrix, 35/35 | | Release operator | |

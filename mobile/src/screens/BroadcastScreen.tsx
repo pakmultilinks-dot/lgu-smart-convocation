@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import { useFocusEffect, useRouter } from "expo-router";
+import { useFocusEffect, usePathname, useRouter } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { Modal, Pressable, Text, View } from "react-native";
 import {
@@ -46,6 +46,7 @@ const MESSAGE_LIMIT_FALLBACK = 160;
  */
 export function BroadcastScreen() {
   const router = useRouter();
+  const pathname = usePathname();
   const [audience, setAudience] = useState<Audience>("all");
   const [message, setMessage] = useState("");
   const [sending, setSending] = useState(false);
@@ -290,14 +291,20 @@ export function BroadcastScreen() {
     // Light in-screen header (Phase 35G: dark native header removed).
     <Screen>
       <AppHeader
-        onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
-        }
-        title="Announcements"
+        onBack={() => {
+                  if (pathname === "/admin-messages") {
+                    router.replace("/administration");
+                    return;
+                  }
+                  router.replace("/(volunteer)/more");
+                }}
+        title="Operational message log"
         // 35M R2 (item 10): mandated subtitle copy — announcement is a log,
         // not a delivery.
-        subtitle="Log a message for students and volunteers"
+        subtitle="Operational message log for event teams"
       />
+
+      <AppButton label="Publish in student Updates" variant="secondary" onPress={() => router.push("/administration")} />
 
       {/* 35J (P0) + 35K (G): demo-mode honesty — visible BEFORE composing
           when the server reports demo mode (the default). In real mode the
@@ -366,7 +373,7 @@ export function BroadcastScreen() {
                       ]}
                     >
                       <Text
-                        numberOfLines={1}
+                        numberOfLines={2}
                         style={[
                           styles.gateTileText,
                           selected && styles.gateTileTextSelected,

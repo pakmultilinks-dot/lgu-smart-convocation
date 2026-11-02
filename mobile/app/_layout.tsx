@@ -9,6 +9,7 @@ import {
 } from "@expo-google-fonts/bricolage-grotesque";
 import { DMMono_400Regular, DMMono_500Medium } from "@expo-google-fonts/dm-mono";
 import { colors, fonts } from "../src/theme";
+import { DataModeProvider } from "../src/store/dataMode";
 
 export {
   // Catch any errors thrown by the Layout component.
@@ -50,31 +51,32 @@ export default function RootLayout() {
       {/* Default = dark icons for light screens; each Screen sets its own
           (expo-status-bar is the single status-bar system). */}
       <StatusBar style="dark" />
-      <Stack
-        screenOptions={{
-          headerShadowVisible: false,
-          headerStyle: { backgroundColor: colors.ink },
-          headerTintColor: colors.paper,
-          headerTitleStyle: {
-            // 35M R2 (item 14): family encodes the weight — no RN
-            // fontWeight synthesis on the custom family.
-            fontFamily: fonts.displayMedium,
-            fontSize: 15,
-          },
-        }}
-      >
-        <Stack.Screen name="index" options={{ headerShown: false }} />
-        <Stack.Screen name="mode-picker" options={{ headerShown: false }} />
-        <Stack.Screen name="administration" options={{ headerShown: false }} />
-        <Stack.Screen name="connect-server" options={{ headerShown: false }} />
-        <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />
-        <Stack.Screen name="(liveboard)" options={{ headerShown: false }} />
-        <Stack.Screen name="(student)" options={{ headerShown: false }} />
-        <Stack.Screen
-          name="guest-pass"
-          options={{ headerShown: false }}
-        />
-      </Stack>
+      <DataModeProvider>
+        <Stack
+          screenOptions={{
+            headerShadowVisible: false,
+            headerStyle: { backgroundColor: colors.ink },
+            headerTintColor: colors.paper,
+            headerTitleStyle: {
+              // 35M R2 (item 14): family encodes the weight — no RN
+              // fontWeight synthesis on the custom family.
+              fontFamily: fonts.displayMedium,
+              fontSize: 15,
+            },
+          }}
+        >
+          <Stack.Screen name="index" options={{ headerShown: false }} />
+          <Stack.Screen name="mode-picker" options={{ headerShown: false }} />
+          <Stack.Screen name="event-tools" options={{ headerShown: false }} />
+          <Stack.Screen name="administration" options={{ headerShown: false }} />
+          <Stack.Screen name="admin-messages" options={{ headerShown: false }} />
+          <Stack.Screen name="connect-server" options={{ headerShown: false }} />
+          <Stack.Screen name="(volunteer)" options={{ headerShown: false }} />
+          <Stack.Screen name="(liveboard)" options={{ headerShown: false }} />
+          <Stack.Screen name="(student)" options={{ headerShown: false }} />
+          <Stack.Screen name="guest-pass" options={{ headerShown: false }} />
+        </Stack>
+      </DataModeProvider>
     </>
   );
 }

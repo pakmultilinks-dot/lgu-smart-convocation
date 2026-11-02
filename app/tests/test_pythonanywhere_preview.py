@@ -19,6 +19,8 @@ class PythonAnywherePreviewTests(unittest.TestCase):
         self.private = self.home / "lgu-preview-private"
         self.env = os.environ.copy()
         self.env["HOME"] = str(self.home)
+        # Path.home() reads USERPROFILE on Windows and HOME on the Linux host.
+        self.env["USERPROFILE"] = str(self.home)
         self.env["LGU_APP_ENV"] = "development"
         self.env.pop("LGU_DB_PATH", None)
         self.env.pop("LGU_TESTING", None)

@@ -1,16 +1,9 @@
-/**
- * Institutional palette — Phase 35C (Order #3, visual system).
- * Paper + ink dominate (~70/25). Brand green is logo/splash ONLY. Gold is
- * one thin marker per screen. Valid/invalid are scan semantics only.
- * Legacy (pre-35C) names are mapped onto this system so unrewritten files
- * stay on-palette: green surfaces became ink, mint on-dark text became
- * paper, soft fills became track. New code uses the canonical names.
- */
+/** University green, white surfaces and cool neutral backgrounds. */
 export const palette = {
-  paper: "#F6F1E4",
-  ink: "#1B1A16",
-  muted: "#5C5642",
-  track: "#E3DCC6",
+  paper: "#F5F7F8",
+  ink: "#173C2B",
+  muted: "#5F6F66",
+  track: "#DDE5E0",
   brand: "#14452F",
   gold: "#C9A227",
   // 33-QA (P8-26): the three semantic tokens are darkened so they pass
@@ -30,7 +23,7 @@ export const colors = {
   ...palette,
   // Surfaces & structure
   background: palette.paper,
-  card: palette.paper,
+  card: "#FFFFFF",
   white: palette.paper,
   text: palette.ink,
   inputBg: palette.paper,

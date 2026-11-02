@@ -69,6 +69,9 @@ def host_pool(n):
 
 app = create_app()
 client = app.test_client()
+client.environ_base["HTTP_X_ADMIN_PIN"] = str(config.ADMIN_PIN)
+with client.session_transaction() as sess:
+    sess["lgu_admin"] = True
 H = host_pool(10)
 assert len(H) >= 8, "seed did not provide enough guest-free hosts"
 
@@ -77,7 +80,8 @@ def post_json(host, name="P38 RL Guest"):
     # phone derived per host: the twin (name+phone) rule rejects identical
     # identities, which would mask what this test measures (the limiter).
     return client.post("/api/guests", json={
-        "name": name, "phone": "0300" + host, "host_roll_no": host})
+        "name": name, "phone": "0300" + host, "host_roll_no": host,
+        "payment_reference": "PAY-" + host, "payment_verified": True})
 
 
 def reset_bucket():
@@ -106,9 +110,9 @@ reset_bucket()
 j1 = post_json(H[3], "P38 D").status_code      # attempt 1 (fresh host)
 j2 = post_json(H[4], "P38 E").status_code      # attempt 2
 f1 = client.post("/guests", data={"name": "P38 F", "phone": "0300 6",
-                                  "host_roll_no": H[5]})   # attempt 3
+                                  "host_roll_no": H[5], "payment_reference": "FORM-5", "payment_verified": "on"})   # attempt 3
 f2 = client.post("/guests", data={"name": "P38 G", "phone": "0300 7",
-                                  "host_roll_no": H[6]})   # attempt 4 -> block
+                                  "host_roll_no": H[6], "payment_reference": "FORM-6", "payment_verified": "on"})   # attempt 4 -> block
 check("attempts 1-2 (JSON) accepted", j1 == 200 and j2 == 200, (j1, j2))
 check("attempt 3 (form) within budget -> 302 redirect",
       f1.status_code == 302, f1.status_code)

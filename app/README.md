@@ -162,6 +162,14 @@ short-lived signed tokens.
 `/api/config` exposes the active mode so the volunteer screens can label
 honesty accurately.
 
+### Data environment label
+
+`LGU_DATA_MODE` controls the persistent label shown throughout the mobile
+app: `demo` (default) labels the connected records as preview/demo data,
+while `live` identifies an explicitly configured live-data backend. Invalid
+values fail closed to `demo`; when the config API is unreachable, the app
+shows `DATA MODE UNKNOWN` rather than implying the data is live.
+
 ### QR sharing limitation (honest statement)
 
 Duplicate or reused QR codes are DETECTED server-side: a scan whose payload

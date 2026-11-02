@@ -180,7 +180,7 @@ export function LiveBoardScreen() {
     setExitPin("");
     setExitPinError(null);
     void clearAppMode();
-    router.replace("/mode-picker");
+    router.replace("/administration");
   }, []);
 
   const requestExitPin = useCallback(() => {
@@ -286,6 +286,9 @@ export function LiveBoardScreen() {
   const offline = state === "offline";
   const expected = data?.expected_attendance ?? 0;
   const inside = data?.inside_total ?? 0;
+    // Roster rows behind the counts — 0 with no roster means "no data
+    // loaded", not a verified zero (honesty rule for live attendance).
+    const rosterCount = data?.student_roster_count ?? 0;
   // "Students inside" = students currently inside (backend inside_total is
   // male + female students; guests are counted separately — Phase 35A
   // bug 3, semantics preserved; "Guests inside" is its own clear label).
@@ -319,6 +322,7 @@ export function LiveBoardScreen() {
       <Screen>
         <AppHeader
           title="Live attendance"
+          stackRight={!wide}
           subtitle={cfg?.event.name || "Lahore Garrison University Convocation"}
           right={<StatusPill state="connecting" label="Connecting" />}
         />
@@ -359,6 +363,7 @@ export function LiveBoardScreen() {
         <View style={wide ? [styles.board, styles.boardWide] : styles.board}>
         <AppHeader
           title="Live attendance"
+          stackRight={!wide}
           subtitle={cfg?.event.name || "Lahore Garrison University Convocation"}
           crest
           onCrestPress={armExit}
@@ -423,6 +428,14 @@ export function LiveBoardScreen() {
               </Text>
             )}
           </View>
+                      {/* Roster context: a 0 inside is only trustworthy next to the
+                          roster it counts against. No roster rows → say so instead of
+                          implying a verified zero. */}
+                      <Text style={styles.arrivedCaption}>
+                        {rosterCount > 0
+                          ? `Roster: ${rosterCount.toLocaleString()} students on the official list`
+                          : "Roster not loaded — counts below are unverified"}
+                      </Text>
           <View style={styles.heroTrack}>
             <ProgressTrack value={inside} max={denom} />
           </View>
@@ -433,7 +446,13 @@ export function LiveBoardScreen() {
         <SectionCard>
           <View style={styles.demoRow}>
             <View style={styles.demoCell}>
-              <Text style={styles.demoLabel}>Male</Text>
+                      <Text style={styles.demoLabel}>Total inside</Text>
+                      <Text style={styles.demoValue}>
+                        {inside.toLocaleString()}
+                      </Text>
+                    </View>
+                    <View style={styles.demoCell}>
+                      <Text style={styles.demoLabel}>Male</Text>
               <Text style={styles.demoValue}>
                 {(data?.male ?? 0).toLocaleString()}
               </Text>
@@ -661,6 +680,7 @@ export function LiveBoardScreen() {
 
 const styles = {
   board: {
+    gap: spacing.md,
     flex: 1,
   },
   // 35M R3: genuine vertical scrolling for the board content — a bounded
@@ -686,6 +706,7 @@ const styles = {
     alignItems: "flex-start" as const,
   },
   column: {
+    gap: spacing.md,
     flex: 1,
     minWidth: 0,
   },

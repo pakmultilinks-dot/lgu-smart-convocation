@@ -10,12 +10,13 @@
 // Phase 8 freshness unchanged: focus, resume, manual refresh and a
 // controlled ≤30s foreground cadence refetch silently over the last data.
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useRef, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as eventApi from "../../src/api/eventApi";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
+import { rememberStudentTab } from "../../src/store/studentTab";
 import { colors, fonts, spacing } from "../../src/theme";
 import { convocationLine } from "../../src/utils/convocation";
 import {
@@ -40,6 +41,8 @@ const stamp = () => {
 };
 
 export default function AnnouncementsScreen() {
+  // Detail screens opened from Updates return here (last-tab memory).
+  useFocusEffect(useCallback(() => { rememberStudentTab("/(student)/announcements"); }, []));
   const [state, setState] = useState<State>(null);
   const [stale, setStale] = useState(false);
   // Clock of the last SUCCESSFUL load — shown in the offline badge so a
@@ -102,7 +105,7 @@ export default function AnnouncementsScreen() {
         eyebrow="Official Updates"
         title="Announcements"
         subtitle={convocationLine(convocation)}
-        onBack={() => router.back()}
+        onBack={() => router.replace("/(student)/home")}
       />
       {/* The offline badge renders in EVERY ready state — including the
           empty ones — so stale is visible wherever data is. */}

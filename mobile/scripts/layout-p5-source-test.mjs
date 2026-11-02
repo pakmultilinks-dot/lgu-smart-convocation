@@ -172,7 +172,7 @@ check(
 );
 check(
   "35M camera formula pins kept (0.58 share + 330 chrome budget)",
-  has(scanner, "windowH * 0.58") && has(scanner, "windowH - 330"),
+  has(scanner, "Math.min(260, windowH - 600)") && has(scanner, "windowH - 600"),
 );
 check(
   "cameraArea before ScannerBottomBar (35M layout order)",

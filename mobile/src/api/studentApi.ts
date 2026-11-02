@@ -101,6 +101,39 @@ export function homePath(s: SessionBody): Href {
   return s.completion.complete ? "/(student)/home" : "/(student)/profile";
 }
 
+const RETURN_PATHS: Record<string, Href> = {
+  "/(student)/pass": "/(student)/pass",
+  "/(student)/event": "/(student)/event",
+  "/(student)/registration": "/(student)/registration",
+  "/(student)/announcements": "/(student)/announcements",
+  "/(student)/support": "/(student)/support",
+  "/(student)/profile": "/(student)/profile",
+  "/(student)/readiness": "/(student)/readiness",
+  "/(student)/history": "/(student)/history",
+  "/(student)/medalists": "/(student)/medalists",
+  "/(student)/support-detail": "/(student)/support-detail",
+};
+
+export function studentReturnPath(value?: string | string[]): Href | null {
+  const path = Array.isArray(value) ? value[0] : value;
+  if (!path) return null;
+  // Match on the pathname so query-carrying hrefs (support-detail?id=N)
+  // survive; return the full href with its query intact.
+  const pathname = path.split("?")[0];
+  const base = RETURN_PATHS[pathname];
+  if (!base) return null;
+  const query = path.slice(pathname.length);
+  return (query ? `${base}${query}` : base) as Href;
+}
+
+export function postAuthPath(
+  session: SessionBody,
+  returnTo?: string | string[],
+): Href {
+  const destination = studentReturnPath(returnTo);
+  return destination ?? homePath(session);
+}
+
 async function withSession<T extends SessionBody>(
   path: string,
   body: Record<string, unknown>,
@@ -167,12 +200,26 @@ export function me(token: string): Promise<SessionBody> {
   return request<SessionBody>(`${BASE}/me`, { headers: auth(token) });
 }
 
-/** Binary photo endpoint — RN <Image> accepts auth headers directly. */
-/** Absolute URL + bearer headers for <Image>: RN cannot load a relative
- *  URI, so the route is resolved against the discovered backend host. */
+/** Resolve the protected image through authenticated fetch. Browser image
+ * elements cannot attach bearer headers; a memory-only data URI also avoids
+ * leaking credentials into a URL or an image cache key. */
 export async function photoSource(token: string): Promise<{ uri: string; headers: Record<string, string> }> {
   const base = await getApiBaseUrl();
-  return { uri: `${base}${BASE}/profile/photo`, headers: auth(token) };
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(`${base}${BASE}/profile/photo`, { headers: auth(token), signal: controller.signal });
+    if (!response.ok) throw new ApiError("The saved photo could not be loaded.", response.status);
+    const blob = await response.blob();
+    if (!blob.type.startsWith("image/") || blob.size > 2 * 1024 * 1024) throw new Error("Invalid photo response.");
+    const uri = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("Invalid image."));
+      reader.onerror = () => reject(new Error("Photo preview unavailable."));
+      reader.readAsDataURL(blob);
+    });
+    return { uri, headers: {} };
+  } finally { clearTimeout(timer); }
 }
 
 export function updatePhone(

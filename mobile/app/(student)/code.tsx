@@ -21,6 +21,7 @@ export default function StudentCode() {
     account_exists: string;
     pending: string;
     resend_remaining: string;
+    returnTo?: string | string[];
   }>();
   const accountExists = p.account_exists === "true";
   const [code, setCode] = useState("");
@@ -45,7 +46,7 @@ export default function StudentCode() {
         ...(accountExists ? {} : { password }),
       });
       setOk(true);
-      setTimeout(() => router.replace(studentApi.homePath(session)), 700);
+      setTimeout(() => router.replace(studentApi.postAuthPath(session, p.returnTo)), 700);
     } catch (e) {
       setError(
         e instanceof ApiError
@@ -78,7 +79,7 @@ export default function StudentCode() {
       <AppHeader
         title="Enter code"
         subtitle={`Email verification required — we emailed a 6-digit code to ${p.masked_email}`}
-        onBack={() => router.back()}
+        onBack={() => router.replace("/(student)/login")}
       />
       <View style={styles.status}>
         <StatusPill

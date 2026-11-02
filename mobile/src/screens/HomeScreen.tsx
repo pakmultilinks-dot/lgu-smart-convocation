@@ -37,6 +37,7 @@ import {
   StatusPill,
   formatClock,
 } from "../ui";
+import { getScannerSession, type ScannerSession } from "../store/scannerSession";
 import { ScannerSheet } from "../scanner/ScannerSheet";
 
 /**
@@ -48,10 +49,11 @@ import { ScannerSheet } from "../scanner/ScannerSheet";
  * (all gates, tinted selected row, one ink marker) → last scan + queue.
  * 33-QA (I19): no Find attendee button here — attendee lookup lives on
  * the Search tab in the bottom bar; Home never duplicated it.
- * Gate selection reuses the EXISTING ScannerSheet flow — never navigates
- * to the Scanner to pick a gate. Fetches ONLY the summary (audit P-03).
+ * Gate selection reuses the ScannerSheet flow; confirming a selected gate
+ * opens Scan with that assignment retained. Fetches ONLY the summary (audit P-03).
  */
 export function HomeScreen() {
+  const [scanner, setScanner] = useState<ScannerSession | null>(null);
   const [gateId, setGateId] = useState<number | null>(null);
   const [gateLabel, setGateLabel] = useState<string | null>(null);
   const [scanMode, setScanMode] = useState<ScanMode>("entry");
@@ -96,7 +98,9 @@ export function HomeScreen() {
 
   const loadGates = useCallback(async () => {
     try {
-      setGates(await fetchGates());
+      const [available, session] = await Promise.all([fetchGates(), getScannerSession()]);
+      setScanner(session);
+      setGates(session ? available.filter((g) => session.gates.includes(g.id)) : []);
       setGatesError(null);
     } catch (e) {
       setGatesError(e instanceof Error ? e.message : "Gates could not be loaded.");
@@ -126,13 +130,16 @@ export function HomeScreen() {
         if (!cancelled) setBackendConfigured(url.length > 0);
       });
       void (async () => {
-        const [gate, mode, last, q] = await Promise.all([
+        const [storedGate, mode, last, q, session] = await Promise.all([
           getSelectedGate(),
           getScanMode(),
           getLastScanResult(),
           queueCount(),
+          getScannerSession(),
         ]);
         if (cancelled) return;
+        setScanner(session);
+        const gate = storedGate && session?.gates.includes(storedGate.id) ? storedGate : null;
         setGateId(gate?.id ?? null);
         setGateLabel(gate?.label ?? null);
         setScanMode(mode);
@@ -183,10 +190,9 @@ export function HomeScreen() {
         : "All scans synced";
 
   const handleSelectGate = useCallback((gate: Gate) => {
-    void setSelectedGate({ id: gate.id, label: gate.label });
+    void     setSelectedGate({ id: gate.id, label: gate.label });
     setGateId(gate.id);
     setGateLabel(gate.label);
-    setSheetVisible(false);
   }, []);
 
   // Phase 28 (concern 2): a direction change is confirmed by the shared
@@ -268,7 +274,7 @@ export function HomeScreen() {
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Change gate or direction"
-              onPress={() => setSheetVisible(true)}
+              onPress={() => scanner ? setSheetVisible(true) : router.push("/(volunteer)/scanner")}
               hitSlop={8}
               style={({ pressed }) => [styles.changeAction, pressed && styles.pressed]}
             >
@@ -318,7 +324,7 @@ export function HomeScreen() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Choose your gate"
-          onPress={() => setSheetVisible(true)}
+          onPress={() => scanner ? setSheetVisible(true) : router.push("/(volunteer)/scanner")}
           style={({ pressed }) => [styles.chooseRow, pressed && styles.pressed]}
         >
           <Ionicons name="location-outline" size={18} color={colors.muted} />
@@ -332,16 +338,16 @@ export function HomeScreen() {
           QA fix cycle 2 (gate source of truth): disabled until a gate is
           chosen — the "Choose your gate" row above is the direction. */}
       <AppButton
-        label="Scan QR Code"
+        label={scanner ? "Scan QR Code" : "Sign in to scanner"}
         icon="qr-code"
         size="lg"
-        disabled={gateId === null}
+        disabled={scanner !== null && gateId === null}
         onPress={() => router.push("/(volunteer)/scanner")}
       />
       {/* QA fix cycle 4 (Finding 11): a disabled primary action always
           states WHY — never a greyed button with no explanation. */}
       {gateId === null ? (
-        <Text style={styles.scanNote}>Choose your gate above to start scanning.</Text>
+        <Text style={styles.scanNote}>Sign in and select an assigned gate to start scanning.</Text>
       ) : null}
 
       {/* 2 — Students inside, directly on paper. Track empty at zero. */}
@@ -478,12 +484,16 @@ export function HomeScreen() {
           controls are the gate only (35I Q: direction lives in the
           scanner top bar / home toggle). */}
       <ScannerSheet
-        visible={sheetVisible}
+        visible={sheetVisible && scanner !== null}
         gates={gates}
         gatesError={gatesError}
         gateId={gateId}
         onSelectGate={handleSelectGate}
         onClose={() => setSheetVisible(false)}
+        onDone={() => {
+          setSheetVisible(false);
+          router.push("/(volunteer)/scanner");
+        }}
       />
     </Screen>
   );
@@ -528,7 +538,7 @@ const styles = {
     flex: 1,
     minWidth: 0,
     fontFamily: fonts.display,
-    fontSize: 32,
+        fontSize: 32,
     letterSpacing: -0.6,
     color: colors.ink,
   },

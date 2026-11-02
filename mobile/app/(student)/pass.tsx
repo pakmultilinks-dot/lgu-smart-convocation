@@ -8,13 +8,14 @@
 // server-side against the registration record — it carries no personal data,
 // and a visible QR image is never treated as proof of validity on its own.
 
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import QRCode from "react-native-qrcode-svg";
 import { ApiError } from "../../src/api/client";
 import * as passApi from "../../src/api/passApi";
 import { getToken } from "../../src/store/studentSession";
+import { rememberStudentTab } from "../../src/store/studentTab";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
 import { colors, fonts, spacing } from "../../src/theme";
 import {
@@ -44,15 +45,26 @@ const STATE_PILL: Record<passApi.PassState, "accept" | "queued" | "invalid" | "i
   no_convocation: "info",
 };
 
+function passTime(value: string): string {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "Time unavailable" : date.toLocaleString("en-PK", { timeZone: "Asia/Karachi", day: "numeric", month: "short", hour: "numeric", minute: "2-digit" }) + " PKT";
+}
+
 export default function PassScreen() {
+  // Detail screens opened from Entry Pass return here (last-tab memory).
+  useFocusEffect(useCallback(() => { rememberStudentTab("/(student)/pass"); }, []));
   const [step, setStep] = useState<Step>({ kind: "loading" });
   const [qr, setQr] = useState<passApi.IssuedPass | null>(null);
   const [qrError, setQrError] = useState<string | null>(null);
   const [issuing, setIssuing] = useState(false);
+  const [now, setNow] = useState(() => Date.now());
 
   const issue = useCallback(async () => {
     const token = await getToken();
-    if (!token) return router.replace("/(student)/welcome");
+    if (!token) return router.replace({
+      pathname: "/(student)/login",
+      params: { returnTo: "/(student)/pass" },
+    });
     setIssuing(true);
     setQrError(null);
     try {
@@ -60,7 +72,10 @@ export default function PassScreen() {
       setQr(res.pass);
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace("/(student)/welcome");
+        router.replace({
+          pathname: "/(student)/login",
+          params: { returnTo: "/(student)/pass" },
+        });
         return;
       }
       setQrError(
@@ -75,14 +90,20 @@ export default function PassScreen() {
 
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
-    if (!token) return router.replace("/(student)/welcome");
+    if (!token) return router.replace({
+      pathname: "/(student)/login",
+      params: { returnTo: "/(student)/pass" },
+    });
     if (!silent) setStep({ kind: "loading" });
     try {
       const res = await passApi.getPass(token);
       setStep({ kind: "ready", pass: res.pass, stale: false });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace("/(student)/welcome");
+        router.replace({
+          pathname: "/(student)/login",
+          params: { returnTo: "/(student)/pass" },
+        });
         return;
       }
       // Network/server failure keeps the last pass on screen (stale) — it
@@ -115,6 +136,11 @@ export default function PassScreen() {
   }, [step, qr, issuing, qrError, issue]);
 
   const refresh = useFreshServerData(() => load(true));
+  useEffect(() => {
+    if (!qr?.expires_at) return;
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, [qr?.expires_at]);
 
   if (step.kind === "loading") {
     return (
@@ -137,6 +163,7 @@ export default function PassScreen() {
 
   const { pass, stale } = step;
   const event = pass.event;
+  const qrExpired = Boolean(qr?.expires_at && Date.parse(qr.expires_at) <= now);
 
   return (
     <Screen>
@@ -144,7 +171,7 @@ export default function PassScreen() {
         title="Convocation invitation"
         subtitle={pass.convocation ? pass.convocation.name : "Digital pass"}
         eyebrow="Your pass"
-        onBack={() => router.back()}
+        onBack={() => router.replace("/(student)/home")}
       />
       {stale ? (
         <Text style={styles.stale}>
@@ -153,70 +180,15 @@ export default function PassScreen() {
       ) : null}
 
       <View style={styles.status}>
-        <StatusPill state={STATE_PILL[pass.state]} label={pass.state_label} />
+        <StatusPill
+          state={qrExpired ? "invalid" : pass.state === "eligible" && qr ? "accept" : STATE_PILL[pass.state]}
+          label={pass.state === "eligible" ? qrExpired ? "QR expired" : qr ? "Pass issued" : "Preparing QR" : pass.state_label}
+        />
       </View>
-
-      <SectionCard>
-        <Text style={styles.title}>{pass.title}</Text>
-        <Text style={styles.detail}>{pass.detail}</Text>
-      </SectionCard>
-
-      {pass.registration ? (
-        <>
-          <SectionEyebrow>Registration</SectionEyebrow>
-          <SectionCard pad={false}>
-            <ListRow title="Student" subtitle={pass.registration.student_name} />
-            <ListRow
-              title="Registration number"
-              subtitle={pass.registration.registration_number}
-            />
-            <ListRow title="Roll number" subtitle={pass.registration.roll_number} />
-            <ListRow title="Department" subtitle={pass.registration.department} />
-          </SectionCard>
-        </>
-      ) : null}
-
-      {event ? (
-        <>
-          <SectionEyebrow>Official event details</SectionEyebrow>
-          <SectionCard pad={false}>
-            {/* Phase 33 Part F: the row names the ceremony date, so
-                "Confirmed <date>" can't be misread as a registration
-                confirmation — the label carries the meaning. */}
-            <ListRow
-              title="Ceremony date"
-              subtitle={
-                event.confirmed_date
-                  ? `Confirmed ${event.confirmed_date}`
-                  : event.expected_date
-                    ? `Expected ${event.expected_date} (provisional)`
-                    : "Not announced yet"
-              }
-              trailing={
-                <StatusPill
-                  state={event.date_state === "confirmed" ? "accept" : "queued"}
-                  label={event.date_state_label}
-                  size="sm"
-                />
-              }
-            />
-            {event.rehearsal ? (
-              <ListRow
-                title="Rehearsal"
-                subtitle={`${event.rehearsal.date}${event.rehearsal.time ? ` · ${event.rehearsal.time}` : ""}`}
-              />
-            ) : null}
-            <ListRow title="Venue" subtitle={event.venue || "Not published"} />
-            {event.instructions ? (
-              <ListRow title="Instructions" subtitle={event.instructions} />
-            ) : null}
-          </SectionCard>
-        </>
-      ) : null}
 
       <SectionEyebrow>Gate entry</SectionEyebrow>
       <SectionCard>
-        {pass.state === "eligible" && qr ? (
+        {pass.state === "eligible" && qr && !qrExpired ? (
           <>
             <View style={styles.qrWrap}>
               <QRCode
@@ -234,16 +206,34 @@ export default function PassScreen() {
                 ? "both the rehearsal and the main convocation"
                 : "the main convocation"}
               . Show this QR at the entry gate. It carries no personal data — the
-              gate verifies it against your registration record. Issued{" "}
-              {qr.issued_at}
-              {qr.expires_at ? `, valid until ${qr.expires_at}` : ""}.
+              gate verifies it against your registration record. Reference LGU-PASS-{qr.pass_id}. Issued {passTime(qr.issued_at)}{qr.expires_at ? `, valid until ${passTime(qr.expires_at)}.` : "."}
+              {qr.expires_at ? " This QR is temporary; if your event is after its expiry, refresh it before you arrive. Refreshing invalidates the previous QR." : ""}
             </Text>
             <AppButton
-              label="Refresh QR"
+              label={issuing ? "Refreshing QR..." : "Refresh QR"}
               variant="ghost"
               icon="refresh"
+              loading={issuing}
+              disabled={issuing}
               onPress={() => void issue()}
               style={styles.refresh}
+            />
+          </>
+        ) : pass.state === "eligible" && qrExpired ? (
+          <>
+            <View style={styles.qrRow}>
+              <StatusPill state="invalid" label="QR expired" />
+            </View>
+            <Text style={styles.detail}>
+              Reference LGU-PASS-{qr?.pass_id}. This QR expired {qr?.expires_at ? `on ${passTime(qr.expires_at)}` : ""} and will not admit you. Refresh it before arriving; the previous QR will stop working.
+            </Text>
+            {qrError ? <Text style={styles.error}>{qrError}</Text> : null}
+            <AppButton
+              label={issuing ? "Refreshing QR..." : "Refresh expired QR"}
+              loading={issuing}
+              disabled={issuing}
+              icon="refresh"
+              onPress={() => void issue()}
             />
           </>
         ) : pass.state === "eligible" && qrError ? (
@@ -279,8 +269,61 @@ export default function PassScreen() {
         )}
       </SectionCard>
 
+      <SectionCard>
+        <Text style={styles.title}>{pass.title}</Text>
+        <Text style={styles.detail}>{pass.detail}</Text>
+      </SectionCard>
+
+      {pass.registration ? (
+        <>
+          <SectionEyebrow>Registration</SectionEyebrow>
+          <SectionCard>
+            <ListRow title="Student" subtitle={pass.registration.student_name} />
+            <ListRow
+              title="Registration number"
+              subtitle={pass.registration.registration_number}
+            />
+            <ListRow title="Roll number" subtitle={pass.registration.roll_number} />
+            <ListRow title="Department" subtitle={pass.registration.department} />
+          </SectionCard>
+        </>
+      ) : null}
+
+      {event ? (
+        <>
+          <SectionEyebrow>Official event details</SectionEyebrow>
+          <SectionCard>
+            {/* Phase 33 Part F: the row names the ceremony date, so
+                "Confirmed <date>" can't be misread as a registration
+                confirmation — the label carries the meaning. */}
+            <ListRow
+              title="Ceremony date"
+              subtitle={
+                event.confirmed_date
+                  ? `Confirmed ${event.confirmed_date}`
+                  : event.expected_date
+                    ? `Expected ${event.expected_date} (provisional)`
+                    : "Not announced yet"
+              }
+
+            />
+            {event.rehearsal ? (
+              <ListRow
+                title="Rehearsal"
+                subtitle={`${event.rehearsal.date}${event.rehearsal.time ? ` · ${event.rehearsal.time}` : ""}`}
+              />
+            ) : null}
+            <ListRow title="Venue" subtitle={event.venue || "Not published"} />
+            {event.instructions ? (
+              <ListRow title="Instructions" subtitle={event.instructions} />
+            ) : null}
+          </SectionCard>
+        </>
+      ) : null}
+
+
       <AppButton
-        label="Refresh"
+        label="Refresh invitation details"
         variant="ghost"
         icon="refresh"
         onPress={() => void refresh()}
@@ -317,6 +360,12 @@ const styles = StyleSheet.create({
     fontFamily: fonts.displayMedium,
     fontSize: 14,
     lineHeight: 21,
+  },
+  error: {
+    color: colors.invalid,
+    fontFamily: fonts.displayMedium,
+    fontSize: 13,
+    lineHeight: 20,
   },
   note: {
     color: colors.muted,

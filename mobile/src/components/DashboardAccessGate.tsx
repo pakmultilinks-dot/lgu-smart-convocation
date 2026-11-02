@@ -1,6 +1,7 @@
 import { router } from "expo-router";
 import { type ReactNode } from "react";
 import { useDashboardAvailability } from "../hooks/useDashboardAvailability";
+import { setAppMode } from "../store/appMode";
 import { AppButton, AppHeader, ErrorState, LoadingState, Screen } from "../ui";
 
 /** Unmount disabled dashboards, including their camera and live polling. */
@@ -20,7 +21,7 @@ export function DashboardAccessGate({ mode, children }: {
         onRetry={refresh} />}
     {state === "offline" ? <AppButton label="Connect to server" variant="secondary"
       onPress={() => router.push("/connect-server")} /> : null}
-    <AppButton label="Open Student Portal" onPress={() => router.replace("/(student)")} />
+    <AppButton label="Open Student Portal" onPress={() => { void setAppMode("student").then(() => router.replace("/(student)")); }} />
     <AppButton label="Choose dashboard" variant="secondary" onPress={() => router.replace("/mode-picker")} />
     <AppButton label="Administrator access" variant="ghost" onPress={() => router.push("/administration")} />
   </Screen>;

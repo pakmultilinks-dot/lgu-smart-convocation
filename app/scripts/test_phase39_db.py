@@ -189,7 +189,7 @@ ver = migrations.migrate(c)
 latest = [v for v, _ in migrations.MIGRATIONS][-1]
 check("fresh chain reaches latest migration", ver == latest,
       "v%s vs latest v%s" % (ver, latest))
-check("this build expects schema v14", ver == 14, ver)
+check("this build expects schema v15", ver == 15, ver)
 check("migrate() re-run is a no-op", migrations.migrate(c) == ver)
 ic = c.execute("PRAGMA integrity_check").fetchone()[0]
 check("fresh DB integrity ok", ic == "ok", ic)
@@ -242,7 +242,7 @@ if os.path.exists(r1):
     ro.close()
     check("restored row counts match pre-mutation", s1 == s0,
           "%s vs %s" % (s1, s0))
-    check("restored DB integrity + version", ic == "ok" and uv == 14,
+    check("restored DB integrity + version", ic == "ok" and uv == 15,
           "ic=%s uv=%s" % (ic, uv))
 else:
     check("restored file exists", False, r1)

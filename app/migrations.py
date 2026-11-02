@@ -551,6 +551,12 @@ CREATE TABLE IF NOT EXISTS scan_rejections (
 CREATE INDEX IF NOT EXISTS idx_scan_rejections_time
     ON scan_rejections(occurred_at);
 """),
+    # Manual attendee records and legacy QR scans must retain the selected
+    # ceremony/rehearsal context just like convocation-pass admissions.
+    (15, """
+ALTER TABLE scans ADD COLUMN occasion TEXT NOT NULL DEFAULT 'ceremony'
+    CHECK (occasion IN ('rehearsal', 'ceremony'));
+"""),
 ]
 
 

@@ -1,4 +1,5 @@
 """Check synthetic three-role demo provisioning without real student data."""
+from contextlib import closing
 import os
 from pathlib import Path
 import sqlite3
@@ -11,6 +12,9 @@ from werkzeug.security import check_password_hash
 
 ROOT = Path(__file__).resolve().parents[2]
 SCRIPT = ROOT / "app" / "scripts" / "create_preview_demo.py"
+
+sys.path.insert(0, str(ROOT / "app"))
+import migrations  # noqa: E402
 
 
 class PreviewDemoProvisioningTests(unittest.TestCase):
@@ -42,9 +46,9 @@ class PreviewDemoProvisioningTests(unittest.TestCase):
         self.assertIn("LGU_APP_ENV=production", env)
         student_pw = creds.split("Student password: ", 1)[1].splitlines()[0]
         scanner_pin = creds.split("Scanner PIN: ", 1)[1].splitlines()[0]
-        with sqlite3.connect(db_path) as db:
+        with closing(sqlite3.connect(db_path)) as db:
             version = db.execute("PRAGMA user_version").fetchone()[0]
-            self.assertEqual(version, 14)
+            self.assertEqual(version, migrations.MIGRATIONS[-1][0])
             student_hash = db.execute(
                 "SELECT password_hash FROM student_accounts "
                 "WHERE university_email = ?", ("preview.student@example.invalid",)
@@ -102,7 +106,7 @@ admin = check("/api/admin/verify", {"pin": values["Admin PIN"]})
 assert student.get("token"), "Student token missing"
 assert scanner.get("token"), "Scanner token missing"
 assert admin.get("ok") is True, "Admin gate did not unlock"
-print("PASS: all three HTTP login routes work on synthetic v14 database")
+print("PASS: all three HTTP login routes work on synthetic database")
 """
         completed = subprocess.run(
             [sys.executable, "-c", code, str(ROOT / "app")],

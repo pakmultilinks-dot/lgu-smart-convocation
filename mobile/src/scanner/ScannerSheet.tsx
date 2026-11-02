@@ -2,6 +2,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { Modal, Pressable, Text, View } from "react-native";
 import type { Gate } from "../api/client";
 import { colors, fonts, radius, spacing } from "../theme";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { AppButton } from "../ui";
 
 /**
@@ -19,6 +20,7 @@ export function ScannerSheet({
   gateId,
   onSelectGate,
   onClose,
+  onDone,
 }: {
   visible: boolean;
   gates: Gate[];
@@ -26,7 +28,9 @@ export function ScannerSheet({
   gateId: number | null;
   onSelectGate: (gate: Gate) => void;
   onClose: () => void;
+  onDone: () => void;
 }) {
+  const insets = useSafeAreaInsets();
   // 35M R2 (item 15): this sheet is an RN Modal. On Expo Go (SDK 57) the
   // app does not ship expo-navigation-bar, and app code cannot change the
   // Android system navigation-bar colour while a Modal is open — the system
@@ -42,7 +46,7 @@ export function ScannerSheet({
       onRequestClose={onClose}
     >
       <Pressable style={styles.backdrop} onPress={onClose} accessibilityLabel="Close" />
-      <View style={styles.sheet}>
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 16) }]}>
         <View style={styles.handle} />
         {/* 35L (G): the sheet names the decision it asks for. The
             title IS the label — the redundant "Gate" eyebrow above the
@@ -92,7 +96,7 @@ export function ScannerSheet({
             label="Done"
             icon="checkmark"
             disabled={gateId === null}
-            onPress={onClose}
+            onPress={onDone}
           />
         </View>
         <View style={styles.grabZone} />

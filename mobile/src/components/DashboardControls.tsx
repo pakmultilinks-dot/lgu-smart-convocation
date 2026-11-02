@@ -39,7 +39,7 @@ export function DashboardControls() {
     {!settings && !error ? <LoadingState label="Loading controls…" /> : null}
     {error ? <ErrorState title="Dashboard controls" body={error} onRetry={() => setRetry((value) => value + 1)} /> : null}
     {settings ? <View style={styles.roles}>
-      {([{ key: "volunteer_enabled", title: "Volunteer Operations", description: "Scanning, guest registration and gate operations." },
+      {([{ key: "volunteer_enabled", title: "Volunteer Operations", description: "Gate scanning, attendee lookup and attendance." },
         { key: "liveboard_enabled", title: "Live Dashboard", description: "Attendance display for event screens." }] as const).map((role) => {
         const enabled = settings[role.key] === "true";
         return <View key={role.key} style={styles.role}>

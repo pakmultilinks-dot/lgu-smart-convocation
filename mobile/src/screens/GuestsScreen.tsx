@@ -1,13 +1,9 @@
-import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useState } from "react";
-import { Alert, Pressable, ScrollView, Text, View } from "react-native";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import {
   ApiError,
   fetchGuests,
-  isValidPhone,
-  registerGuest,
-  revokeGuestPass,
   type Guest,
 } from "../api/client";
 import { colors, fonts, radius, spacing } from "../theme";
@@ -27,19 +23,8 @@ import {
   formatLocalClock,
 } from "../ui";
 
-/**
- * Guests — Screen 4 of the institutional system (Phase 35C).
- * List FIRST: full name (wraps, never truncated), host roll on its own
- * line, masked phone (tap to reveal — Phase 35H; single line, never
- * ellipsised — 35I T.2), live pass state + pass action. Used passes show
- * "Entered [date, ]HH:MM, gate" — 12h local clock; the DATE prefix appears
- * when the entry is not from today (35I T.4). Top action is the primary
- * "+ Add guest" toggle; the registration form sits below the list on
- * paper/ink. Submit/showPass/list logic is unchanged from Phase 35B
- * (single-use pass truth comes from the backend). 35M R2 (item 4): the
- * phone mask lives in src/utils/phone.ts — the guest list and the guest
- * pass artwork share one convention.
- */
+/** Read-only guest directory for authenticated gate staff. Paid issuance
+ * and revocation live exclusively in the protected administrator workflow. */
 
 const MONTHS_SHORT = [
   "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -66,19 +51,10 @@ export function GuestsScreen() {
   // Phase 26C: the roster is scanner-gated; a 401 means sign in first.
   const [needsSignIn, setNeedsSignIn] = useState(false);
 
-  const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
-  const [hostRoll, setHostRoll] = useState("");
-  const [saving, setSaving] = useState(false);
-  const [formError, setFormError] = useState<string | null>(null);
-  const [formOpen, setFormOpen] = useState(false);
-  const [lastPass, setLastPass] = useState<{ gid: number; payload: string } | null>(
-    null,
-  );
   // Phase 35H list tools: client-side search + Ready/Used filter +
   // per-guest phone reveal (masked by default on shared gate devices).
   const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "used">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "ready" | "checked-in" | "exited" | "revoked">("all");
   const [revealedPhones, setRevealedPhones] = useState<Record<number, boolean>>({});
 
   const loadGuests = useCallback(async () => {
@@ -102,79 +78,9 @@ export function GuestsScreen() {
     }, [loadGuests]),
   );
 
-  const submit = useCallback(async () => {
-    const trimmedName = name.trim();
-    const trimmedPhone = phone.trim();
-    const trimmedHost = hostRoll.trim().toUpperCase();
-    if (!trimmedName) {
-      setFormError("Enter the guest's name.");
-      return;
-    }
-    if (!isValidPhone(trimmedPhone)) {
-      setFormError("Enter a valid Pakistani mobile number, e.g. 03001234567.");
-      return;
-    }
-    if (!trimmedHost) {
-      setFormError("Enter the host student's roll number.");
-      return;
-    }
-    setSaving(true);
-    setFormError(null);
-    setFormOpen(true);
-    try {
-      const pass = await registerGuest({
-        name: trimmedName,
-        phone: trimmedPhone,
-        host_roll_no: trimmedHost,
-      });
-      if (pass.ok && pass.gid != null && pass.payload) {
-        setLastPass({ gid: pass.gid, payload: pass.payload });
-      }
-      setName("");
-      setPhone("");
-      setHostRoll("");
-      await loadGuests();
-    } catch (e) {
-      setFormError(
-        e instanceof ApiError
-          ? e.message
-          : "The guest could not be registered. Check the connection and retry.",
-      );
-    } finally {
-      setSaving(false);
-    }
-  }, [name, phone, hostRoll, loadGuests]);
-
   const showPass = useCallback((gid: number) => {
-    router.push({ pathname: "/guest-pass", params: { gid: String(gid) } });
+    router.push({ pathname: "/guest-pass", params: { gid: String(gid), from: "/(volunteer)/guests" } });
   }, []);
-
-  // Phase 34 (Part C): revoke an UNUSED active pass. Scanner-staff gated
-  // server-side; the confirm step keeps a shared gate device from revoking
-  // on a mis-tap. A used pass has no revoke (it keeps its 'used' meaning).
-  const revoke = useCallback((guest: Guest) => {
-    Alert.alert(
-      "Revoke guest pass?",
-      `${guest.name}'s pass will be refused at every gate. This cannot be undone.`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Revoke",
-          style: "destructive",
-          onPress: () => {
-            void revokeGuestPass(guest.id)
-              .then(() => loadGuests())
-              .catch((e: unknown) =>
-                Alert.alert(
-                  "Could not revoke",
-                  e instanceof Error ? e.message : "Try again.",
-                ),
-              );
-          },
-        },
-      ],
-    );
-  }, [loadGuests]);
 
   const isReady = (g: Guest) => !g.used && g.status !== "revoked";
 
@@ -182,9 +88,10 @@ export function GuestsScreen() {
     guests === null
       ? []
       : guests.filter((guest) => {
-          // Revoked is neither Ready nor Used — the filters stay honest.
           if (statusFilter === "ready" && !isReady(guest)) return false;
-          if (statusFilter === "used" && !guest.used) return false;
+          if (statusFilter === "checked-in" && !guest.inside) return false;
+          if (statusFilter === "exited" && (!guest.used || guest.inside)) return false;
+          if (statusFilter === "revoked" && guest.status !== "revoked") return false;
           const q = query.trim().toLowerCase();
           if (!q) return true;
           return (
@@ -198,22 +105,17 @@ export function GuestsScreen() {
   return (
     <Screen>
       <AppHeader
-        title="Guest registration"
-        subtitle="Single-use passes, tied to a host."
+        title="Guest directory"
+        subtitle="Existing passes and gate status"
       />
 
-      {/* Top action — primary (35I T.3), no icon, never a hero card. */}
-      <AppButton
-        label="+ Add guest"
-        variant="primary"
-        onPress={() => setFormOpen((open) => !open)}
-      />
+      <Text style={styles.guestMeta}>Paid guest passes are issued by the administrator after payment verification. This directory is for lookup and gate checks only.</Text>
 
       {/* 1 — Guest list FIRST. */}
       <SectionCard>
         <SectionEyebrow>
           {guests
-            ? `Guest list · ${guests.length} registered · ${guests.filter(isReady).length} ready · ${guests.filter((g) => g.used).length} used${guests.some((g) => g.status === "revoked") ? ` · ${guests.filter((g) => g.status === "revoked").length} revoked` : ""}`
+            ? `Guest list · ${guests.length} registered · ${guests.filter(isReady).length} valid unused · ${guests.filter((g) => g.inside).length} checked in · ${guests.filter((g) => g.used && !g.inside).length} exited · ${guests.filter((g) => g.status === "revoked").length} revoked`
             : "Guest list"}
         </SectionEyebrow>
         {listError ? (
@@ -258,8 +160,10 @@ export function GuestsScreen() {
               <SegmentedControl
                 options={[
                   { label: "All", value: "all" },
-                  { label: "Ready", value: "ready" },
-                  { label: "Used", value: "used" },
+                  { label: "Unused", value: "ready" },
+                  { label: "Inside", value: "checked-in" },
+                  { label: "Exited", value: "exited" },
+                  { label: "Revoked", value: "revoked" },
                 ]}
                 value={statusFilter}
                 onChange={setStatusFilter}
@@ -294,16 +198,20 @@ export function GuestsScreen() {
                           state={
                             guest.status === "revoked"
                               ? "duplicate"
-                              : guest.used
-                                ? "nodata"
-                                : "accept"
+                              : guest.inside
+                                ? "info"
+                                : guest.used
+                                  ? "nodata"
+                                  : "accept"
                           }
                           label={
                             guest.status === "revoked"
                               ? "Revoked"
-                              : guest.used
-                                ? "Used"
-                                : "Ready"
+                              : guest.inside
+                                ? "Checked in"
+                                : guest.used
+                                  ? "Exited"
+                                  : "Valid unused"
                           }
                           size="sm"
                         />
@@ -346,40 +254,25 @@ export function GuestsScreen() {
                       )}
                       {guest.used ? (
                         <Text style={styles.guestMeta}>
-                          Entered {usedStamp(guest.used_at)}
+                          {guest.inside ? "Checked in" : "Exited"} {usedStamp(guest.used_at)}
                           {guest.used_gate ? `, ${guest.used_gate}` : ""}
                         </Text>
                       ) : null}
                     </View>
-                    {guest.used ? null : (
-                      <View style={styles.passActions}>
+                    <View style={styles.passActions}>
                         <Pressable
                           accessibilityRole="button"
-                          accessibilityLabel={`Open pass for ${guest.name}`}
+                          accessibilityLabel={`${guest.used ? "View status" : "Open pass"} for ${guest.name}`}
                           onPress={() => showPass(guest.id)}
                           style={styles.passLink}
                         >
                           {/* QA fix cycle 3 (Issue 10): an explicit action
                               label — always "Show pass", never a bare
                               "Pass" or an id the operator must decode. */}
-                          <Text style={styles.passLinkText}>Show pass</Text>
+                          <Text style={styles.passLinkText}>{guest.used ? "View status" : "Show pass"}</Text>
                         </Pressable>
-                        {/* Phase 34 (Part C): revoke is only offered for an
-                            active pass — a revoked pass offers nothing. */}
-                        {guest.status === "revoked" ? null : (
-                          <Pressable
-                            accessibilityRole="button"
-                            accessibilityLabel={`Revoke pass for ${guest.name}`}
-                            onPress={() => revoke(guest)}
-                            style={styles.passLink}
-                          >
-                            <Text style={[styles.passLinkText, styles.revokeText]}>
-                              Revoke
-                            </Text>
-                          </Pressable>
-                        )}
-                      </View>
-                    )}
+
+                    </View>
                   </View>
                 ))}
               </ScrollView>
@@ -388,61 +281,6 @@ export function GuestsScreen() {
         )}
       </SectionCard>
 
-      {/* 2 — Registration form below the list, paper/ink, revealed by the
-          inline Add guest action. Submit/showPass logic unchanged. */}
-      {formOpen ? (
-        <SectionCard tone="tint">
-          <SectionEyebrow>Register a guest</SectionEyebrow>
-          <Field
-            label="Guest name"
-            placeholder="Full name"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-          />
-          <Field
-            label="Mobile number"
-            placeholder="03XXXXXXXXX"
-            value={phone}
-            onChangeText={setPhone}
-            keyboardType="phone-pad"
-            hint="Used to verify the pass at the gate."
-          />
-          <Field
-            label="Host roll number"
-            placeholder="LGU-2024-XXXX"
-            value={hostRoll}
-            onChangeText={(t) => setHostRoll(t.toUpperCase())}
-            autoCapitalize="characters"
-            hint="The host student must already exist in the system."
-          />
-          {formError ? <Text style={styles.formError}>{formError}</Text> : null}
-          <AppButton
-            label={saving ? "Registering..." : "Register guest"}
-            icon="person-add-outline"
-            loading={saving}
-            onPress={() => void submit()}
-          />
-          {lastPass ? (
-            <View style={styles.passCreated}>
-              <Ionicons name="checkmark-circle" size={18} color={colors.valid} />
-              <View style={styles.flex1}>
-                <Text style={styles.passCreatedTitle}>Guest registered</Text>
-                <Text style={styles.passCreatedBody} numberOfLines={2}>
-                  Pass created. Show the QR pass to the guest now.
-                </Text>
-              </View>
-              <AppButton
-                label="Show pass"
-                variant="secondary"
-                size="md"
-                onPress={() => showPass(lastPass.gid)}
-                style={styles.passCreatedButton}
-              />
-            </View>
-          ) : null}
-        </SectionCard>
-      ) : null}
     </Screen>
   );
 }

@@ -8,6 +8,8 @@ import { router } from "expo-router";
 import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { getToken } from "../../src/store/studentSession";
+import { lastStudentTab } from "../../src/store/studentTab";
+import { rememberPendingReturn } from "../../src/store/pendingReturn";
 import { ApiError } from "../../src/api/client";
 import * as supportApi from "../../src/api/supportApi";
 import { useFreshServerData } from "../../src/hooks/useFreshServerData";
@@ -76,27 +78,29 @@ export default function SupportScreen() {
   const load = useCallback(async (silent = false) => {
     const token = await getToken();
     if (!token) {
-      router.replace("/(student)/welcome");
-      return;
-    }
-    if (!silent) setStep({ kind: "loading" });
+          rememberPendingReturn("/(student)/support");
+          router.replace("/(student)/welcome");
+          return;
+        }
+        if (!silent) setStep({ kind: "loading" });
     try {
       const data = await supportApi.list(token);
       setStep({ kind: "ready", data, stale: false });
     } catch (e) {
       if (e instanceof ApiError && e.status === 401) {
-        router.replace("/(student)/welcome");
-        return;
-      }
-      setStep((prev) =>
-        prev.kind === "ready"
-          ? { ...prev, stale: true }
-          : {
-              kind: "error",
-              message:
-                e instanceof ApiError
-                  ? e.message
-                  : "Your requests could not be loaded. Check the connection.",
+              rememberPendingReturn("/(student)/support");
+              router.replace("/(student)/welcome");
+              return;
+            }
+            setStep((prev) =>
+              prev.kind === "ready"
+                ? { ...prev, stale: true }
+                : {
+                    kind: "error",
+                    message:
+                      e instanceof ApiError
+                        ? e.message
+                        : "Your requests could not be loaded. Check the connection.",
             },
       );
     }
@@ -107,8 +111,11 @@ export default function SupportScreen() {
   const submit = async () => {
     if (sending) return; // one submit at a time — no duplicate requests
     const token = await getToken();
-    if (!token) return router.replace("/(student)/welcome");
-    const subjectText = subject.trim();
+        if (!token) {
+          rememberPendingReturn("/(student)/support");
+          return router.replace("/(student)/welcome");
+        }
+        const subjectText = subject.trim();
     const messageText = message.trim();
     if (!subjectText || !messageText) {
       setFormError("Add a short subject and describe what you need.");
@@ -164,7 +171,7 @@ export default function SupportScreen() {
         eyebrow="Student Support"
         title="Help & corrections"
         subtitle={convocationLine(data.convocation)}
-        onBack={() => router.back()}
+        onBack={() => router.replace(lastStudentTab("/(student)/more"))}
       />
       <Text style={styles.intro}>
         Report a missing or mismatched registration, ask for a correction, or

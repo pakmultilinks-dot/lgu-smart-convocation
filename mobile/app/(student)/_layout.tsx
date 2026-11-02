@@ -1,19 +1,23 @@
 import { Ionicons } from "@expo/vector-icons";
+import { useEffect, useState } from "react";
 import { Tabs } from "expo-router/js-tabs";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import type { ColorValue } from "react-native";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { STUDENT_PUBLIC_ROUTES, StudentModeGate } from "../../src/components/StudentRouteGate";
+import { getToken } from "../../src/store/studentSession";
 import { colors, fonts, radius } from "../../src/theme";
 
 /**
  * Phase 31 Part A: the student shell renders exactly these five
  * destinations (Home, My Registration, Entry Pass, Updates, More).
  * Every other student route is registered but hidden (href: null) and
- * reached from Registration or More. `home` is listed FIRST so the tab
- * router's default backBehavior ('firstRoute') resolves to Home — the
- * entry gate at index.tsx is never a back destination.
- */
+ * reached from Registration or More. `backBehavior="history"` replaces
+  * the default 'firstRoute' (which resolved to Home and made Back jump
+  * there) — Back now walks the tab's own history; the entry gate at
+  * index.tsx is never a back destination.
+  */
 const VISIBLE_TABS = ["home", "registration", "pass", "announcements", "more"];
 
 /** Hidden routes render their parent tab as the active destination. */
@@ -59,6 +63,15 @@ function tabIcon(name: keyof typeof Ionicons.glyphMap) {
 /** Paper tab bar mirroring the volunteer shell: filtered visible routes,
  *  PARENT_OF active mapping, safe-area bottom padding, a11y semantics. */
 function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarProps) {
+  const currentRoute = state.routes[state.index]?.name ?? "index";
+  const [hasSession, setHasSession] = useState(false);
+  useEffect(() => {
+    let active = true;
+    void getToken().then((token) => { if (active) setHasSession(!!token); })
+      .catch(() => { if (active) setHasSession(false); });
+    return () => { active = false; };
+  }, [currentRoute]);
+  if (STUDENT_PUBLIC_ROUTES.has(currentRoute) || !hasSession) return null;
   return (
     <View style={[styles.tabBar, { paddingBottom: Math.max(insets.bottom, 6) }]}>
       {state.routes
@@ -116,8 +129,10 @@ function StudentTabBar({ state, descriptors, insets, navigation }: BottomTabBarP
 export default function StudentTabLayout() {
   const insets = useSafeAreaInsets();
   return (
+    <StudentModeGate>
     <Tabs
-      tabBar={(props) => <StudentTabBar {...props} insets={insets} />}
+          backBehavior="history"
+          tabBar={(props) => <StudentTabBar {...props} insets={insets} />}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: colors.ink,
@@ -142,7 +157,7 @@ export default function StudentTabLayout() {
         options={{
           title: "My Registration",
           tabBarLabel: "Registration",
-          tabBarIcon: tabIcon("person"),
+          tabBarIcon: tabIcon("document-text"),
         }}
       />
       <Tabs.Screen
@@ -156,9 +171,9 @@ export default function StudentTabLayout() {
       <Tabs.Screen
         name="more"
         options={{
-          title: "More",
-          tabBarLabel: "More",
-          tabBarIcon: tabIcon("ellipsis-horizontal"),
+          title: "Account",
+          tabBarLabel: "Account",
+          tabBarIcon: tabIcon("person-circle"),
         }}
       />
       {/* Hidden secondary/auth routes — reached from Registration/More or
@@ -177,13 +192,14 @@ export default function StudentTabLayout() {
       <Tabs.Screen name="login" options={{ title: "Sign in", href: null, headerShown: false }} />
       <Tabs.Screen name="index" options={{ title: "Entry", href: null, headerShown: false }} />
     </Tabs>
-  );
-}
+          </StudentModeGate>
+        );
+      }
 
 const styles = StyleSheet.create({
   tabBar: {
     flexDirection: "row",
-    backgroundColor: colors.paper,
+    backgroundColor: "#FFFFFF",
     borderTopColor: colors.track,
     borderTopWidth: 1,
     paddingTop: 6,

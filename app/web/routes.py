@@ -3,6 +3,7 @@
 import csv
 import hmac
 import io
+import json
 import os
 import re
 import secrets
@@ -16,6 +17,8 @@ from flask import (Blueprint, Flask, Response, jsonify, redirect,
                    render_template, request, session, url_for)
 
 import config
+import announcements as official_announcements
+import convocation_events as event_publications
 import convocation_qr as convqr
 import database
 import ids
@@ -28,9 +31,9 @@ bp = Blueprint("main", __name__)
 # These controls govern operational surfaces, never student or admin APIs.
 # Sync is refused as a whole so clients retain queued scans for reopening.
 _VOLUNTEER_ENDPOINTS = {
-    "scan_page", "api_scanner_login", "api_scan", "api_sync", "guests",
-    "guest_directory", "guest_pass", "api_guests", "api_register_guest",
-    "api_guest_pass", "api_revoke_guest", "api_search",
+    "scan_page", "api_scan", "api_sync",
+    "guest_pass", "api_guests",
+    "api_guest_pass", "api_search",
     "api_dashboard_summary",
 }
 _LIVE_ENDPOINTS = {"dashboard", "api_dashboard"}
@@ -40,10 +43,16 @@ _LIVE_ENDPOINTS = {"dashboard", "api_dashboard"}
 def enforce_dashboard_access():
     if request.method == "OPTIONS":
         return None
+    if request.path.startswith("/api/admin/"):
+        return None  # Each admin handler authenticates independently of tool availability.
     endpoint = (request.endpoint or "").removeprefix("main.")
     mode = ("volunteer" if endpoint in _VOLUNTEER_ENDPOINTS else
             "liveboard" if endpoint in _LIVE_ENDPOINTS else None)
-    if mode and database.get_settings()[mode + "_enabled"] != "true":
+    return _dashboard_access_denial(mode) if mode else None
+
+
+def _dashboard_access_denial(mode):
+    if database.get_settings()[mode + "_enabled"] != "true":
         return jsonify({"ok": False, "code": "dashboard_disabled",
                         "dashboard": mode,
                         "error": ("Volunteer Operations" if mode == "volunteer"
@@ -439,6 +448,71 @@ def _require_admin_pin(denied_message="Administrator access required."):
     return None
 
 
+@bp.route("/api/admin/student-event", methods=["GET", "PUT"])
+@bp.route("/api/admin/student-event/publish", methods=["POST"])
+def api_admin_student_event():
+    """Explicit, audited publication; saving a draft never publishes it."""
+    denied = _require_admin_pin()
+    if denied:
+        return denied
+    db = database.get_db()
+    try:
+        conv = event_publications.active(db)
+        if conv is None:
+            return jsonify({"ok": False, "error": "No active convocation."}), 409
+        if request.method == "PUT":
+            data = request.get_json(silent=True)
+            if not isinstance(data, dict) or any(
+                key not in event_publications.DETAIL_FIELDS or
+                (value is not None and not isinstance(value, str))
+                for key, value in data.items()
+            ):
+                return jsonify({"ok": False, "error": "Expected event detail text fields."}), 400
+            details = event_publications.clean_details({**event_publications.details_of(conv), **data})
+            event_publications.save_details(db, conv, details, "mobile-admin")
+            db.commit()
+            conv = event_publications.get(db, conv["id"])
+        elif request.method == "POST":
+            event_publications.publish(db, conv, "mobile-admin")
+            db.commit()
+        pub = event_publications.publication(db, conv["id"])
+        return jsonify({"ok": True, "draft": event_publications.details_of(conv),
+                        "published": dict(pub) if pub else None,
+                        "has_changes": event_publications.is_dirty(db, conv)})
+    except event_publications.EventError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        db.close()
+
+
+@bp.route("/api/admin/student-announcements", methods=["POST"])
+def api_admin_student_announcement():
+    """Publish to the student's in-app feed; never claim external delivery."""
+    denied = _require_admin_pin()
+    if denied:
+        return denied
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict) or any(not isinstance(data.get(key), str)
+                                         for key in ("title", "body")):
+        return jsonify({"ok": False, "error": "Title and message are required."}), 400
+    db = database.get_db()
+    try:
+        conv = event_publications.active(db)
+        if conv is None:
+            return jsonify({"ok": False, "error": "No active convocation."}), 409
+        clean = official_announcements.clean({"title": data["title"],
+            "body": data["body"], "audience": "students"}, "mobile-admin")
+        ann = official_announcements.create(db, conv["id"], clean)
+        official_announcements.publish(db, ann, "mobile-admin")
+        db.commit()
+        return jsonify({"ok": True, "id": ann["id"],
+                        "note": "Published in student Updates. No SMS or email was sent."})
+    except official_announcements.AnnouncementError as exc:
+        return jsonify({"ok": False, "error": str(exc)}), 400
+    finally:
+        db.close()
+
+
 @bp.route("/api/settings")
 def api_get_settings():
     """Administrator settings read (Phase 28).
@@ -549,7 +623,7 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
     unnecessary in-process write contention. The authoritative state check
     and INSERT in models.record_scan also use BEGIN IMMEDIATE, protecting
     admissions across multiple processes (PR #7). Their roster path is
-    operational check-in only; the occasion argument does not apply to it.
+    operational check-in only; the occasion is retained as scan context.
 
     Convocation passes (LGU2) deliberately do NOT take that lock. Their
     exactly-once guarantee is the UNIQUE (convocation_id, registration_id,
@@ -572,7 +646,7 @@ def process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
         try:
             with _SCAN_LOCK:
                 result = _process_scan(payload, gate_id, mode, volunteer,
-                                       scanned_at, source)
+                                       scanned_at, source, occasion)
         except sqlite3.OperationalError as exc:
             # Same contract as the convocation path: contention is retryable,
             # not a verdict and not an unhandled 500. No scan was recorded —
@@ -628,31 +702,33 @@ def _process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
                     "detail": "%s: this guest pass was revoked and cannot"
                               " be used to enter." % person["name"],
                     "name": person["name"]}
-        if models.guest_used(qr_id):
-            ls = models.last_scan(qr_id)
-            g = next((x for x in _gates() if ls and x["id"] == ls["gate_id"]), {})
-            return {"status": "error", "level": "red", "title": "ALREADY USED",
-                    "detail": "%s: this guest pass was already used. One entry per guest."
-                    % person["name"],
-                    # Structured fields so the app can show name / previous
-                    # gate / time without parsing the detail string.
+        ls = models.last_scan(qr_id)
+        inside = bool(ls and ls["mode"] == "entry")
+        if mode == "entry" and ls:
+            gate_before = next((x for x in _gates() if x["id"] == ls["gate_id"]), {})
+            return {"status": "error", "level": "red",
+                    "title": "ALREADY USED",
+                    "detail": ("%s is already checked in." if inside else
+                               "%s has exited; this single-entry pass cannot be used again.")
+                              % person["name"],
                     "name": person["name"],
-                    "gate": g.get("label"),
-                    "time": (ls or {}).get("scanned_at")}
-        if mode == "exit":
-            return {"status": "error", "level": "amber", "title": "GUEST PASS IS ENTRY ONLY",
-                    "detail": "Guest passes are single-use entry passes."}
+                    "gate": gate_before.get("label"),
+                    "time": ls["scanned_at"]}
+        if mode == "exit" and not inside:
+            return {"status": "error", "level": "amber",
+                    "title": "GUEST PASS IS ENTRY ONLY" if ls is None else "GUEST NOT INSIDE",
+                    "detail": "%s has no active guest entry to close." % person["name"]}
         accepted = models.record_scan(
-            qr_id, "guest", person["name"], gate_id, "entry",
-            volunteer, scanned_at, source
+            qr_id, "guest", person["name"], gate_id, mode,
+            volunteer, scanned_at, source, occasion
         )
         if not accepted:
-            return {"status": "error", "level": "red", "title": "ALREADY USED",
-                    "detail": "%s: this guest pass was already used. One entry per guest."
-                    % person["name"]}
-        return {"status": "ok", "level": "green", "title": "GUEST ENTRY RECORDED",
-                "name": person["name"], "sub": "Guest of %s (%s)" % (
-                    person["host_roll_no"], person["phone"]),
+            return {"status": "error", "level": "red",
+                    "title": "GUEST ALREADY CHECKED IN" if mode == "entry" else "GUEST NOT INSIDE",
+                    "detail": "The guest attendance state changed. Refresh the lookup and retry."}
+        return {"status": "ok", "level": "green",
+                "title": "GUEST ENTRY RECORDED" if mode == "entry" else "GUEST EXIT RECORDED",
+                "name": person["name"], "sub": "Guest of %s" % person["host_roll_no"],
                 "gate": gate["label"], "time": scanned_at or models.now_str()}
 
     if mode == "entry" and models.student_inside(qr_id):
@@ -674,7 +750,7 @@ def _process_scan(payload, gate_id, mode, volunteer, scanned_at=None,
 
     accepted = models.record_scan(
         qr_id, "student", person["name"], gate_id, mode,
-        volunteer, scanned_at, source
+        volunteer, scanned_at, source, occasion
     )
     if not accepted:
         if mode == "entry":
@@ -718,6 +794,10 @@ def api_scanner_login():
         _scan_login_record_failure()
         return jsonify({"ok": False, "code": "invalid_credentials",
                         "error": err}), 401
+    # Malformed login requests must be rejected before any database read.
+    denied = _dashboard_access_denial("volunteer")
+    if denied:
+        return denied
     scanner = scanner_auth.authenticate(username.strip(), pin)
     if not scanner:
         _scan_login_record_failure()
@@ -841,6 +921,74 @@ def api_scan():
     try:
         result = process_scan(data.get("payload"), gate_id, data.get("mode"),
                               auth["display_name"], occasion=occasion)
+    except sqlite3.OperationalError as exc:
+        if database.is_busy_error(exc):
+            return _transient_busy_response()
+        raise
+    if result.get("status") == database.BUSY_STATUS:
+        return _transient_busy_response()
+    return jsonify(result)
+
+
+@bp.route("/api/manual-attendance", methods=["POST"])
+def api_manual_attendance():
+    """Deliberately record an attendee found through authenticated search.
+
+    The client sends only the visible roster identity (roll number or guest
+    id). The server resolves the private QR id and builds the signed payload
+    internally, then runs the exact same admission checks as a camera scan.
+    """
+    auth = _require_scanner()
+    if not isinstance(auth, dict):
+        return auth
+    data = request.get_json(force=True, silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"ok": False, "error": "Request must be a JSON object."}), 400
+
+    person_type = data.get("type")
+    gate_id = _coerce_gate(data.get("gate_id"))
+    mode = data.get("mode")
+    occasion = _coerce_occasion(data.get("occasion"))
+    if person_type not in ("student", "guest"):
+        return jsonify({"ok": False, "error": "Choose a valid attendee."}), 400
+    if gate_id is None:
+        return jsonify({"ok": False, "error": "Choose a gate before recording attendance."}), 400
+    if mode not in ("entry", "exit"):
+        return jsonify({"ok": False, "error": "Choose Entry or Exit mode."}), 400
+    if occasion is None:
+        return jsonify({"ok": False, "error": "Choose Rehearsal or Main convocation."}), 400
+
+    gates = {g["id"] for g in _gates()}
+    if gate_id not in gates:
+        return jsonify({"ok": False, "error": "The selected gate does not exist."}), 400
+    if gate_id not in auth["gates"]:
+        models.record_scan_rejection(gate_id, mode, occasion, "GATE NOT AUTHORIZED", "manual")
+        return jsonify({"ok": False, "error": "This scanner is not authorized for that gate."}), 403
+
+    with database.connection() as db:
+        if person_type == "student":
+            roll_no = data.get("roll_no")
+            if not isinstance(roll_no, str) or not roll_no.strip():
+                return jsonify({"ok": False, "error": "Student roll number is required."}), 400
+            row = db.execute(
+                "SELECT qr_id FROM students WHERE roll_no = ?",
+                (roll_no.strip(),)).fetchone()
+        else:
+            gid = data.get("gid")
+            if isinstance(gid, bool) or not isinstance(gid, int) or gid < 1:
+                return jsonify({"ok": False, "error": "Guest pass reference is required."}), 400
+            row = db.execute(
+                "SELECT qr_id FROM guests WHERE id = ?",
+                (gid,)).fetchone()
+
+    if not row or not row["qr_id"]:
+        return jsonify({"ok": False,
+                        "error": "This attendee has no operational gate code. No attendance was recorded."}), 404
+
+    try:
+        result = process_scan(
+            ids.make_payload(row["qr_id"]), gate_id, mode,
+            auth["display_name"], source="manual", occasion=occasion)
     except sqlite3.OperationalError as exc:
         if database.is_busy_error(exc):
             return _transient_busy_response()
@@ -1164,35 +1312,24 @@ def _guest_reg_blocked():
 
 @bp.route("/guests", methods=["GET", "POST"])
 def guests():
-    """Public guest self-registration shell (Phase 27 C2).
-
-    GET renders ONLY the registration form: the directory moved to
-    ``/guests/directory``, so an anonymous caller can no longer read every
-    guest's name, phone and host straight out of the page source. POST stays
-    anonymous — a walk-up guest has no credential to present yet."""
+    """Administrator-only paid issuance; never a public walk-up kiosk."""
+    denied = _require_web_admin()
+    if denied is not None:
+        return denied
     err = None
-    if request.method == "POST":
-        limited, err = _guest_reg_blocked()
-        name = (request.form.get("name", "") or "").strip()
-        phone = (request.form.get("phone", "") or "").strip()
-        host = (request.form.get("host_roll_no", "") or "").strip()
-        # Master audit V-INP-03: bounded fields on the web form too.
-        if limited:
-            pass                      # err already carries the limiter reply
-        elif len(name) > _NAME_CAP or len(phone) > _PHONE_CAP or len(host) > _ROLL_CAP:
-            err = "Name (max %d), phone (max %d) and host roll (max %d) are limited." % (
-                _NAME_CAP, _PHONE_CAP, _ROLL_CAP)
-        else:
-            gid, err = models.register_guest(name, phone, host, ids.generate_id)
-            if gid:
-                # C3: hand the guest a scoped capability. It rides the signed
-                # session cookie, never the URL, so it cannot land in an
-                # access log or a forwarded link.
-                session["guest_print"] = ids.make_print_token(
-                    gid, config.GUEST_PRINT_TTL_MINUTES * 60)
-                return redirect(url_for("main.guest_pass", gid=gid))
-    return render_template("guests.html", err=err,
-                           is_staff=session.get("lgu_admin") is True)
+    if request.method == "POST" and request.form.get("name") is not None:
+        data = dict(request.form)
+        data["payment_verified"] = request.form.get("payment_verified") == "on"
+        err = _guest_intake_error(data)
+        if err is None:
+            limited, err = _guest_reg_blocked()
+            if not limited:
+                gid, err = models.register_guest(data["name"], data["phone"],
+                    data["host_roll_no"], ids.generate_id,
+                    payment_reference=data["payment_reference"], actor="web-administrator")
+                if gid:
+                    return redirect(url_for("main.guest_pass", gid=gid))
+    return render_template("guests.html", err=err, is_staff=True)
 
 
 @bp.route("/guests/directory")
@@ -1313,42 +1450,46 @@ def api_guests():
     return jsonify({"guests": models.guest_directory()})
 
 
+def _guest_intake_error(data):
+    if not isinstance(data, dict):
+        return "Expected a valid JSON object."
+    for field, cap in (("name", _NAME_CAP), ("phone", _PHONE_CAP),
+                       ("host_roll_no", _ROLL_CAP), ("payment_reference", 80)):
+        value = data.get(field)
+        if not isinstance(value, str) or not value.strip() or len(value) > cap:
+            return "%s is required and must be text up to %d characters." % (field, cap)
+    if data.get("payment_verified") is not True:
+        return "Verify the guest payment before issuing a pass."
+    return None
+
+
 @bp.route("/api/guests", methods=["POST"])
+@bp.route("/api/admin/guests", methods=["GET", "POST"])
 def api_register_guest():
+    denied = _require_admin_pin("Only an administrator can issue paid guest passes.")
+    if denied is not None:
+        return denied
+    if request.method == "GET":
+        return jsonify({"guests": models.guest_directory()})
     limited, msg = _guest_reg_blocked()
     if limited:
         return jsonify({"ok": False, "error": msg}), 429
     data = request.get_json(force=True, silent=True)
-    if not isinstance(data, dict):
-        return _bad_scan_request("Expected a valid JSON object.")
-    for field in ('name', 'phone', 'host_roll_no'):
-        if field in data and not isinstance(data[field], str):
-            return _bad_scan_request("%s must be text." % field)
-    name = (data.get("name") or "").strip()
-    phone = (data.get("phone") or "").strip()
-    host_roll_no = (data.get("host_roll_no") or "").strip()
-    if not name or not phone or not host_roll_no:
-        return jsonify({"ok": False,
-                        "error": "Name, phone and host roll number are required."}), 400
-    # Master audit V-INP-03: bounded fields.
-    if len(name) > _NAME_CAP or len(phone) > _PHONE_CAP or len(host_roll_no) > _ROLL_CAP:
-        return jsonify({"ok": False, "error":
-                        "Name (max %d), phone (max %d) and host roll (max %d) are limited."
-                        % (_NAME_CAP, _PHONE_CAP, _ROLL_CAP)}), 400
-    gid, err = models.register_guest(name, phone, host_roll_no, ids.generate_id)
+    err = _guest_intake_error(data)
     if err:
         return jsonify({"ok": False, "error": err}), 400
-    g = models.guest_by_id(gid)
-    return jsonify({"ok": True, "gid": gid,
-                    "payload": ids.make_payload(g["qr_id"]),
-                    # Phase 27 C3: the registrant's own scoped capability —
-                    # the approved way to read this pass back without a
-                    # scanner or staff session.
-                    "print_token": ids.make_print_token(
-                        gid, config.GUEST_PRINT_TTL_MINUTES * 60)})
+    gid, err = models.register_guest(data["name"], data["phone"],
+        data["host_roll_no"], ids.generate_id,
+        payment_reference=data["payment_reference"], actor="mobile-administrator")
+    if err:
+        return jsonify({"ok": False, "error": err}), 400
+    # No bearer QR returned at intake. Authorized pass retrieval remains separate.
+    return jsonify({"ok": True, "gid": gid, "payment_verification": "administrator_attested",
+                    "print_token": ids.make_print_token(gid, config.GUEST_PRINT_TTL_MINUTES * 60)})
 
 
 @bp.route("/api/guest-pass/<int:gid>")
+@bp.route("/api/admin/guest-pass/<int:gid>")
 def api_guest_pass(gid):
     """Single-guest pass JSON (Phase 27 C3).
 
@@ -1359,13 +1500,20 @@ def api_guest_pass(gid):
     cannot read a 401/404 split as an oracle for which guest ids exist."""
     if not (0 < gid < 1_000_000_000):
         return jsonify({"ok": False, "error": "Guest not found."}), 404
-    if not _guest_print_allowed(gid):
+    if request.path.startswith("/api/admin/"):
+        denied = _require_admin_pin()
+        if denied is not None:
+            return denied
+    elif not _guest_print_allowed(gid):
         return jsonify({"ok": False, "code": "guest_pass_forbidden",
                         "error": "Guest pass access requires this guest's "
                                  "print link, or a scanner sign-in."}), 401
     g = models.guest_by_id(gid)
     if not g:
         return jsonify({"ok": False, "error": "Guest not found."}), 404
+    last = models.last_scan(g["qr_id"])
+    gate = next((gate["label"] for gate in _gates()
+                 if last and gate["id"] == last["gate_id"]), None)
     return jsonify({"ok": True, "gid": gid, "name": g["name"],
                     "phone": g["phone"], "host_roll_no": g["host_roll_no"],
                     # 33-QA (I23): host name travels with the pass payload.
@@ -1374,22 +1522,20 @@ def api_guest_pass(gid):
                     # can show Ready / Used / Revoked from the server truth.
                     "status": g.get("status", "active"),
                     "used": models.guest_used(g["qr_id"]),
+                    "inside": bool(last and last["mode"] == "entry"),
+                    "used_at": last["scanned_at"] if last else None,
+                    "used_gate": gate,
+                    "last_mode": last["mode"] if last else None,
                     "payload": ids.make_payload(g["qr_id"])})
 
 
 @bp.route("/api/guests/<int:gid>/revoke", methods=["POST"])
+@bp.route("/api/admin/guests/<int:gid>/revoke", methods=["POST"])
 def api_revoke_guest(gid):
-    """Phase 34 (Part C): revoke an unused guest pass (scanner/staff only).
-
-    Guest self-registration stays public by design, but revocation is a
-    management action that invalidates a bearer pass, so it rides the same
-    scanner session as the roster. Only an ACTIVE pass transitions — a used
-    pass keeps its terminal 'used' meaning (409), keeping 'used' (entered)
-    and 'revoked' (invalidated) distinct lifecycle states.
-    """
-    auth = _require_scanner()
-    if not isinstance(auth, dict):
-        return auth
+    """Only administrators may revoke an unused paid pass."""
+    denied = _require_admin_pin()
+    if denied is not None:
+        return denied
     if not (0 < gid < 1_000_000_000):
         return jsonify({"ok": False, "error": "Guest not found."}), 404
     g = models.guest_by_id(gid)
@@ -1398,7 +1544,7 @@ def api_revoke_guest(gid):
     if models.guest_used(g["qr_id"]):
         return jsonify({"ok": False, "error":
                         "This guest pass was already used; it cannot be revoked."}), 409
-    changed = models.revoke_guest(gid)
+    changed = models.revoke_guest(gid, actor="administrator")
     return jsonify({"ok": True, "gid": gid, "status": "revoked",
                     "changed": changed})
 
@@ -1571,7 +1717,9 @@ def api_search():
                 "type": "guest", "name": g["name"], "gid": g["id"],
                 "host_roll_no": g["host_roll_no"],
                 "host_name": g["host_name"], "phone": g["phone"],
-                "status": g["status"], "inside": used, "used": used,
+                "status": g["status"],
+                "inside": bool(last and last["mode"] == "entry"),
+                "used": used,
                 "last_scan": {
                     "gate": gate_by_id.get(last["gate_id"], ""),
                     "time": last["scanned_at"], "mode": last["mode"],
@@ -1671,7 +1819,94 @@ def create_app():
 
     @app.context_processor
     def inject_brand():
-        return {"APP_NAME": config.APP_NAME, "UNIVERSITY": config.UNIVERSITY,
+        return {"APP_NAME": config.APP_DISPLAY_NAME, "UNIVERSITY": config.UNIVERSITY,
                 "MOTTO": config.MOTTO}
 
     return app
+
+
+# Native administrator record management. Never redirects to a web session.
+@bp.route("/api/admin/records/<kind>", methods=["GET", "POST"])
+@bp.route("/api/admin/records/<kind>/<int:record_id>", methods=["PUT"])
+def api_admin_records(kind, record_id=None):
+    denied = _require_admin_pin()
+    if denied is not None:
+        return denied
+    if kind not in ("registrations", "roster"):
+        return jsonify(error="Unknown record type."), 404
+    import exam_registrations as reg
+    official = kind == "registrations"
+    fields = reg.REG_FIELDS if official else ("roll_no", "name", "gender", "program")
+    labels = {"registration_number": "Registration number", "university_email": "University email",
+              "roll_number": "Roll number", "student_name": "Student name", "department": "Department",
+              "roll_no": "Roll number", "name": "Student name", "gender": "Gender", "program": "Program"}
+    with database.connection() as db:
+        cycle = reg.active_convocation(db) if official else None
+        if official and cycle is None:
+            return jsonify(error="No active convocation is configured."), 409
+        if request.method == "GET":
+            query = request.args.get("q", "").strip()[:120]
+            try:
+                offset = max(0, int(request.args.get("offset", "0")))
+            except ValueError:
+                return jsonify(error="Invalid page."), 400
+            if official:
+                rows = reg.search(db, cycle["id"], query, "", 51, offset)
+            else:
+                like = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+                rows = db.execute("SELECT id,roll_no,name,gender,program FROM students WHERE roll_no LIKE ? ESCAPE '\\' OR name LIKE ? ESCAPE '\\' ORDER BY roll_no LIMIT 51 OFFSET ?", (like, like, offset)).fetchall()
+            return jsonify(records=[{k: row[k] for k in ("id", *fields, *(("status",) if official else ()))} for row in rows[:50]], has_more=len(rows)>50)
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict) or set(data) - set(fields):
+            return jsonify(error="Submit only the fields shown on the form."), 400
+        clean = {}
+        for field in fields:
+            value = data.get(field, "")
+            if not isinstance(value, str):
+                return jsonify(error=labels[field] + " must be text."), 400
+            if official:
+                value, err = reg.validate_field(field, value)
+                if err:
+                    return jsonify(error=err.replace(field, labels[field])), 400
+            else:
+                value = value.strip()
+                cap = {"roll_no":32,"name":120,"gender":6,"program":120}[field]
+                if not value or len(value)>cap or any(ord(c)<32 for c in value):
+                    return jsonify(error=labels[field] + " is required and must be valid text."), 400
+                if field == "gender" and value not in ("Male", "Female"):
+                    return jsonify(error="Choose Male or Female for the operational roster."), 400
+            clean[field] = value
+        try:
+            db.execute("BEGIN IMMEDIATE")
+            before = None
+            if record_id is not None:
+                table = "convocation_registrations" if official else "students"
+                before = db.execute("SELECT * FROM " + table + " WHERE id=?", (record_id,)).fetchone()
+                if before is None or (official and before["convocation_id"] != cycle["id"]):
+                    return jsonify(error="Record not found."), 404
+            if official:
+                if before:
+                    # Identity is immutable in this intake editor. Other corrections retain the existing audit trail.
+                    if clean["registration_number"] != before["registration_number"]:
+                        return jsonify(error="Registration number cannot be changed."), 400
+                    reg.correct(db, dict(before), clean, "mobile-administrator")
+                else:
+                    record_id = reg.insert(db, cycle["id"], clean, None, "mobile-administrator")
+                    db.commit()
+            else:
+                if before:
+                    if clean["roll_no"] != before["roll_no"]:
+                        return jsonify(error="Roll number cannot be changed after intake."), 400
+                    db.execute("UPDATE students SET name=?,gender=?,program=? WHERE id=?", (clean["name"],clean["gender"],clean["program"],record_id))
+                else:
+                    cur = db.execute("INSERT INTO students (roll_no,name,gender,program,qr_id,created_at) VALUES (?,?,?,?,?,?)", (*clean.values(),ids.generate_id(),models.now_str()))
+                    record_id = cur.lastrowid
+                db.execute("INSERT INTO audit_log (actor,action,detail,created_at) VALUES (?,?,?,?)", ("mobile-administrator", "roster_corrected" if before else "roster_added", json.dumps({"record_id":record_id,"before":{k:before[k] for k in fields} if before else None,"after":clean}), models.now_str()))
+                db.commit()
+        except sqlite3.IntegrityError:
+            db.rollback()
+            return jsonify(error="A record already uses that registration number, roll number or email."), 409
+        except ValueError as exc:
+            db.rollback()
+            return jsonify(error=str(exc)), 400
+        return jsonify(ok=True, id=record_id)

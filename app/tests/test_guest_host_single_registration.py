@@ -38,6 +38,9 @@ class OneGuestPerStudentTests(unittest.TestCase):
         self.app = create_app()
         self.app.config.update(TESTING=True)
         self.client = self.app.test_client()
+        self.client.environ_base["HTTP_X_ADMIN_PIN"] = str(config.ADMIN_PIN)
+        with self.client.session_transaction() as sess:
+            sess["lgu_admin"] = True
         review_support.authenticate(self.client)
 
     def tearDown(self):
@@ -96,6 +99,8 @@ class OneGuestPerStudentTests(unittest.TestCase):
             "name": "First Guest",
             "phone": "03000000001",
             "host_roll_no": HOST,
+            "payment_reference": "HOST-TEST-RECEIPT",
+            "payment_verified": True,
         }
         first = self.client.post("/api/guests", json=body)
         self.assertEqual(first.status_code, 200)
@@ -113,6 +118,8 @@ class OneGuestPerStudentTests(unittest.TestCase):
             "name": "First Guest",
             "phone": "03000000001",
             "host_roll_no": HOST,
+            "payment_reference": "HOST-WEB-RECEIPT",
+            "payment_verified": "on",
         }
         first = self.client.post("/guests", data=data)
         self.assertEqual(first.status_code, 302)

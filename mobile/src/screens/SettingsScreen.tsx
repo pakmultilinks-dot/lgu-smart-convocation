@@ -114,10 +114,8 @@ export function SettingsScreen() {
   return (
     <Screen>
       <AppHeader
-        onBack={() =>
-          router.canGoBack() ? router.back() : router.replace("/(volunteer)/more")
-        }
-        title="Settings"
+              onBack={() => router.replace("/(volunteer)/more")}
+              title="Settings"
         subtitle="Device and operator preferences"
       />
 
@@ -165,7 +163,7 @@ export function SettingsScreen() {
             <Text style={styles.rowBody}>
               {mode === "liveboard"
                 ? "Public attendance view"
-                : "Gate scanning and guest management"}
+                : "Gate scanning and guest lookup"}
             </Text>
           </View>
           <StatusPill state="info" label="Active" size="sm" />

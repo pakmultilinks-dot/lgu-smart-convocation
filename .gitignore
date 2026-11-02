@@ -56,3 +56,6 @@ expo-gen.err
 # OS
 .DS_Store
 Thumbs.db
+
+mobile/visual-evidence/
+.release-artifacts/

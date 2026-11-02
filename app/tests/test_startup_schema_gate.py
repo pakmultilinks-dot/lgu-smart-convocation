@@ -3,10 +3,13 @@
 No production student database is opened or read. Tests create tiny temporary
 SQLite files, and patch the run.py entrypoint before any write operation.
 """
+from contextlib import closing
 import importlib
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import secrets
 import sys
 import tempfile
 import unittest
@@ -29,7 +32,7 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
         self.current = migrations.MIGRATIONS[-1][0]
 
     def set_version(self, version):
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn:
             conn.execute("PRAGMA user_version = %d" % version)
 
     def test_old_schema_is_rejected_without_writes(self):
@@ -42,7 +45,7 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "migration approval"):
                 startup_schema.require_current_schema()
         self.assertEqual(Path(self.path).read_bytes(), before)
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn:
             self.assertEqual(conn.execute("PRAGMA user_version").fetchone()[0], 6)
 
     def test_missing_production_db_is_not_created(self):
@@ -71,7 +74,7 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
         ):
             self.assertIsNone(startup_schema.require_current_schema())
             database.init_db()
-        with sqlite3.connect(self.path) as conn:
+        with closing(sqlite3.connect(self.path)) as conn:
             self.assertEqual(
                 conn.execute("PRAGMA user_version").fetchone()[0],
                 self.current,
@@ -217,7 +220,7 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
         original = Path(self.path).read_bytes()
         rehearsal = str(Path(self.tmp.name) / "rehearsal.sqlite")
         Path(rehearsal).write_bytes(original)
-        with sqlite3.connect(rehearsal) as conn:
+        with closing(sqlite3.connect(rehearsal)) as conn:
             migrations.migrate(conn)
             self.assertEqual(
                 conn.execute("PRAGMA user_version").fetchone()[0],
@@ -235,6 +238,33 @@ class ProductionStartupSchemaGateTests(unittest.TestCase):
         self.assertNotIn("--label", runbook)
         self.assertNotIn("supports\n`11`", runbook)
         self.assertIn("backup_db.py verify", runbook)
+
+    def test_real_process_refuses_synthetic_v6_without_modification(self):
+        legacy = [item for item in migrations.MIGRATIONS if item[0] <= 6]
+        with (
+            patch.object(config, "DB_PATH", self.path),
+            patch.object(migrations, "MIGRATIONS", legacy),
+            patch.dict(os.environ, {"LGU_APP_ENV": "development"}),
+        ):
+            database.init_db()
+        before = Path(self.path).read_bytes()
+        environment = dict(os.environ)
+        environment.update({
+            "LGU_DB_PATH": self.path, "LGU_APP_ENV": "production",
+            "LGU_TESTING": "0", "LGU_ALLOW_DEMO_SECRETS": "0",
+            "LGU_SECRET_KEY": secrets.token_urlsafe(48),
+            "LGU_HMAC_SECRET": secrets.token_urlsafe(48),
+            "LGU_ADMIN_PIN": secrets.token_hex(8),
+            "LGU_COOKIE_SECURE": "1", "LGU_EMAIL_MODE": "disabled",
+        })
+        result = subprocess.run([sys.executable, str(APP_DIR / "run.py")],
+                                env=environment, capture_output=True, text=True,
+                                timeout=20)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("migration approval", result.stderr)
+        self.assertEqual(Path(self.path).read_bytes(), before)
+        self.assertEqual(sorted(p.name for p in Path(self.tmp.name).iterdir()),
+                         ["synthetic.sqlite"])
 
 
 if __name__ == "__main__":

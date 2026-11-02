@@ -50,7 +50,7 @@ class BrowserUiTests(unittest.TestCase):
         )
         cls.server_thread.start()
         cls.playwright = sync_playwright().start()
-        cls.browser = cls.playwright.chromium.launch(headless=True)
+        cls.browser = cls.playwright.chromium.launch(headless=True, channel=os.environ.get("LGU_BROWSER_CHANNEL"))
 
     @classmethod
     def tearDownClass(cls):

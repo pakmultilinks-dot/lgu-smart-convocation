@@ -45,7 +45,8 @@ assert client.put("/api/settings", json={"student_enabled": "false"}, headers=ad
 assert access()["student"] is True
 save(volunteer_enabled="false")
 for route in ["/api/scan", "/api/sync", "/api/scanner/login", "/api/guests"]:
-    result = client.post(route, json={})
+    body = {"username": "operator", "pin": "ABCDEFGH"} if route == "/api/scanner/login" else {}
+    result = client.post(route, json=body)
     assert result.status_code == 403, (route, result.status_code)
     assert result.json["code"] == "dashboard_disabled"
 for route in ["/scan", "/guests", "/api/guests", "/api/search", "/api/guest-pass/1", "/api/dashboard/summary"]:

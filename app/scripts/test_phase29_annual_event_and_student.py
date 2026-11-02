@@ -698,6 +698,9 @@ ALTER TABLE convocations DROP COLUMN rehearsal_venue;
 -- Phase 34 (migration 13): a genuine v11 schema also reverts the guest
 -- status column so re-running migrate() applies migration 13 cleanly.
 ALTER TABLE guests DROP COLUMN status;
+-- Migration 15 added scans.occasion; a genuine v11 schema reverts it too
+-- so re-running migrate() applies migration 15 cleanly.
+ALTER TABLE scans DROP COLUMN occasion;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_convocation_admissions_once
     ON convocation_admissions(convocation_id, registration_id);
 INSERT INTO convocations (name, year, status, venue, instructions,

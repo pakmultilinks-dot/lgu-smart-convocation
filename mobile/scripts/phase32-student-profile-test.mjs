@@ -89,8 +89,8 @@ check(
 );
 check(
   "B5: a completed profile stays on screen with an explicit home action",
-  has(profile, 'label="Go to home"') &&
-    has(profile, '"/(student)/home"') &&
+  has(profile, '"Go to home"') &&
+      has(profile, 'studentApi.postAuthPath(me, returnTo)') &&
     has(profile, "phoneDirtyRef") &&
     has(profile, "useFreshServerData("),
 );

@@ -1,29 +1,41 @@
 import { router, useLocalSearchParams } from "expo-router";
 import { useState } from "react";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { ApiError } from "../../src/api/client";
 import * as studentApi from "../../src/api/studentApi";
+import { takePendingReturn, peekPendingReturn } from "../../src/store/pendingReturn";
 import { colors, fonts, spacing } from "../../src/theme";
 import { AppButton, AppHeader, Field, Screen } from "../../src/ui";
 
 /** Email + password sign-in for existing student accounts. */
 export default function StudentLogin() {
-  const { reset } = useLocalSearchParams<{ reset?: string }>();
+  const { reset, returnTo: rawReturn } = useLocalSearchParams<{ reset?: string; returnTo?: string | string[] }>();
+  // Explicit ?returnTo= wins; otherwise resume the destination a signed-out
+  // redirect recorded, so sign-in returns there instead of Home.
+    const returnTo = rawReturn ?? peekPendingReturn() ?? undefined;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [needsConnection, setNeedsConnection] = useState(false);
 
   const submit = async () => {
+    if (busy) return;
+    if (!email.trim() || !password) { setError("Enter your university email and password."); return; }
     setBusy(true);
     setError(null);
+    setNeedsConnection(false);
     try {
       const session = await studentApi.login({
         email: email.trim(),
         password,
       });
-      router.replace(studentApi.homePath(session));
+      // Destination resolved above — discard the pending record so a later
+      // unrelated sign-in cannot inherit it.
+      takePendingReturn();
+      router.replace(studentApi.postAuthPath(session, returnTo));
     } catch (e) {
+      setNeedsConnection(e instanceof ApiError && e.status === 0);
       setError(
         e instanceof ApiError
           ? e.code === "locked"
@@ -42,14 +54,15 @@ export default function StudentLogin() {
     <Screen>
       <AppHeader
         title="Sign in"
-        subtitle="Your student account for the convocation"
-        onBack={() => router.back()}
+        subtitle="Continue with your university student account."
+        onBack={() => router.replace("/(student)/welcome")}
       />
       {reset ? (
         <Text style={styles.note}>
           Password changed. Sign in with your new password.
         </Text>
       ) : null}
+      <View style={styles.form}>
       <Field
         label="University email"
         value={email}
@@ -66,6 +79,8 @@ export default function StudentLogin() {
         secureTextEntry
         autoComplete="password"
         placeholder="Your password"
+        returnKeyType="done"
+        onSubmitEditing={() => void submit()}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}
       <AppButton
@@ -74,16 +89,30 @@ export default function StudentLogin() {
         onPress={() => void submit()}
         style={styles.submit}
       />
+      </View>
+      {needsConnection ? <AppButton label="Connection settings" variant="secondary" onPress={() => router.push("/connect-server")} /> : null}
       <AppButton
         label="Forgot password?"
         variant="ghost"
-        onPress={() => router.push("/(student)/recovery")}
+        onPress={() => router.push({
+          pathname: "/(student)/recovery",
+          params: returnTo ? { returnTo } : undefined,
+        })}
+      />
+      <AppButton
+        label="Create student account"
+        variant="ghost"
+        onPress={() => router.push({
+          pathname: "/(student)/verify",
+          params: returnTo ? { returnTo } : undefined,
+        })}
       />
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  form: { backgroundColor: "#FFFFFF", borderRadius: 18, borderWidth: 1, borderColor: colors.track, padding: 20, gap: 18 },
   submit: { marginTop: spacing.md },
   note: {
     color: colors.valid,

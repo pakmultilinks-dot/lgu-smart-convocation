@@ -2,20 +2,23 @@
 {% block title %}Guests | {{ APP_NAME }}{% endblock %}
 {% block content %}
 <h1 class="page-title">Guest Management</h1>
-<p class="page-sub">Every student gets one free guest. Each guest QR works exactly once; a second scan is rejected at every gate.</p>
+<p class="page-sub">Guest passes are paid and issued only by an administrator after payment verification. Each guest QR works exactly once; a second scan is rejected at every gate.</p>
 
 {% if err %}<div class="notice warn">{{ err }}</div>{% endif %}
 
 <div class="grid two">
   <div class="card">
-    <h2>Register a guest</h2>
-    <form method="post">
+    <h2>Issue a paid guest pass</h2>
+    <form method="post" action="{{ url_for('main.guests') }}">
       <label for="name">Guest full name</label>
       <input type="text" id="name" name="name" required placeholder="e.g. Nasir Khan">
       <label for="phone">Guest phone</label>
       <input type="tel" id="phone" name="phone" required placeholder="e.g. 0300 1112233">
       <label for="host">Host student roll number</label>
       <input type="text" id="host" name="host_roll_no" required placeholder="e.g. LGU-2024-101">
+      <label for="payment_reference">Verified payment reference</label>
+      <input id="payment_reference" name="payment_reference" required maxlength="80">
+      <label><input type="checkbox" name="payment_verified" required> I verified this payment in the institution's payment records.</label>
       <div class="btn-row"><button class="btn green" type="submit">Register and issue QR pass</button></div>
     </form>
   </div>

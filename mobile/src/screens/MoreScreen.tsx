@@ -55,14 +55,14 @@ export function MoreScreen() {
         {isAdmin ? (
           <>
             <ListRow
-              title="Announcements"
-              subtitle="Send an announcement"
+              title="Operational message log"
+              subtitle="Recorded messages for event teams"
               onPress={() => router.push("/(volunteer)/broadcast")}
             />
             <View style={styles.divider} />
             <ListRow
-              title="Admin"
-              subtitle="Backend connection and convocation details"
+              title="Administrator dashboard"
+              subtitle="Student records, paid passes and publications"
               onPress={() => router.push("/(volunteer)/admin")}
             />
           </>
@@ -76,7 +76,7 @@ export function MoreScreen() {
                 <Ionicons name="chevron-forward" size={18} color={colors.muted} />
               </View>
             }
-            onPress={() => router.push("/(volunteer)/broadcast")}
+            onPress={() => router.push("/(volunteer)/admin")}
           />
         )}
       </SectionCard>
